@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 4).
+`ProtocolVersion.current` with any shape change (currently 5).
 
 ## Transport
 
@@ -53,6 +53,7 @@ Mac → phone (`MacMessage`):
 | `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects, Claude tabs (`SessionSummary`, keyed by pane id), pending permissions. |
 | `transcript(sessionId, events, reset)` | After `subscribe`: `reset: true` with history, then appends as the Mac's mirror reads new transcript records. Folded with `TranscriptModel`, same as the Mac. |
 | `sendResult(paneId, outcome)` | `sent`, `queued` or `failed` for a `sendMessage`. |
+| `startResult(requestId, paneId?, error?)` | Answer to `startSession`: the new tab's pane id, or a message to show. |
 | `error(message)` | Anything else worth showing in logs. |
 
 Phone → Mac (`PhoneMessage`):
@@ -63,6 +64,8 @@ Phone → Mac (`PhoneMessage`):
 | `subscribe(sessionId?)` | Stream that session's transcript; nil stops. One per connection. |
 | `sendMessage(paneId, text)` | `AppModel.sendOrQueue`: typed now if Claude can take it, else queued (never into a permission prompt). |
 | `permissionDecision(requestId, allow)` | `allow` or `deny("Denied from iPhone.")`. First answer wins across Mac and phones. |
-| `startSession`, `reorderProjects`, `registerPush` | Phase 6; the Mac replies `error` for now. |
+| `startSession(requestId, projectId, branch?, prompt)` | `AppModel.startSession`: a new Claude tab, launched as `claude "<prompt>"`. With `branch`, first a worktree on a new branch from `origin/<base>` (else `<base>`, else `HEAD`) under `~/Library/Application Support/Tether/Worktrees/<repo>/<branch-slug>` (`WorktreeCreator`). The Mac doesn't switch its own selected tab. The phone waits up to 90 s. |
+| `reorderProjects(ids)` | Saves the sidebar order; the next snapshot carries it. |
+| `registerPush` | Phase 6b; the Mac replies `error` for now. |
 
 Messages from one phone are handled strictly in order (`CompanionClient.inbox`).

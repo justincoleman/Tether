@@ -16,6 +16,19 @@ import TetherProtocol
         #expect(launch.environment[TerminalLaunch.tokenEnvKey] == "tok")
     }
 
+    @Test func newSessionCanStartOnAPrompt() {
+        let wt = Worktree(projectId: project.id, path: "/tmp/p", branch: "main", isPrimary: true)
+        let pane = PaneDescriptor(projectId: project.id, kind: .claude(worktreeId: wt.id, resumeSessionId: nil), title: "Claude")
+        let launch = TerminalLaunch.make(pane: pane, worktree: wt, remoteHost: nil, token: "t",
+                                         newSessionId: "S1", initialPrompt: "Fix the login bug's test\n", shell: "/bin/zsh")
+        #expect(launch.command == "/bin/zsh -l -c 'claude --session-id S1 '\\''Fix the login bug'\\''\\'\\'''\\''s test'\\'''")
+        // Resuming ignores the prompt: the old conversation continues.
+        let resumed = PaneDescriptor(projectId: project.id, kind: .claude(worktreeId: wt.id, resumeSessionId: "abc"), title: "Claude")
+        let r = TerminalLaunch.make(pane: resumed, worktree: wt, remoteHost: nil, token: "t",
+                                    initialPrompt: "hello", shell: "/bin/zsh")
+        #expect(r.command == "/bin/zsh -l -c 'claude --resume abc'")
+    }
+
     @Test func shellLaunchHasNoCommand() {
         let pane = PaneDescriptor(projectId: project.id, kind: .shell(cwd: "/tmp/x"), title: "Shell")
         let launch = TerminalLaunch.make(pane: pane, worktree: nil, remoteHost: nil, token: "t")

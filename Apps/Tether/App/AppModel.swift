@@ -64,6 +64,8 @@ final class AppModel {
     /// The folder each Claude tab works in, for its Changes panel.
     private var paneWorktreePaths: [PaneID: String] = [:]
     private var promptQueue = PromptQueue()
+    /// The task a new Claude tab starts on, passed as `claude "<prompt>"`.
+    private var initialPrompts: [PaneID: String] = [:]
 
     private let store = ProjectStore(fileURL: ProjectStore.defaultFileURL())
     let registry = SessionRegistry()
@@ -140,6 +142,54 @@ final class AppModel {
                                kind: .claude(worktreeId: wt.id, resumeSessionId: nil),
                                title: "Claude")
         await open(d)
+    }
+
+    struct StartError: Error, CustomStringConvertible {
+        var description: String
+    }
+
+    /// A new Claude tab, on a new worktree branch when `branch` is set,
+    /// starting on `prompt` when given. `select` is false for phone requests,
+    /// so the Mac's view doesn't jump.
+    @discardableResult
+    func startSession(projectId: ProjectID, branch: String?, prompt: String?, select: Bool) async throws -> PaneID {
+        guard let project = projects.first(where: { $0.id == projectId }) else {
+            throw StartError(description: "That project is no longer on the Mac.")
+        }
+        let branchName = branch?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let worktree: Worktree
+        if branchName.isEmpty {
+            guard let primary = await store.primaryWorktree(for: project.id) else {
+                throw StartError(description: "\(project.name) has no folder on record.")
+            }
+            worktree = primary
+        } else {
+            do {
+                let path = try await WorktreeCreator().create(
+                    repoPath: project.path, branch: branchName, baseBranch: project.baseBranch)
+                worktree = try await store.addWorktree(projectId: project.id, path: path, branch: branchName)
+            } catch let failure as WorktreeCreator.Failure {
+                throw StartError(description: failure.description)
+            }
+        }
+        let d = PaneDescriptor(projectId: project.id,
+                               kind: .claude(worktreeId: worktree.id, resumeSessionId: nil),
+                               title: branchName.isEmpty ? "Claude" : branchName)
+        if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            initialPrompts[d.id] = prompt
+        }
+        try? await store.addPane(d)
+        await mount(d)
+        if select {
+            selectedProjectId = project.id
+            selectedPaneId = d.id
+        }
+        return d.id
+    }
+
+    func reorderProjects(_ ids: [ProjectID]) async {
+        try? await store.reorder(ids)
+        await reload()
     }
 
     func openShellPane(project: Project) async {
@@ -480,7 +530,8 @@ final class AppModel {
         }
         let launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host,
                                          token: launchToken, hookSettingsPath: hookSettingsPath,
-                                         newSessionId: launchSession)
+                                         newSessionId: launchSession,
+                                         initialPrompt: initialPrompts.removeValue(forKey: d.id))
         let pane = TerminalPane(descriptor: d, launch: launch, controller: TerminalHost.controller)
         pane.onExit = { [weak self] id in
             guard let self else { return }

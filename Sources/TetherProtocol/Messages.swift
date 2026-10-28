@@ -114,6 +114,8 @@ public enum MacMessage: Codable, Sendable {
     case transcript(sessionId: SessionID, events: [MirrorEvent], reset: Bool)
     /// Answer to `sendMessage`: "sent", "queued" or "failed".
     case sendResult(paneId: PaneID, outcome: String)
+    /// Answer to `startSession`: the new tab, or why it couldn't start.
+    case startResult(requestId: UUID, paneId: PaneID?, error: String?)
     case error(message: String)
 }
 
@@ -128,9 +130,12 @@ public enum PhoneMessage: Codable, Sendable {
     case subscribe(sessionId: SessionID?)
     case sendMessage(paneId: PaneID, text: String)
     case permissionDecision(requestId: UUID, allow: Bool)
-    // Phase 6.
-    case startSession(projectId: ProjectID, branch: String?, prompt: String)
+    /// Opens a Claude tab in the project, on a new worktree branch when
+    /// `branch` is set, starting on `prompt` when it isn't empty.
+    case startSession(requestId: UUID, projectId: ProjectID, branch: String?, prompt: String)
+    /// Sidebar order, all of the Mac's project ids.
     case reorderProjects(ids: [ProjectID])
+    // Phase 6b.
     case registerPush(deviceToken: String, liveActivityPushToStartToken: String?)
 }
 

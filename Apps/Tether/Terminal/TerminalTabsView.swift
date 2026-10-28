@@ -69,6 +69,7 @@ private struct TabStrip: View {
     let project: Project
     let panes: [TerminalPane]
     @Binding var showSidebar: Bool
+    @State private var showNewAgent = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -90,6 +91,7 @@ private struct TabStrip: View {
             Spacer(minLength: 0)
             Menu {
                 Button("New Claude Session") { Task { await model.openClaudePane(project: project) } }
+                Button("New Agent on a Branch…") { showNewAgent = true }
                 Button("New Shell") { Task { await model.openShellPane(project: project) } }
                 if !model.remoteHosts.isEmpty {
                     Divider()
@@ -116,6 +118,60 @@ private struct TabStrip: View {
         }
         .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
         .frame(height: ChromeMetrics.headerHeight)
+        .sheet(isPresented: $showNewAgent) {
+            NewAgentSheet(project: project)
+        }
+    }
+}
+
+/// "New Agent on a Branch": a worktree on a new branch with its own Claude tab.
+struct NewAgentSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let project: Project
+    @State private var branch = ""
+    @State private var prompt = ""
+    @State private var error: String?
+    @State private var working = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New Agent on a Branch").font(.headline)
+            Text("Creates a worktree of \(project.name) on a new branch from \(project.baseBranch), with its own Claude tab.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            TextField("Branch, e.g. fix-login", text: $branch)
+            TextField("Task for Claude (optional)", text: $prompt, axis: .vertical)
+                .lineLimit(3...8)
+            if let error {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Create") { create() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(branch.trimmingCharacters(in: .whitespaces).isEmpty || working)
+            }
+        }
+        .textFieldStyle(.roundedBorder)
+        .padding(20)
+        .frame(width: 440)
+    }
+
+    private func create() {
+        working = true
+        error = nil
+        Task {
+            do {
+                try await model.startSession(projectId: project.id, branch: branch, prompt: prompt, select: true)
+                dismiss()
+            } catch {
+                self.error = "\(error)"
+            }
+            working = false
+        }
     }
 }
 

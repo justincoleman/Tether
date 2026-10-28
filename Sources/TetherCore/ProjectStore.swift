@@ -86,6 +86,14 @@ public actor ProjectStore {
         state.worktrees.first { $0.id == id }
     }
 
+    @discardableResult
+    public func addWorktree(projectId: ProjectID, path: String, branch: String) throws -> Worktree {
+        let worktree = Worktree(projectId: projectId, path: path, branch: branch, isPrimary: false)
+        state.worktrees.append(worktree)
+        try save()
+        return worktree
+    }
+
     public func remoteHost(_ id: RemoteHostID) -> RemoteHost? {
         state.remoteHosts.first { $0.id == id }
     }

@@ -12,6 +12,8 @@ struct OverviewView: View {
     @Binding var showPairing: Bool
     @State private var path = NavigationPath()
     @State private var answering: (connection: MacConnection, request: PermissionRequested)?
+    @State private var showNewTask = false
+    @State private var reordering: MacConnection?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -43,10 +45,26 @@ struct OverviewView: View {
                 }
             }
             .toolbar {
+                if !store.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showNewTask = true } label: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                        .accessibilityLabel("New task")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Pair a Mac", systemImage: "qrcode.viewfinder") { showPairing = true }
                         if !store.isEmpty {
+                            Section("Reorder projects") {
+                                ForEach(store.connections) { connection in
+                                    Button(connection.mac.name, systemImage: "arrow.up.arrow.down") {
+                                        reordering = connection
+                                    }
+                                    .disabled(connection.snapshot == nil)
+                                }
+                            }
                             Section("Paired Macs") {
                                 ForEach(store.connections) { connection in
                                     Button("Remove \(connection.mac.name)", systemImage: "trash", role: .destructive) {
@@ -59,6 +77,13 @@ struct OverviewView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                 }
+            }
+            .sheet(isPresented: $showNewTask) {
+                NewTaskView { route in path.append(route) }
+                    .environment(store)
+            }
+            .sheet(item: $reordering) { connection in
+                ReorderProjectsView(connection: connection)
             }
             .sheet(isPresented: Binding(get: { answering != nil }, set: { if !$0 { answering = nil } })) {
                 if let answering {

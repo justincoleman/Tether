@@ -222,7 +222,19 @@ final class CompanionHub {
             client.send(.sendResult(paneId: paneId, outcome: outcome))
         case .permissionDecision(let requestId, let allow):
             model.resolvePermission(requestId, allow ? .allow : .deny(message: "Denied from iPhone."))
-        case .startSession, .reorderProjects, .registerPush:
+        case .startSession(let requestId, let projectId, let branch, let prompt):
+            Task {
+                do {
+                    let paneId = try await model.startSession(projectId: projectId, branch: branch,
+                                                              prompt: prompt, select: false)
+                    client.send(.startResult(requestId: requestId, paneId: paneId, error: nil))
+                } catch {
+                    client.send(.startResult(requestId: requestId, paneId: nil, error: "\(error)"))
+                }
+            }
+        case .reorderProjects(let ids):
+            Task { await model.reorderProjects(ids) }
+        case .registerPush:
             client.send(.error(message: "This Mac doesn't support that yet."))
         case .hello, .pair, .authenticate:
             break

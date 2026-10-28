@@ -201,3 +201,43 @@ private struct TempGitRepo {
         }
     }
 }
+
+@Suite(.enabled(if: gitAvailable)) struct WorktreeCreatorTests {
+    @Test func createsBranchFromOriginBase() async throws {
+        let repo = try await TempGitRepo.make()
+        // A local-only commit on main must not leak into the new branch.
+        try repo.write("local.txt", "local\n")
+        try await repo.git("add", "-A")
+        try await repo.git("commit", "-q", "-m", "local only")
+
+        let creator = WorktreeCreator(root: repo.root.appendingPathComponent("wt"), runner: repo.runner)
+        let path = try await creator.create(repoPath: repo.work, branch: "feature/login", baseBranch: "main")
+        #expect(path.hasSuffix("/wt/work/feature-login"))
+        let branch = try await repo.git("rev-parse", "--abbrev-ref", "HEAD", in: path)
+        #expect(branch.trimmingCharacters(in: .whitespacesAndNewlines) == "feature/login")
+        #expect(FileManager.default.fileExists(atPath: path + "/a.txt"))
+        #expect(!FileManager.default.fileExists(atPath: path + "/local.txt"))
+    }
+
+    @Test func rejectsExistingAndInvalidBranches() async throws {
+        let repo = try await TempGitRepo.make()
+        let creator = WorktreeCreator(root: repo.root.appendingPathComponent("wt"), runner: repo.runner)
+        await #expect(throws: WorktreeCreator.Failure.branchExists("main")) {
+            try await creator.create(repoPath: repo.work, branch: "main", baseBranch: "main")
+        }
+        await #expect(throws: WorktreeCreator.Failure.invalidBranch("bad name")) {
+            try await creator.create(repoPath: repo.work, branch: "bad name", baseBranch: "main")
+        }
+    }
+
+    @Test func branchNameRules() {
+        for ok in ["fix-login", "feature/login", "v1.2", "justin/ui_tweaks"] {
+            #expect(WorktreeCreator.isValidBranchName(ok), "\(ok)")
+        }
+        for bad in ["", "-x", "a..b", "a b", "a~1", "a:b", "x.lock", "a/", "/a", "a//b", "a/.hidden", "a@{1}", "end."] {
+            #expect(!WorktreeCreator.isValidBranchName(bad), "\(bad)")
+        }
+        #expect(WorktreeCreator.slug("Feature/Login Page") == "feature-login-page")
+        #expect(WorktreeCreator.slug("///") == "branch")
+    }
+}

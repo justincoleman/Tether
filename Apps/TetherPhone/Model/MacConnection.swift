@@ -37,6 +37,12 @@ final class MacConnection: Identifiable {
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var subscribed: SessionID?
     @ObservationIgnored private var wanted = false
+    @ObservationIgnored private var pendingStarts: [UUID: CheckedContinuation<StartOutcome, Never>] = [:]
+
+    enum StartOutcome {
+        case started(PaneID)
+        case failed(String)
+    }
 
     init(mac: PairedMac) {
         self.mac = mac
@@ -98,6 +104,35 @@ final class MacConnection: Identifiable {
         channel?.send(PhoneMessage.sendMessage(paneId: paneId, text: text))
     }
 
+    /// Asks the Mac to open a Claude tab, optionally on a new branch.
+    /// Creating a worktree can take a while on a big repo.
+    func startSession(projectId: ProjectID, branch: String?, prompt: String) async -> StartOutcome {
+        guard status == .online, let channel else { return .failed("\(mac.name) is offline.") }
+        let requestId = UUID()
+        return await withCheckedContinuation { continuation in
+            pendingStarts[requestId] = continuation
+            channel.send(PhoneMessage.startSession(requestId: requestId, projectId: projectId,
+                                                   branch: branch, prompt: prompt))
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(90))
+                self?.finishStart(requestId, .failed("\(self?.mac.name ?? "The Mac") didn't answer."))
+            }
+        }
+    }
+
+    func reorderProjects(_ ids: [ProjectID]) {
+        channel?.send(PhoneMessage.reorderProjects(ids: ids))
+        // Show the new order now; the next snapshot confirms it.
+        if var snapshot {
+            snapshot.projects.sort { (ids.firstIndex(of: $0.id) ?? .max) < (ids.firstIndex(of: $1.id) ?? .max) }
+            self.snapshot = snapshot
+        }
+    }
+
+    private func finishStart(_ requestId: UUID, _ outcome: StartOutcome) {
+        pendingStarts.removeValue(forKey: requestId)?.resume(returning: outcome)
+    }
+
     func decide(_ requestId: UUID, allow: Bool) {
         channel?.send(PhoneMessage.permissionDecision(requestId: requestId, allow: allow))
         // Hide it now; the next snapshot confirms.
@@ -138,6 +173,8 @@ final class MacConnection: Identifiable {
             transcripts[sessionId] = model
         case .sendResult(let paneId, let outcome):
             sendResults[paneId] = outcome
+        case .startResult(let requestId, let paneId, let error):
+            finishStart(requestId, paneId.map(StartOutcome.started) ?? .failed(error ?? "The Mac couldn't start it."))
         case .error(let message):
             print("Mac says: \(message)")
         }
@@ -168,6 +205,7 @@ final class MacConnection: Identifiable {
     private func channelClosed(_ reason: String?) {
         channel = nil
         pinger?.cancel()
+        for id in Array(pendingStarts.keys) { finishStart(id, .failed("Lost the connection to \(mac.name).")) }
         switch status {
         case .rejected, .updateNeeded: return
         default: break

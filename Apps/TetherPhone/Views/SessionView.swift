@@ -8,6 +8,8 @@ struct SessionView: View {
     let paneId: PaneID
     @State private var text = ""
     @State private var answering: PermissionRequested?
+    /// A tab started from the phone shows up in the next snapshot, a moment later.
+    @State private var waitedForTab = false
 
     private var session: SessionSummary? {
         connection.snapshot?.sessions.first { $0.id == paneId }
@@ -25,7 +27,10 @@ struct SessionView: View {
         let sessionId = session?.sessionId
         let transcript = sessionId.flatMap { connection.transcripts[$0] }
         VStack(spacing: 0) {
-            if let transcript, !transcript.items.isEmpty {
+            if session == nil, !waitedForTab {
+                ProgressView("Opening on \(connection.mac.name)…")
+                    .frame(maxHeight: .infinity)
+            } else if let transcript, !transcript.items.isEmpty {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 14) {
@@ -91,6 +96,10 @@ struct SessionView: View {
             }
         }
         .task(id: sessionId) { connection.subscribe(sessionId) }
+        .task {
+            try? await Task.sleep(for: .seconds(5))
+            waitedForTab = true
+        }
         .onDisappear { connection.subscribe(nil) }
         .sheet(item: $answering) { request in
             PermissionSheet(connection: connection, request: request)

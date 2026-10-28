@@ -26,6 +26,7 @@ public struct TerminalLaunch: Hashable, Sendable {
         token: String,
         hookSettingsPath: String? = nil,
         newSessionId: SessionID? = nil,
+        initialPrompt: String? = nil,
         shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
         claudeExecutable: String = "claude"
     ) -> TerminalLaunch {
@@ -40,6 +41,13 @@ public struct TerminalLaunch: Hashable, Sendable {
                 // Choosing the id up front lets Tether find the transcript
                 // before any hook fires.
                 parts += ["--session-id", newSessionId]
+            }
+            // A new session can start on a task: `claude "<prompt>"`. Typing it
+            // in later would race the TUI's startup.
+            if resume == nil || resume?.isEmpty == true,
+               let prompt = initialPrompt.map(promptText), !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // A leading dash would be read as a flag.
+                parts.append(prompt.hasPrefix("-") ? " " + prompt : prompt)
             }
             return TerminalLaunch(
                 command: loginShellCommand(shell: shell, parts),

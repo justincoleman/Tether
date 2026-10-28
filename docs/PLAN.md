@@ -462,6 +462,14 @@ sent together, and the send queue is in memory only, not persisted.*
 - `StartSession` from phone, worktree option, project reorder sync.
 - Exit criterion: lock the phone, start a 20-minute job from it, get the
   permission prompt on the lock screen, answer it, see it finish.
+- Split in two. 6a (built): `startSession` from the phone (protocol v5), "New
+  Agent on a Branch" on both devices via `WorktreeCreator`, project reorder by
+  drag on the Mac sidebar and in a phone sheet. A new tab gets its task as
+  `claude "<prompt>"` rather than typed in, so it can't race the TUI's start.
+  Worktrees don't yet nest in the sidebar; their tab is titled with the
+  branch, and removal after merge is still to do.
+  6b: APNs and Live Activities. Needs a paid developer account, an APNs
+  `.p8` key and the Push capability on the phone's App ID.
 
 ### Phase 7: Hardening and ownership (ongoing)
 - Build libghostty from source (`scripts/ghosttykit.sh`), swap in behind a

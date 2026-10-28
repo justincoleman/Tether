@@ -110,6 +110,12 @@ struct SidebarView: View {
                 LazyVStack(spacing: 2) {
                     ForEach(model.projects) { project in
                         ProjectRow(project: project, selected: model.selectedProjectId == project.id)
+                            .draggable(project.id.uuidString) {
+                                ProjectAvatar(name: project.name, state: .idle)
+                            }
+                            .dropDestination(for: String.self) { items, _ in
+                                move(items.first.flatMap(UUID.init(uuidString:)), onto: project.id)
+                            }
                     }
                 }
                 .padding(.horizontal, 8)
@@ -122,6 +128,18 @@ struct SidebarView: View {
                     .padding(12)
             }
         }
+    }
+
+    /// Drops `dragged` where `target` is: before it when moving up, after it
+    /// when moving down, like a list reorder.
+    private func move(_ dragged: ProjectID?, onto target: ProjectID) -> Bool {
+        var ids = model.projects.map(\.id)
+        guard let dragged, dragged != target,
+              let from = ids.firstIndex(of: dragged), let to = ids.firstIndex(of: target) else { return false }
+        ids.remove(at: from)
+        ids.insert(dragged, at: to)
+        Task { await model.reorderProjects(ids) }
+        return true
     }
 }
 
