@@ -15,6 +15,9 @@ structural. Work proceeds in the numbered phases there.
 - `make bootstrap` installs xcodegen and generates the Xcode project.
 - `make test` runs package tests (also works on Linux).
 - `make mac`, `make phone` build the apps; `make phone-install` installs to a device.
+- `make dev` runs the tests, builds the Mac app and launches it (replacing a
+  running copy). `make run` skips the tests; `make run-log` runs the binary in
+  the terminal to show its log output; `make stop` quits it.
 
 ## Terminal
 - The Mac app embeds libghostty through the `libghostty-spm` package
@@ -49,7 +52,8 @@ structural. Work proceeds in the numbered phases there.
 
 ## Handing work to the user for testing
 - No session can compile Swift; the user builds and tests on the Mac mini.
-  After every change, give the exact build command and a numbered test list.
+  After every change, give the exact build command (`git pull && make dev`)
+  and a numbered test list.
 - Every test step that involves Claude includes the literal prompt to paste,
   in its own code block, plus what the user should see if it works. Pick
   prompts that reliably trigger the behaviour under test (e.g. a command that
