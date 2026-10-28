@@ -14,7 +14,7 @@ final class TerminalPane: Identifiable {
     private(set) var hasExited = false
     var onExit: ((PaneID) -> Void)?
 
-    var id: PaneID { descriptor.id }
+    nonisolated var id: PaneID { descriptor.id }
 
     init(descriptor: PaneDescriptor, launch: TerminalLaunch, controller: TerminalController) {
         self.descriptor = descriptor
