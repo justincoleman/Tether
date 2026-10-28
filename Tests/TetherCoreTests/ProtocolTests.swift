@@ -10,9 +10,13 @@ import TetherProtocol
             macName: "Mac mini",
             projects: [ProjectSummary(id: project, name: "Tether", branch: "main")],
             sessions: [SessionSummary(id: pane, projectId: project, sessionId: "s1", title: "Claude",
-                                      state: .needsInput, attention: .permission, queued: 1)],
+                                      state: .needsInput, attention: .permission, queued: 1,
+                                      status: SessionStatus(modelId: "claude-opus-5-5", modelName: "Opus 5.5",
+                                                            costUSD: 1.25))],
             permissions: [PermissionRequested(id: UUID(), paneId: pane, sessionId: "s1", toolName: "Bash",
-                                              title: "Run a command", detail: "npm test")])
+                                              title: "Run a command", detail: "npm test")],
+            limits: UsageLimits(fiveHour: UsageLimit(usedPercent: 42, resetsAt: Date(timeIntervalSince1970: 1_793_200_000)),
+                                sevenDay: nil))
         let data = try WireCodec.encoder().encode(MacMessage.snapshot(snapshot))
         let decoded = try WireCodec.decoder().decode(MacMessage.self, from: data)
         guard case .snapshot(let s) = decoded else {

@@ -246,6 +246,13 @@ final class CompanionHub {
             case .failed: "failed"
             }
             client.send(.sendResult(paneId: paneId, outcome: outcome))
+        case .setModel(let paneId, let name):
+            let outcome: String = switch model.setModel(name, forPane: paneId) {
+            case .sent: "sent"
+            case .queued: "queued"
+            case .failed: "failed"
+            }
+            client.send(.sendResult(paneId: paneId, outcome: outcome))
         case .permissionDecision(let requestId, let allow):
             model.resolvePermission(requestId, allow ? .allow : .deny(message: "Denied from iPhone."))
         case .startSession(let requestId, let projectId, let branch, let prompt, let permissionMode):

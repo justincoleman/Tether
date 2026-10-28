@@ -10,6 +10,8 @@ struct SessionView: View {
     @State private var text = ""
     @State private var answering: PermissionRequested?
     @State private var confirmClose = false
+    @State private var askingModel = false
+    @State private var customModel = ""
     @Environment(\.dismiss) private var dismiss
     /// A tab started from the phone shows up in the next snapshot, a moment later.
     @State private var waitedForTab = false
@@ -87,6 +89,9 @@ struct SessionView: View {
                             if let mode = session.permissionMode {
                                 Text("· \(PermissionModeName.label(mode))")
                             }
+                            if let model = session.status?.modelName {
+                                Text("· \(model)")
+                            }
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -96,17 +101,25 @@ struct SessionView: View {
             if session != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        modelMenu
                         Button("Close Thread", systemImage: "xmark.circle", role: .destructive) { confirmClose = true }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
                 }
             }
-            if let usage = transcript?.usage {
+            if transcript?.usage != nil || session?.status?.costUSD != nil {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Text("\(usage.inputTokens / 1000)k of \(usage.contextWindow / 1000)k")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        if let usage = transcript?.usage {
+                            Text("\(usage.inputTokens / 1000)k of \(usage.contextWindow / 1000)k")
+                        }
+                        if let cost = session?.status?.costUSD {
+                            Text(cost.formatted(.currency(code: "USD")))
+                        }
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 }
             }
         }
@@ -135,6 +148,36 @@ struct SessionView: View {
             PermissionSheet(connection: connection, request: request)
                 .presentationDetents([.medium, .large])
         }
+        .alert("Switch Model", isPresented: $askingModel) {
+            TextField("Alias or model id", text: $customModel)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("Switch") {
+                connection.setModel(customModel, for: paneId)
+                customModel = ""
+            }
+            Button("Cancel", role: .cancel) { customModel = "" }
+        } message: {
+            Text("Tether types /model and this name into the tab on \(connection.mac.name).")
+        }
+    }
+
+    /// The tab's model, switched with `/model` on the Mac. The checkmark
+    /// follows the status line, so it moves once Claude Code has switched.
+    private var modelMenu: some View {
+        let current = ModelPreset.matching(session?.status?.modelId)
+        return Menu {
+            Picker("Model", selection: Binding(get: { current },
+                                               set: { if let alias = $0 { connection.setModel(alias, for: paneId) } })) {
+                ForEach(ModelPreset.all) { preset in
+                    Text(preset.label).tag(Optional(preset.alias))
+                }
+            }
+            Button("Other…") { askingModel = true }
+        } label: {
+            Label(session?.status?.modelName.map { "Model: \($0)" } ?? "Model", systemImage: "cpu")
+        }
+        .disabled(connection.status != .online || session?.state == .detached)
     }
 
     private var compose: some View {
@@ -177,6 +220,28 @@ struct SessionView: View {
             return "Claude is waiting on a prompt only the Mac can answer."
         }
         return nil
+    }
+}
+
+/// Claude Code's model aliases. Anything else goes through "Other…".
+private struct ModelPreset: Identifiable {
+    let label: String
+    let alias: String
+    var id: String { alias }
+
+    static let all = [
+        ModelPreset(label: "Default", alias: "default"),
+        ModelPreset(label: "Opus", alias: "opus"),
+        ModelPreset(label: "Sonnet", alias: "sonnet"),
+        ModelPreset(label: "Haiku", alias: "haiku"),
+        ModelPreset(label: "Opus Plan, Sonnet Code", alias: "opusplan"),
+    ]
+
+    /// The family alias in a model id like "claude-opus-5-5". Default and
+    /// opusplan can't be told apart from the id, so they never show checked.
+    static func matching(_ modelId: String?) -> String? {
+        guard let modelId else { return nil }
+        return ["opus", "sonnet", "haiku"].first { modelId.contains($0) }
     }
 }
 

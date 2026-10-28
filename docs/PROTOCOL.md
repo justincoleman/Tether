@@ -50,7 +50,7 @@ Mac → phone (`MacMessage`):
 | `hello` | Reply to the phone's hello. |
 | `paired` / `authenticated` | Auth succeeded. |
 | `authFailed(reason)` | Wrong/expired code, revoked token. Connection closes; the phone stops retrying. |
-| `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects in sidebar order, Claude tabs in tab order (`SessionSummary`, keyed by pane id, with `preview`: the latest message on one line from `TranscriptModel.preview`, and `permissionMode` from the last hook that reported one), pending permissions. Also resent when new transcript events change a preview. |
+| `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects in sidebar order, Claude tabs in tab order (`SessionSummary`, keyed by pane id, with `preview`: the latest message on one line from `TranscriptModel.preview`, `permissionMode` from the last hook that reported one, and `status`: model and session cost from the status line), pending permissions, and `limits`: the 5-hour and weekly plan limits from the latest status line that reported them (nil for API-key accounts). See HOOKS.md, Status line. Also resent when new transcript events change a preview. |
 | `transcript(sessionId, events, reset)` | After `subscribe`: `reset: true` with history, then appends as the Mac's mirror reads new transcript records. Folded with `TranscriptModel`, same as the Mac. |
 | `projectIcons([ProjectIcon])` | Every project icon (128 px PNG found by `ProjectIconFinder`), sent after auth and whenever one changes or the Mac's "show project icons" setting flips. Absent project = letter tile. Not part of `snapshot`, which is resent on every change. |
 | `sendResult(paneId, outcome)` | `sent`, `queued` or `failed` for a `sendMessage`. |
@@ -69,6 +69,7 @@ Phone → Mac (`PhoneMessage`):
 | `reorderProjects(ids)` | Saves the sidebar order; the next snapshot carries it. |
 | `renameProject(id, name)` | Display name only (`ProjectStore.renameProject`); the folder isn't touched. Blank names are ignored. |
 | `closeSession(paneId)` | `AppModel.closePane`: closes the tab like its x button, ending a running turn. A branch worktree stays on disk; remove it from the Mac sidebar. |
+| `setModel(paneId, model)` | `AppModel.setModel`: types `/model <model>` via `sendOrQueue` (alias or model id; anything else answers `failed`). Answered with `sendResult`. The new model shows once the status line redraws. |
 | `registerPush(PushRegistration)` | APNs device token, ActivityKit push-to-start token, bundle id, sandbox flag. Sent after every auth and when a token changes; stored on the paired device in `companion.json`. |
 | `registerActivity(paneId, token?)` | The update token of that tab's Live Activity, or nil when it ended. |
 

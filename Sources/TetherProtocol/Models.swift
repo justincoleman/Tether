@@ -70,6 +70,46 @@ public struct ContextUsage: Codable, Hashable, Sendable {
     }
 }
 
+/// What Claude Code's status line reports about a session that hooks don't.
+public struct SessionStatus: Codable, Hashable, Sendable {
+    /// e.g. "claude-opus-5-5".
+    public var modelId: String?
+    /// e.g. "Opus 5.5".
+    public var modelName: String?
+    /// Estimated cost of the session so far, in US dollars.
+    public var costUSD: Double?
+
+    public init(modelId: String? = nil, modelName: String? = nil, costUSD: Double? = nil) {
+        self.modelId = modelId
+        self.modelName = modelName
+        self.costUSD = costUSD
+    }
+}
+
+/// One plan usage window.
+public struct UsageLimit: Codable, Hashable, Sendable {
+    /// 0...100.
+    public var usedPercent: Double
+    public var resetsAt: Date?
+
+    public init(usedPercent: Double, resetsAt: Date?) {
+        self.usedPercent = usedPercent
+        self.resetsAt = resetsAt
+    }
+}
+
+/// Plan usage limits. Shared by every session on the account; only reported
+/// for Claude subscriptions, not API keys.
+public struct UsageLimits: Codable, Hashable, Sendable {
+    public var fiveHour: UsageLimit?
+    public var sevenDay: UsageLimit?
+
+    public init(fiveHour: UsageLimit?, sevenDay: UsageLimit?) {
+        self.fiveHour = fiveHour
+        self.sevenDay = sevenDay
+    }
+}
+
 public struct Session: Codable, Hashable, Sendable, Identifiable {
     public var id: SessionID
     public var worktreeId: WorktreeID?

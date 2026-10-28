@@ -82,6 +82,44 @@ import TetherProtocol
         #expect(queue.drain(for: pane) == nil)
     }
 
+    @Test func slashCommandsDrainAlone() {
+        var queue = PromptQueue()
+        let pane = PaneID()
+        queue.enqueue("first", for: pane)
+        queue.enqueue("second", for: pane)
+        queue.enqueue("/model opus", for: pane)
+        queue.enqueue("third", for: pane)
+        #expect(queue.drain(for: pane) == "first\n\nsecond")
+        #expect(queue.drain(for: pane) == "/model opus")
+        #expect(queue.drain(for: pane) == "third")
+        #expect(queue.drain(for: pane) == nil)
+    }
+
+    @Test func pathsAreNotCommands() {
+        #expect(PromptQueue.isCommand("/model opus"))
+        #expect(PromptQueue.isCommand("/clear"))
+        #expect(PromptQueue.isCommand("/plugin:skill args"))
+        #expect(!PromptQueue.isCommand("/Users/me/App.swift won't build"))
+        #expect(!PromptQueue.isCommand("fix /model"))
+        var queue = PromptQueue()
+        let pane = PaneID()
+        queue.enqueue("/tmp/log.txt has the error", for: pane)
+        queue.enqueue("please look", for: pane)
+        #expect(!queue.nextIsCommand(for: pane))
+        #expect(queue.drain(for: pane) == "/tmp/log.txt has the error\n\nplease look")
+    }
+
+    @Test func putBackKeepsOrder() {
+        var queue = PromptQueue()
+        let pane = PaneID()
+        queue.enqueue("/model opus", for: pane)
+        queue.enqueue("hello", for: pane)
+        let first = queue.drain(for: pane)!
+        queue.putBack(first, for: pane)
+        #expect(queue.drain(for: pane) == "/model opus")
+        #expect(queue.drain(for: pane) == "hello")
+    }
+
     @Test func blankMessagesAreIgnoredAndPanesAreSeparate() {
         var queue = PromptQueue()
         let a = PaneID(), b = PaneID()
@@ -105,6 +143,8 @@ import TetherProtocol
         #expect(!PromptGate.canSend(state: .needsInput, attention: nil))
         #expect(!PromptGate.canSend(state: .working, attention: nil))
         #expect(!PromptGate.canSend(state: .detached, attention: nil))
+        #expect(!PromptGate.canSend(state: .needsInput, attention: .question, command: true))
+        #expect(PromptGate.canSend(state: .idle, attention: nil, command: true))
     }
 }
 

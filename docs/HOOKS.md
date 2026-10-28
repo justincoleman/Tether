@@ -42,9 +42,55 @@ pty:
 | UserPromptSubmit, Stop, StopFailure, Notification, SessionEnd, PostToolUse | `/tether/hook` | 10 s | Answered immediately with an empty 200 |
 | SessionStart | `/tether/hook` via `curl` | 5 s | **Command hook**, not http: Claude Code runs only command and MCP tool hooks on SessionStart and silently skips an http one. The command posts stdin with the same two headers, prints nothing (SessionStart stdout becomes Claude's context) and always exits 0. |
 | PermissionRequest | `/tether/permission` | 600 s | Held open until answered |
+| (status line, not a hook) | `/tether/status` | 1 s | See Status line below |
 
 HTTP hooks cannot be `async` (that flag is command-hook only), so the server
 must answer state hooks fast. It does no I/O before responding.
+
+## Status line
+
+The hooks file also sets `statusLine`, the only place Claude Code reports the
+model, the session cost and plan limits. The command (`HookSettings.statusLine`)
+reads stdin once, posts it to `/tether/status` with the same two headers
+(`curl --max-time 1`, output discarded), then pipes the same JSON into the
+user's own status line command, so the terminal looks as it did:
+
+```
+input=$(cat); printf '%s' "$input" | curl … /tether/status >/dev/null 2>&1; printf '%s' "$input" | {
+<user's command>
+}
+```
+
+`statusLine` is not a list key, so the `--settings` one replaces the user's.
+Tether reads `statusLine` from `~/.claude/settings.json` at launch (only
+`type: command`) and copies its other keys (e.g. `padding`). A change to it takes
+effect when Tether restarts. A `statusLine` set in a project's own
+`.claude/settings*.json` is not chained. With no user status line the relay
+prints nothing.
+
+`StatusLineReport` reads these fields; everything else is ignored:
+
+| Field | Becomes |
+| --- | --- |
+| `session_id` | required, else ignored |
+| `model.id`, `model.display_name` | `SessionStatus.modelId`, `modelName` |
+| `cost.total_cost_usd` | `SessionStatus.costUSD` |
+| `rate_limits.five_hour` / `seven_day` `.used_percentage`, `.resets_at` (epoch seconds; ISO 8601 also accepted) | `UsageLimits` (absent for API-key sessions) |
+
+The router emits `.status(paneId:)` without touching `SessionRegistry`: the
+status line never changes session state. `AppModel` keeps the status per tab
+and the latest limits, and sends them to phones in the snapshot. The fixture in
+`StatusLineTests` follows the documented shape and the user's script, not a
+captured payload.
+
+## Switching the model
+
+The phone's `setModel` makes the Mac type `/model <name>` through
+`AppModel.sendOrQueue`, so it waits for the turn to end like any message.
+`ModelCommand` allows only alias and model-id characters. `PromptQueue.drain`
+sends a slash command on its own, never joined to other queued text (which would
+become its arguments). A slash command fires no hook, so after typing one the
+Mac retries the queue a second later.
 
 ## Permission mode
 

@@ -81,6 +81,10 @@ final class AppModel {
     private var initialModes: [PaneID: String] = [:]
     /// Permission mode per tab, as last reported by a hook.
     private(set) var paneModes: [PaneID: String] = [:]
+    /// Model and cost per tab, from the status line relay.
+    private(set) var paneStatus: [PaneID: SessionStatus] = [:]
+    /// Plan limits from the latest status line that reported them.
+    private(set) var usageLimits: UsageLimits?
 
     private let store = ProjectStore(fileURL: ProjectStore.defaultFileURL())
     let registry = SessionRegistry()
@@ -429,7 +433,8 @@ final class AppModel {
         // Without hooks there is no state to wait for.
         guard hookServer != nil else { return true }
         guard let state = paneStates[paneId] else { return false } // still starting up
-        return PromptGate.canSend(state: state, attention: paneAttention[paneId])
+        return PromptGate.canSend(state: state, attention: paneAttention[paneId],
+                                  command: promptQueue.nextIsCommand(for: paneId))
     }
 
     @discardableResult
@@ -440,13 +445,24 @@ final class AppModel {
         }
         guard panes[paneId]?.send(prompt: text) == true else {
             // The terminal is not ready yet: keep the message and try again.
-            promptQueue.enqueue(text, for: paneId)
+            promptQueue.putBack(text, for: paneId)
             syncQueuedCount(paneId)
             scheduleFlushRetry(paneId)
             return false
         }
         syncQueuedCount(paneId)
+        // A slash command like /model fires no hook, so nothing else would
+        // send what is queued behind it.
+        if PromptQueue.isCommand(text), promptQueue.count(for: paneId) > 0 { scheduleFlushRetry(paneId) }
         return true
+    }
+
+    /// Switches a tab's model the way the user would, with `/model <name>`,
+    /// queued like any message so it never lands mid-turn.
+    @discardableResult
+    func setModel(_ model: String, forPane paneId: PaneID) -> SendOutcome {
+        guard let text = ModelCommand.text(for: model) else { return .failed }
+        return sendOrQueue(text, toPane: paneId)
     }
 
     private func scheduleFlushRetry(_ paneId: PaneID, attempt: Int = 1) {
@@ -588,6 +604,18 @@ final class AppModel {
         case .permissionResolved(let id, _):
             pendingPermissions.removeAll { $0.id == id }
             companion.setNeedsSnapshot()
+        case .status(let paneId, let report):
+            guard panes[paneId] != nil else { return }
+            var changed = false
+            if paneStatus[paneId] != report.status {
+                paneStatus[paneId] = report.status
+                changed = true
+            }
+            if let limits = report.limits, limits != usageLimits {
+                usageLimits = limits
+                changed = true
+            }
+            if changed { companion.setNeedsSnapshot() }
         }
     }
 
@@ -670,7 +698,12 @@ final class AppModel {
             let port = try await server.start()
             let url = ProjectStore.defaultFileURL().deletingLastPathComponent()
                 .appendingPathComponent("hooks.json")
-            try HookSettings.write(port: port, to: url)
+            // Tether's status line replaces the user's, then runs it. Read at
+            // launch: a change to it takes effect when Tether restarts.
+            let userSettings = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".claude/settings.json")
+            let statusLine = (try? Data(contentsOf: userSettings)).flatMap(HookSettings.userStatusLine(settings:))
+            try HookSettings.write(port: port, to: url, userStatusLine: statusLine)
             hookServer = server
             hookSettingsPath = url.path
             hookStatusMessage = nil
@@ -757,6 +790,7 @@ final class AppModel {
         paneStates[id] = nil
         paneAttention[id] = nil
         paneModes[id] = nil
+        paneStatus[id] = nil
         paneWorktreePaths[id] = nil
         promptQueue.clear(pane: id)
         queuedCounts[id] = nil
@@ -819,11 +853,12 @@ extension AppModel {
                     title: pane.title, state: paneStates[pane.id] ?? .idle,
                     attention: paneAttention[pane.id], queued: queuedCounts[pane.id] ?? 0,
                     preview: mirror.model(for: sessionId(forPane: pane.id))?.preview(),
-                    permissionMode: paneModes[pane.id]))
+                    permissionMode: paneModes[pane.id], status: paneStatus[pane.id]))
             }
         }
         let permissions = pendingPermissions.map(phoneSummary(of:))
-        return Snapshot(macName: macName, projects: projectList, sessions: sessions, permissions: permissions)
+        return Snapshot(macName: macName, projects: projectList, sessions: sessions, permissions: permissions,
+                        limits: usageLimits)
     }
 }
 

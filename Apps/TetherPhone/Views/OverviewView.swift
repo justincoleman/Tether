@@ -185,6 +185,12 @@ private struct MacProjects: View {
                 }
             }
         }
+        if let limits = connection.snapshot?.limits, limits.fiveHour != nil || limits.sevenDay != nil {
+            Section(showMacName ? "Plan usage · \(connection.mac.name)" : "Plan usage") {
+                if let limit = limits.fiveHour { UsageLimitRow(label: "5-hour", limit: limit) }
+                if let limit = limits.sevenDay { UsageLimitRow(label: "Weekly", limit: limit) }
+            }
+        }
         if let snapshot = connection.snapshot {
             ForEach(snapshot.projects) { project in
                 let sessions = snapshot.sessions.filter { $0.projectId == project.id }
@@ -304,6 +310,11 @@ private struct ThreadRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                if let summary = session.status?.summary {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .padding(.vertical, 2)
@@ -354,6 +365,39 @@ private struct PermissionRow: View {
                 Text(request.detail).font(.caption.monospaced()).lineLimit(2).foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+/// One plan limit from Claude Code's status line, like its 5h and 7d bars.
+private struct UsageLimitRow: View {
+    let label: String
+    let limit: UsageLimit
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text("\(Int(limit.usedPercent.rounded()))%").monospacedDigit()
+            }
+            .font(.subheadline)
+            ProgressView(value: min(max(limit.usedPercent, 0), 100), total: 100)
+                .tint(limit.usedPercent >= 90 ? .red : .orange)
+            if let reset = limit.resetsAt {
+                Text("Resets \(reset, format: .relative(presentation: .named))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+extension SessionStatus {
+    /// "Opus 5.5 · $1.23", or whichever half is known.
+    var summary: String? {
+        let parts = [modelName, costUSD.map { $0.formatted(.currency(code: "USD")) }].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

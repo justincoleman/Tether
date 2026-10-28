@@ -6,6 +6,8 @@ public enum HookEvent: Sendable {
     case session(Session)
     case permissionRequested(PendingPermission)
     case permissionResolved(id: UUID, decision: PermissionDecision)
+    /// The tab's status line redrew: model, cost and plan limits.
+    case status(paneId: PaneID, StatusLineReport)
 }
 
 /// Turns hook HTTP requests into registry updates and permission decisions.
@@ -31,10 +33,17 @@ public struct HookRouter: Sendable {
         guard request.method == "POST" else { return HTTPResponse(status: 405) }
         // Anything that isn't one of our sessions gets "no decision", so it can
         // never break a Claude session, only fail to be tracked.
-        guard request.header(HookSettings.tokenHeader) == token,
-              let payload = try? JSONDecoder().decode(HookPayload.self, from: request.body)
-        else { return .empty }
+        guard request.header(HookSettings.tokenHeader) == token else { return .empty }
         let paneId = request.header(HookSettings.paneHeader).flatMap(UUID.init(uuidString:))
+        if request.path == HookSettings.statusPath {
+            // Not a hook: the status line relay. Keyed by pane, like the tab.
+            if let paneId, let report = StatusLineReport(json: request.body) {
+                await onEvent(.status(paneId: paneId, report))
+            }
+            return .empty
+        }
+        guard let payload = try? JSONDecoder().decode(HookPayload.self, from: request.body)
+        else { return .empty }
 
         switch request.path {
         case HookSettings.hookPath:

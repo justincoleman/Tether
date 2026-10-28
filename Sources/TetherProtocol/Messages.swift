@@ -54,10 +54,12 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     public var preview: String?
     /// Permission mode from hooks, e.g. "auto". Nil until a hook reports it.
     public var permissionMode: String?
+    /// Model and cost from the status line. Nil until Claude Code draws it.
+    public var status: SessionStatus?
 
     public init(id: PaneID, projectId: ProjectID, sessionId: SessionID?, title: String,
                 state: SessionState, attention: AttentionReason?, queued: Int, preview: String? = nil,
-                permissionMode: String? = nil) {
+                permissionMode: String? = nil, status: SessionStatus? = nil) {
         self.id = id
         self.projectId = projectId
         self.sessionId = sessionId
@@ -67,6 +69,7 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
         self.queued = queued
         self.preview = preview
         self.permissionMode = permissionMode
+        self.status = status
     }
 }
 
@@ -109,13 +112,16 @@ public struct Snapshot: Codable, Hashable, Sendable {
     public var projects: [ProjectSummary]
     public var sessions: [SessionSummary]
     public var permissions: [PermissionRequested]
+    /// The latest plan limits any session's status line reported.
+    public var limits: UsageLimits?
 
     public init(macName: String, projects: [ProjectSummary], sessions: [SessionSummary],
-                permissions: [PermissionRequested]) {
+                permissions: [PermissionRequested], limits: UsageLimits? = nil) {
         self.macName = macName
         self.projects = projects
         self.sessions = sessions
         self.permissions = permissions
+        self.limits = limits
     }
 }
 
@@ -164,6 +170,9 @@ public enum PhoneMessage: Codable, Sendable {
     case renameProject(id: ProjectID, name: String)
     /// Closes a Claude tab on the Mac, like its x button. Ends a running turn.
     case closeSession(paneId: PaneID)
+    /// Switches a tab's model by typing `/model <model>`, queued like a
+    /// message. `model` is an alias ("opus") or a full model id.
+    case setModel(paneId: PaneID, model: String)
     /// Push tokens for this phone; sent after auth and when they change.
     case registerPush(PushRegistration)
     /// The update token of the Live Activity for a tab, or nil when it ended.

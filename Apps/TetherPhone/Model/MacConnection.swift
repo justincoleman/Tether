@@ -116,6 +116,13 @@ final class MacConnection: Identifiable {
         channel?.send(PhoneMessage.sendMessage(paneId: paneId, text: text))
     }
 
+    /// Switches the tab's model: the Mac types `/model <model>`, queued like
+    /// a message, so the answer arrives in `sendResults`.
+    func setModel(_ model: String, for paneId: PaneID) {
+        sendResults[paneId] = nil
+        channel?.send(PhoneMessage.setModel(paneId: paneId, model: model))
+    }
+
     /// Asks the Mac to open a Claude tab, optionally on a new branch.
     /// Creating a worktree can take a while on a big repo.
     func startSession(projectId: ProjectID, branch: String?, prompt: String,
