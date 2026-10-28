@@ -38,6 +38,15 @@ structural. Work proceeds in the numbered phases there.
 - `TranscriptModel` lives in `TetherProtocol` so the phone groups steps the
   same way as the Mac.
 
+## Handing work to the user for testing
+- No session can compile Swift; the user builds and tests on the Mac mini.
+  After every change, give the exact build command and a numbered test list.
+- Every test step that involves Claude includes the literal prompt to paste,
+  in its own code block, plus what the user should see if it works. Pick
+  prompts that reliably trigger the behaviour under test (e.g. a command that
+  needs permission, a task long enough to interrupt).
+- Note any mode the tab must be in (auto mode skips permission prompts).
+
 ## Rules
 - Swift 6 language mode, strict concurrency. Keep `TetherCore` free of
   AppKit/UIKit/SwiftUI so it keeps testing on Linux CI.
