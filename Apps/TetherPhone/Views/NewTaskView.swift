@@ -6,6 +6,8 @@ import TetherProtocol
 struct NewTaskView: View {
     @Environment(PhoneStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    var initialMacId: UUID?
+    var initialProjectId: ProjectID?
     /// Called with the new tab so the overview can open it.
     let opened: (SessionRoute) -> Void
 
@@ -83,8 +85,13 @@ struct NewTaskView: View {
                     }
                 }
             }
-            .onAppear { projectId = projectId ?? projects.first?.id }
-            .onChange(of: connection?.id) { projectId = projects.first?.id }
+            .onAppear {
+                macId = macId ?? initialMacId
+                projectId = projectId ?? initialProjectId ?? projects.first?.id
+            }
+            .onChange(of: connection?.id) { old, _ in
+                if old != nil { projectId = projects.first?.id }
+            }
         }
     }
 

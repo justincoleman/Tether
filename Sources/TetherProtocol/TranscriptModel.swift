@@ -85,6 +85,30 @@ public struct TranscriptModel: Sendable, Equatable {
     }
 }
 
+extension TranscriptModel {
+    /// The latest user or assistant message on one line, at most `limit`
+    /// characters, markdown markers and extra whitespace removed.
+    public func preview(limit: Int = 140) -> String? {
+        for item in items.reversed() {
+            let text: String
+            switch item {
+            case .user(_, let t, _): text = "You: " + t
+            case .assistant(_, let t, _): text = t
+            case .steps, .notice: continue
+            }
+            let words = text
+                .replacingOccurrences(of: "`", with: "")
+                .replacingOccurrences(of: "*", with: "")
+                .components(separatedBy: .whitespacesAndNewlines)
+                .filter { !$0.isEmpty && !$0.allSatisfy { $0 == "#" || $0 == ">" || $0 == "-" } }
+            guard !words.isEmpty else { continue }
+            let line = words.joined(separator: " ")
+            return line.count > limit ? String(line.prefix(limit - 1)) + "…" : line
+        }
+        return nil
+    }
+}
+
 extension MirrorEvent {
     var dedupeKey: String? {
         switch self {

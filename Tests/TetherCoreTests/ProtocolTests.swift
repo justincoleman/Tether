@@ -37,6 +37,21 @@ import TetherProtocol
         #expect(model.items.count == 2)
     }
 
+    @Test func transcriptPreviewIsLatestMessageOnOneLine() {
+        let at = Date(timeIntervalSince1970: 0)
+        var model = TranscriptModel()
+        #expect(model.preview() == nil)
+        model.apply([
+            .userText(id: "u1", text: "Fix the login bug", at: at),
+            .assistantText(id: "a1", text: "## Done\n\nI **fixed** it in\n`Login.swift`.", at: at),
+            .toolUse(id: "t1", name: "Bash", summary: "ls", at: at),
+        ])
+        #expect(model.preview() == "Done I fixed it in Login.swift.")
+        model.apply(.userText(id: "u2", text: String(repeating: "a", count: 300), at: at))
+        let long = model.preview(limit: 20)!
+        #expect(long.count == 20 && long.hasPrefix("You: aaa") && long.hasSuffix("…"))
+    }
+
     @Test func phoneMessageRoundTrips() throws {
         let pane = UUID()
         let original = PhoneMessage.sendMessage(paneId: pane, text: "ship it")

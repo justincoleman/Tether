@@ -79,6 +79,7 @@ final class AppModel {
         companion.model = self
         mirror.onEvents = { [weak self] sessionId, events in
             self?.companion.publish(events, sessionId: sessionId)
+            self?.companion.setNeedsSnapshot() // previews
         }
         Task { await restore() }
     }
@@ -615,7 +616,8 @@ extension AppModel {
                 sessions.append(SessionSummary(
                     id: pane.id, projectId: project.id, sessionId: sessionId(forPane: pane.id),
                     title: pane.title, state: paneStates[pane.id] ?? .idle,
-                    attention: paneAttention[pane.id], queued: queuedCounts[pane.id] ?? 0))
+                    attention: paneAttention[pane.id], queued: queuedCounts[pane.id] ?? 0,
+                    preview: mirror.model(for: sessionId(forPane: pane.id))?.preview()))
             }
         }
         let permissions = pendingPermissions.map { request in

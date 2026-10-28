@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 5).
+`ProtocolVersion.current` with any shape change (currently 6).
 
 ## Transport
 
@@ -50,7 +50,7 @@ Mac → phone (`MacMessage`):
 | `hello` | Reply to the phone's hello. |
 | `paired` / `authenticated` | Auth succeeded. |
 | `authFailed(reason)` | Wrong/expired code, revoked token. Connection closes; the phone stops retrying. |
-| `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects, Claude tabs (`SessionSummary`, keyed by pane id), pending permissions. |
+| `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects in sidebar order, Claude tabs in tab order (`SessionSummary`, keyed by pane id, with `preview`: the latest message on one line from `TranscriptModel.preview`), pending permissions. Also resent when new transcript events change a preview. |
 | `transcript(sessionId, events, reset)` | After `subscribe`: `reset: true` with history, then appends as the Mac's mirror reads new transcript records. Folded with `TranscriptModel`, same as the Mac. |
 | `sendResult(paneId, outcome)` | `sent`, `queued` or `failed` for a `sendMessage`. |
 | `startResult(requestId, paneId?, error?)` | Answer to `startSession`: the new tab's pane id, or a message to show. |

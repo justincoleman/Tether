@@ -106,20 +106,23 @@ struct SidebarView: View {
             .padding(.top, 8)
             .padding(.bottom, 6)
 
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(model.projects) { project in
-                        ProjectRow(project: project, selected: model.selectedProjectId == project.id)
-                            .draggable(project.id.uuidString) {
-                                ProjectAvatar(name: project.name, state: .idle)
-                            }
-                            .dropDestination(for: String.self) { items, _ in
-                                move(items.first.flatMap(UUID.init(uuidString:)), onto: project.id)
-                            }
-                    }
+            // A List rather than a stack for its native drag-to-reorder; rows draw
+            // their own selection, so List selection stays off.
+            List {
+                ForEach(model.projects) { project in
+                    ProjectRow(project: project, selected: model.selectedProjectId == project.id)
+                        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
-                .padding(.horizontal, 8)
+                .onMove { from, to in
+                    var ids = model.projects.map(\.id)
+                    ids.move(fromOffsets: from, toOffset: to)
+                    Task { await model.reorderProjects(ids) }
+                }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
 
             if let message = model.hookStatusMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
@@ -128,18 +131,6 @@ struct SidebarView: View {
                     .padding(12)
             }
         }
-    }
-
-    /// Drops `dragged` where `target` is: before it when moving up, after it
-    /// when moving down, like a list reorder.
-    private func move(_ dragged: ProjectID?, onto target: ProjectID) -> Bool {
-        var ids = model.projects.map(\.id)
-        guard let dragged, dragged != target,
-              let from = ids.firstIndex(of: dragged), let to = ids.firstIndex(of: target) else { return false }
-        ids.remove(at: from)
-        ids.insert(dragged, at: to)
-        Task { await model.reorderProjects(ids) }
-        return true
     }
 }
 

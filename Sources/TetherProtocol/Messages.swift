@@ -49,9 +49,12 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     public var attention: AttentionReason?
     /// Messages held on the Mac until Claude can take them.
     public var queued: Int
+    /// The latest message in the conversation, shortened, so tabs are
+    /// recognisable in a list. See `TranscriptModel.preview`.
+    public var preview: String?
 
     public init(id: PaneID, projectId: ProjectID, sessionId: SessionID?, title: String,
-                state: SessionState, attention: AttentionReason?, queued: Int) {
+                state: SessionState, attention: AttentionReason?, queued: Int, preview: String? = nil) {
         self.id = id
         self.projectId = projectId
         self.sessionId = sessionId
@@ -59,6 +62,7 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
         self.state = state
         self.attention = attention
         self.queued = queued
+        self.preview = preview
     }
 }
 
