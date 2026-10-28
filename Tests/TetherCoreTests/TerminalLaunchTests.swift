@@ -53,3 +53,37 @@ import TetherProtocol
         #expect(launch.command == #"/bin/zsh -l -c 'claude --settings '\''/Users/j/Library/Application Support/Tether/hooks.json'\'''"#)
     }
 }
+
+@Suite struct TerminalLaunchSessionIdTests {
+    let project = Project(name: "p", path: "/tmp/p")
+
+    @Test func newSessionGetsChosenId() {
+        let wt = Worktree(projectId: project.id, path: "/tmp/p", branch: "main", isPrimary: true)
+        let pane = PaneDescriptor(projectId: project.id, kind: .claude(worktreeId: wt.id, resumeSessionId: nil), title: "Claude")
+        let launch = TerminalLaunch.make(pane: pane, worktree: wt, remoteHost: nil, token: "t",
+                                         newSessionId: "0d4c9a7e-1111-4222-8333-944455556666", shell: "/bin/zsh")
+        #expect(launch.command == "/bin/zsh -l -c 'claude --session-id 0d4c9a7e-1111-4222-8333-944455556666'")
+    }
+
+    @Test func resumeWinsOverNewId() {
+        let wt = Worktree(projectId: project.id, path: "/tmp/p", branch: "main", isPrimary: true)
+        let pane = PaneDescriptor(projectId: project.id, kind: .claude(worktreeId: wt.id, resumeSessionId: "abc"), title: "Claude")
+        let launch = TerminalLaunch.make(pane: pane, worktree: wt, remoteHost: nil, token: "t",
+                                         newSessionId: "ignored", shell: "/bin/zsh")
+        #expect(launch.command == "/bin/zsh -l -c 'claude --resume abc'")
+    }
+}
+
+@Suite struct TranscriptLocatorTests {
+    @Test func findsTranscriptInAnyProjectDirectory() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("projects-\(UUID().uuidString)")
+        let dir = root.appendingPathComponent("-Users-j-code-Tether")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("-other"), withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("sess-1.jsonl")
+        try Data("{}\n".utf8).write(to: file)
+        #expect(TranscriptLocator.find(sessionId: "sess-1", in: root) == file.path)
+        #expect(TranscriptLocator.find(sessionId: "missing", in: root) == nil)
+        #expect(TranscriptLocator.find(sessionId: "x", in: root.appendingPathComponent("nope")) == nil)
+    }
+}

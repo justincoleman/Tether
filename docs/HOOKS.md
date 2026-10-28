@@ -74,6 +74,14 @@ working, Tether reads lines appended to its `transcript_path` once a second
 count, so Claude quoting the marker does not trigger it. Confirmed on the Mac
 mini that `idle_prompt` alone does not clear the badge after Esc.
 
+Tether does not wait for a hook to learn a tab's session. It launches new
+Claude tabs with `--session-id <uuid>` and resumed ones with `--resume <id>`,
+so the chat mirror can find the transcript by id immediately. On Claude Code
+2.1.308 the mirror stayed empty for resumed tabs until the first prompt, which
+showed the session was not being reported at startup. The chosen id is only
+saved for `--resume` once a hook confirms the session, because resuming an id
+that never wrote a transcript fails.
+
 When a pane gets a new session id (`/clear`, resume), the old session is
 dropped and the new id is saved so the next launch resumes it.
 

@@ -25,6 +25,7 @@ public struct TerminalLaunch: Hashable, Sendable {
         remoteHost: RemoteHost?,
         token: String,
         hookSettingsPath: String? = nil,
+        newSessionId: SessionID? = nil,
         shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
         claudeExecutable: String = "claude"
     ) -> TerminalLaunch {
@@ -33,7 +34,13 @@ public struct TerminalLaunch: Hashable, Sendable {
         case .claude(_, let resume):
             var parts = [claudeExecutable]
             if let hookSettingsPath { parts += ["--settings", hookSettingsPath] }
-            if let resume, !resume.isEmpty { parts += ["--resume", resume] }
+            if let resume, !resume.isEmpty {
+                parts += ["--resume", resume]
+            } else if let newSessionId {
+                // Choosing the id up front lets Tether find the transcript
+                // before any hook fires.
+                parts += ["--session-id", newSessionId]
+            }
             return TerminalLaunch(
                 command: loginShellCommand(shell: shell, parts),
                 workingDirectory: worktree?.path,

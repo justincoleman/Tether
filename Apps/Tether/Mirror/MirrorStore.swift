@@ -10,21 +10,34 @@ import TetherProtocol
 final class MirrorStore {
     private(set) var models: [SessionID: TranscriptModel] = [:]
     @ObservationIgnored private var feeds: [SessionID: Task<Void, Never>] = [:]
+    /// Resolved transcript path per tracked session; nil while still looking.
     @ObservationIgnored private var paths: [SessionID: String] = [:]
 
     func model(for sessionId: SessionID?) -> TranscriptModel? {
         sessionId.flatMap { models[$0] }
     }
 
-    /// Starts following a session's transcript once its path is known.
-    func track(_ session: Session) {
-        guard let path = session.transcriptPath else { return }
-        if paths[session.id] == path, feeds[session.id] != nil { return }
-        stop(session.id)
-        paths[session.id] = path
-        let id = session.id
-        let feed = TranscriptFeed(path: path)
+    /// Follows a session's transcript. With no path, the file is located by
+    /// session id, waiting for it to appear if the session is brand new.
+    func track(sessionId: SessionID, path: String?) {
+        if feeds[sessionId] != nil {
+            // Already following that file, or still locating and no better info.
+            if path == nil || paths[sessionId] == path { return }
+        }
+        stop(sessionId)
+        let id = sessionId
         feeds[id] = Task { [weak self] in
+            var resolved = path
+            while resolved == nil {
+                resolved = TranscriptLocator.find(sessionId: id)
+                if resolved == nil {
+                    try? await Task.sleep(for: .seconds(1))
+                    if Task.isCancelled { return }
+                }
+            }
+            guard let transcriptPath = resolved else { return }
+            self?.paths[id] = transcriptPath
+            let feed = TranscriptFeed(path: transcriptPath)
             while !Task.isCancelled {
                 let events = await feed.poll()
                 if !events.isEmpty {

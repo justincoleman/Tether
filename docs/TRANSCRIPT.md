@@ -1,7 +1,11 @@
 # Claude Code transcripts in Tether
 
-The chat mirror reads each session's transcript, `transcript_path` from the
-hooks (`~/.claude/projects/<encoded cwd>/<session id>.jsonl`). The format is
+The chat mirror reads each session's transcript,
+`~/.claude/projects/<encoded cwd>/<session id>.jsonl`. Tether knows the session
+id from launch (see HOOKS.md) and finds the file with `TranscriptLocator`,
+which matches `<session id>.jsonl` in any project directory instead of
+reproducing Claude Code's directory-name encoding. A hook's `transcript_path`
+takes over once one arrives. The format is
 not a public contract. This file records what Tether relies on, as observed in
 Claude Code 2.1.308. Code: `Sources/TetherCore/TranscriptParser.swift`,
 `Sources/TetherProtocol/TranscriptModel.swift`.

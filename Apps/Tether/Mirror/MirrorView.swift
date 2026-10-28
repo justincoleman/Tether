@@ -47,6 +47,7 @@ struct MirrorView: View {
                                        description: Text(sessionId == nil
                                            ? "Select a Claude tab to see its conversation."
                                            : "Messages appear here as Claude works."))
+                    .frame(maxHeight: .infinity)
             }
 
             if let paneId, sessionId != nil {
@@ -54,6 +55,7 @@ struct MirrorView: View {
                 ComposeBar(paneId: paneId, state: state)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 

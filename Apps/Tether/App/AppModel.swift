@@ -39,6 +39,9 @@ final class AppModel {
     private var panes: [PaneID: TerminalPane] = [:]
     private var paneOrder: [PaneID] = []
     private var recordedSessions: [PaneID: SessionID] = [:]
+    /// Session id Tether chose (or resumed) when it launched each Claude tab,
+    /// known before any hook fires.
+    private var launchSessions: [PaneID: SessionID] = [:]
     /// Polls a working session's transcript for the Esc-interrupt record,
     /// since Claude Code fires no hook when the user interrupts.
     private var interruptWatchers: [SessionID: Task<Void, Never>] = [:]
@@ -131,7 +134,7 @@ final class AppModel {
     // MARK: Mirror
 
     func sessionId(forPane paneId: PaneID) -> SessionID? {
-        recordedSessions[paneId]
+        recordedSessions[paneId] ?? launchSessions[paneId]
     }
 
     /// Types a prompt into a Claude tab and submits it. Returns false if the
@@ -156,15 +159,16 @@ final class AppModel {
             guard let paneId = session.paneId, panes[paneId] != nil else { return }
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
+            if let old = sessionId(forPane: paneId), old != session.id {
+                // /clear or a fork gave this tab a new session.
+                mirror.stop(old)
+                interruptWatchers.removeValue(forKey: old)?.cancel()
+            }
             if recordedSessions[paneId] != session.id {
-                if let old = recordedSessions[paneId] {
-                    mirror.stop(old)
-                    interruptWatchers.removeValue(forKey: old)?.cancel()
-                }
                 recordedSessions[paneId] = session.id
                 Task { try? await self.store.recordSession(session.id, forPane: paneId) }
             }
-            mirror.track(session)
+            mirror.track(sessionId: session.id, path: session.transcriptPath)
             recomputeProjectStates()
             updateInterruptWatcher(for: session)
             if session.state == .needsInput, previous != .needsInput { requestAttention() }
@@ -213,7 +217,7 @@ final class AppModel {
     }
 
     private func stopMirror(forPane id: PaneID) {
-        if let sessionId = recordedSessions[id] { mirror.stop(sessionId) }
+        if let sessionId = sessionId(forPane: id) { mirror.stop(sessionId) }
     }
 
     private func paneDidExit(_ id: PaneID) async {
@@ -298,13 +302,21 @@ final class AppModel {
         guard panes[d.id] == nil else { return }
         var worktree: Worktree?
         var host: RemoteHost?
+        var launchSession: SessionID?
         switch d.kind {
-        case .claude(let wtId, _): worktree = await store.worktree(wtId)
+        case .claude(let wtId, let resume):
+            worktree = await store.worktree(wtId)
+            if let resume, !resume.isEmpty {
+                launchSession = resume
+            } else {
+                launchSession = UUID().uuidString.lowercased()
+            }
         case .ssh(let hostId): host = await store.remoteHost(hostId)
         case .shell: break
         }
         let launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host,
-                                         token: launchToken, hookSettingsPath: hookSettingsPath)
+                                         token: launchToken, hookSettingsPath: hookSettingsPath,
+                                         newSessionId: launchSession)
         let pane = TerminalPane(descriptor: d, launch: launch, controller: TerminalHost.controller)
         pane.onExit = { [weak self] id in
             guard let self else { return }
@@ -312,6 +324,12 @@ final class AppModel {
         }
         panes[d.id] = pane
         paneOrder.append(d.id)
+        if let launchSession {
+            // Not persisted for --resume until a hook confirms the session
+            // exists: resuming an id with no transcript would fail.
+            launchSessions[d.id] = launchSession
+            mirror.track(sessionId: launchSession, path: nil)
+        }
     }
 
     private func tearDown(_ id: PaneID) {
@@ -321,6 +339,7 @@ final class AppModel {
         paneOrder.removeAll { $0 == id }
         paneStates[id] = nil
         recordedSessions[id] = nil
+        launchSessions[id] = nil
         pendingPermissions.removeAll { $0.paneId == id }
         Task { _ = await self.broker.cancelAll(paneId: id) }
         if selectedPaneId == id { selectFirstPaneIfNeeded(force: true) }
