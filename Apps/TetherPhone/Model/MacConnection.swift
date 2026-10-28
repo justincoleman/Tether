@@ -128,6 +128,10 @@ final class MacConnection: Identifiable {
             closeChannel()
         case .snapshot(let snapshot):
             self.snapshot = snapshot
+            // A queued message has gone out once the Mac's queue for that tab is empty.
+            for session in snapshot.sessions where session.queued == 0 && sendResults[session.id] == "queued" {
+                sendResults[session.id] = nil
+            }
         case .transcript(let sessionId, let events, let reset):
             var model = reset ? TranscriptModel() : (transcripts[sessionId] ?? TranscriptModel())
             model.apply(events)
