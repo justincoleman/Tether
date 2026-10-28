@@ -16,8 +16,16 @@ is never modified. A `claude` you type by hand inside a Tether shell tab is not
 tracked.
 
 Settings list keys merge across sources, so your own hooks keep running
-alongside Tether's. **Verify on first run:** type `/hooks` in a Tether Claude
-tab and confirm both your hooks and the `127.0.0.1` ones are listed.
+alongside Tether's.
+
+**Verifying it works.** Do not use the `/hooks` menu for this: as of Claude
+Code 2.1.308 it lists `[User]` and `[Plugin]` hooks but not hooks passed with
+`--settings`, even though they run. Instead:
+
+- `/status` in a Tether Claude tab shows `Command line arguments` under
+  Setting sources, which means the hooks file loaded.
+- Send any prompt: the sidebar shows sparkles, then a green check. Only
+  Tether's hooks can produce that.
 
 Each handler sends two headers, interpolated from env vars Tether puts in every
 pty:
