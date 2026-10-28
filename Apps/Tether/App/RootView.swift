@@ -47,12 +47,25 @@ struct SidebarView: View {
                         StatusBadge(state: model.sessionStates[project.id] ?? .idle)
                     }
                     .tag(project.id)
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill((model.sessionStates[project.id] ?? .idle).tint ?? .clear)
+                            .padding(.horizontal, 4)
+                    )
                     .contextMenu {
                         Button("Remove Project", role: .destructive) {
                             Task { await model.removeProject(project.id) }
                         }
                     }
                 }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let message = model.hookStatusMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
             }
         }
         .toolbar {
@@ -63,25 +76,5 @@ struct SidebarView: View {
             }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 240)
-    }
-}
-
-/// Minimal static version. Phase 2 adds the working/done/needs-input animation.
-struct StatusBadge: View {
-    let state: SessionState
-
-    var body: some View {
-        switch state {
-        case .idle, .detached:
-            EmptyView()
-        case .working:
-            Image(systemName: "sparkles").foregroundStyle(.orange)
-        case .needsInput:
-            Circle().fill(.blue).frame(width: 8, height: 8)
-        case .done:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case .error:
-            Circle().fill(.red).frame(width: 8, height: 8)
-        }
     }
 }

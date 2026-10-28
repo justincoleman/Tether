@@ -1,29 +1,47 @@
+import AppKit
 import Foundation
 import Observation
 import TetherCore
 import TetherProtocol
 
 /// Main-actor façade over the TetherCore actors. Views bind to this; it owns
-/// the live terminal panes and forwards persistence to `ProjectStore`.
+/// the live terminal panes, the hook server, and the permission queue.
 @MainActor
 @Observable
 final class AppModel {
     private(set) var projects: [Project] = []
     private(set) var remoteHosts: [RemoteHost] = []
+    /// Most urgent state across a project's panes, for the sidebar.
     private(set) var sessionStates: [ProjectID: SessionState] = [:]
+    /// Per-pane state, for tab badges.
+    private(set) var paneStates: [PaneID: SessionState] = [:]
+    /// Permission requests waiting on an answer, oldest first.
+    private(set) var pendingPermissions: [PendingPermission] = []
+    /// Non-nil when hooks could not be set up; shown in the sidebar footer.
+    private(set) var hookStatusMessage: String?
+
     var selectedProjectId: ProjectID? {
         didSet { selectFirstPaneIfNeeded() }
     }
-    var selectedPaneId: PaneID?
+    var selectedPaneId: PaneID? {
+        didSet {
+            guard let id = selectedPaneId, id != oldValue else { return }
+            Task { await self.paneFocused(id) }
+        }
+    }
     var addProjectRequested = false
 
     /// Live panes keyed by id. Descriptors persist in the store; this does not.
     private var panes: [PaneID: TerminalPane] = [:]
     private var paneOrder: [PaneID] = []
+    private var recordedSessions: [PaneID: SessionID] = [:]
 
     private let store = ProjectStore(fileURL: ProjectStore.defaultFileURL())
     let registry = SessionRegistry()
-    /// Per-launch secret handed to every pty; the hook server (phase 2) checks it.
+    let broker = PermissionBroker()
+    private var hookServer: HookServer?
+    private var hookSettingsPath: String?
+    /// Per-launch secret handed to every pty and echoed back by hooks.
     let launchToken = UUID().uuidString
 
     init() {
@@ -54,6 +72,7 @@ final class AppModel {
         try? await store.removeProject(id)
         await reload()
         if selectedProjectId == id { selectedProjectId = projects.first?.id }
+        recomputeProjectStates()
     }
 
     // MARK: Remote hosts
@@ -102,10 +121,95 @@ final class AppModel {
         try? await store.removePane(id)
     }
 
-    /// Restores persisted panes, staggered so a dozen projects don't spawn
-    /// a dozen `claude` processes in the same instant. Projects without any
-    /// pane get a Claude session, which is the "ready to go" promise.
+    // MARK: Permissions
+
+    func resolvePermission(_ id: UUID, _ decision: PermissionDecision) {
+        pendingPermissions.removeAll { $0.id == id }
+        Task { await self.broker.resolve(id, decision) }
+    }
+
+    // MARK: Hook events
+
+    private func handle(_ event: HookEvent) {
+        switch event {
+        case .session(let session):
+            guard let paneId = session.paneId, panes[paneId] != nil else { return }
+            let previous = paneStates[paneId]
+            paneStates[paneId] = session.state
+            if recordedSessions[paneId] != session.id {
+                recordedSessions[paneId] = session.id
+                Task { try? await self.store.recordSession(session.id, forPane: paneId) }
+            }
+            recomputeProjectStates()
+            if session.state == .needsInput, previous != .needsInput { requestAttention() }
+        case .permissionRequested(let request):
+            if !pendingPermissions.contains(where: { $0.id == request.id }) {
+                pendingPermissions.append(request)
+            }
+            requestAttention()
+        case .permissionResolved(let id, _):
+            pendingPermissions.removeAll { $0.id == id }
+        }
+    }
+
+    private func paneFocused(_ id: PaneID) async {
+        guard NSApp.isActive, let session = await registry.paneFocused(id) else { return }
+        handle(.session(session))
+    }
+
+    private func paneDidExit(_ id: PaneID) async {
+        _ = await broker.cancelAll(paneId: id)
+        pendingPermissions.removeAll { $0.paneId == id }
+        if let session = await registry.paneExited(id) {
+            paneStates[id] = session.state
+            recomputeProjectStates()
+        }
+    }
+
+    private func recomputeProjectStates() {
+        var result: [ProjectID: SessionState] = [:]
+        for pane in panes.values {
+            let state = paneStates[pane.id] ?? .idle
+            let pid = pane.descriptor.projectId
+            if let current = result[pid], current.urgency >= state.urgency { continue }
+            result[pid] = state
+        }
+        sessionStates = result
+        let waiting = result.values.filter { $0 == .needsInput }.count
+        NSApp.dockTile.badgeLabel = waiting > 0 ? "\(waiting)" : nil
+    }
+
+    private func requestAttention() {
+        if !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+    }
+
+    // MARK: Launch
+
+    private func startHookServer() async {
+        let router = HookRouter(token: launchToken, registry: registry, broker: broker) { [weak self] event in
+            await self?.handle(event)
+        }
+        let server = HookServer(router: router)
+        do {
+            let port = try await server.start()
+            let url = ProjectStore.defaultFileURL().deletingLastPathComponent()
+                .appendingPathComponent("hooks.json")
+            try HookSettings.write(port: port, to: url)
+            hookServer = server
+            hookSettingsPath = url.path
+            hookStatusMessage = nil
+        } catch {
+            server.stop()
+            hookStatusMessage = "Session tracking is off: \(error.localizedDescription)"
+            print("Hook server failed: \(error)")
+        }
+    }
+
+    /// Starts the hook server, then restores persisted panes, staggered so a
+    /// dozen projects don't spawn a dozen `claude` processes at once. Projects
+    /// without any pane get a Claude session: the "ready to go" promise.
     private func restore() async {
+        await startHookServer()
         await reload()
         var descriptors = await store.state.panes
         for project in projects where !descriptors.contains(where: { $0.projectId == project.id }) {
@@ -139,11 +243,12 @@ final class AppModel {
         case .ssh(let hostId): host = await store.remoteHost(hostId)
         case .shell: break
         }
-        let launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host, token: launchToken)
+        let launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host,
+                                         token: launchToken, hookSettingsPath: hookSettingsPath)
         let pane = TerminalPane(descriptor: d, launch: launch, controller: TerminalHost.controller)
         pane.onExit = { [weak self] id in
-            // Keep the tab so the exit message is readable; the user closes it.
-            _ = self; _ = id
+            guard let self else { return }
+            Task { await self.paneDidExit(id) }
         }
         panes[d.id] = pane
         paneOrder.append(d.id)
@@ -152,7 +257,12 @@ final class AppModel {
     private func tearDown(_ id: PaneID) {
         panes[id] = nil
         paneOrder.removeAll { $0 == id }
+        paneStates[id] = nil
+        recordedSessions[id] = nil
+        pendingPermissions.removeAll { $0.paneId == id }
+        Task { _ = await self.broker.cancelAll(paneId: id) }
         if selectedPaneId == id { selectFirstPaneIfNeeded(force: true) }
+        recomputeProjectStates()
     }
 
     private func selectFirstPaneIfNeeded(force: Bool = false) {
@@ -160,6 +270,20 @@ final class AppModel {
         let visible = panes(for: pid)
         if force || !visible.contains(where: { $0.id == selectedPaneId }) {
             selectedPaneId = visible.first?.id
+        }
+    }
+}
+
+private extension SessionState {
+    /// Which state wins when a project has several panes.
+    var urgency: Int {
+        switch self {
+        case .needsInput: 5
+        case .error: 4
+        case .working: 3
+        case .done: 2
+        case .idle: 1
+        case .detached: 0
         }
     }
 }

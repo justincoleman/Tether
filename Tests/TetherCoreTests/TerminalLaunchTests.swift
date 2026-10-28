@@ -40,3 +40,16 @@ import TetherProtocol
         #expect(TerminalLaunch.promptText("a\nb") == "a\nb")
     }
 }
+
+@Suite struct TerminalLaunchSettingsTests {
+    @Test func claudeGetsQuotedSettingsPath() {
+        let project = Project(name: "p", path: "/tmp/p")
+        let wt = Worktree(projectId: project.id, path: "/tmp/p", branch: "main", isPrimary: true)
+        let pane = PaneDescriptor(projectId: project.id, kind: .claude(worktreeId: wt.id, resumeSessionId: nil), title: "Claude")
+        let launch = TerminalLaunch.make(pane: pane, worktree: wt, remoteHost: nil, token: "t",
+                                         hookSettingsPath: "/Users/j/Library/Application Support/Tether/hooks.json",
+                                         shell: "/bin/zsh")
+        // Inner quotes protect the space; outer quoting escapes them for -c.
+        #expect(launch.command == #"/bin/zsh -l -c 'claude --settings '\''/Users/j/Library/Application Support/Tether/hooks.json'\'''"#)
+    }
+}

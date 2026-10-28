@@ -31,6 +31,14 @@ struct TerminalTabsView: View {
                         }
                 }
             }
+            .overlay(alignment: .bottom) {
+                if let paneId = model.selectedPaneId,
+                   let request = model.pendingPermissions.first(where: { $0.paneId == paneId }) {
+                    PermissionPromptView(request: request)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: model.pendingPermissions.map(\.id))
         }
         .background(Color(nsColor: .textBackgroundColor))
     }
@@ -77,6 +85,7 @@ private struct TabStrip: View {
 }
 
 private struct TabButton: View {
+    @Environment(AppModel.self) private var model
     let pane: TerminalPane
     let selected: Bool
     let select: () -> Void
@@ -87,6 +96,7 @@ private struct TabButton: View {
         HStack(spacing: 4) {
             Image(systemName: icon).font(.caption)
             Text(pane.title).lineLimit(1)
+            StatusBadge(state: state).scaleEffect(0.75)
             if pane.hasExited {
                 Text("exited").font(.caption2).foregroundStyle(.secondary)
             }
@@ -104,6 +114,8 @@ private struct TabButton: View {
         .onTapGesture(perform: select)
         .onHover { hovering = $0 }
     }
+
+    private var state: SessionState { model.paneStates[pane.id] ?? .idle }
 
     private var icon: String {
         switch pane.descriptor.kind {

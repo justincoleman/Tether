@@ -159,49 +159,24 @@ phase 1 spike before anything else is built on it.
 Two sources, both read-only with respect to the agent:
 
 **A. Claude Code hooks, HTTP type.** Tether runs a tiny HTTP server on
-`127.0.0.1:<random port>`. On first launch it merges a hook block into
-`~/.claude/settings.json` (idempotent, namespaced under a `tether` comment key
-pattern so we can remove it cleanly):
+`127.0.0.1:<random port>` and writes a settings file containing HTTP hooks
+that point at it. Every `claude` Tether launches gets
+`--settings <that file>`, so the hooks apply only to Tether's own sessions and
+`~/.claude/settings.json` is never touched. (Revised in phase 2: the original
+plan merged hooks into the global settings file, which would have routed every
+`claude` on the machine through Tether and needed cleanup after a crash.)
 
-```json
-{
-  "hooks": {
-    "SessionStart":      [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:PORT/hook",
-                           "headers": { "X-Tether-Pane": "$TETHER_PANE_ID", "X-Tether-Token": "$TETHER_TOKEN" },
-                           "allowedEnvVars": ["TETHER_PANE_ID", "TETHER_TOKEN"], "timeout": 5, "async": true }]}],
-    "UserPromptSubmit":  [ ...same... ],
-    "Stop":              [ ...same... ],
-    "StopFailure":       [ ...same... ],
-    "Notification":      [ ...same... ],
-    "SessionEnd":        [ ...same... ],
-    "PostToolUse":       [ ...same, async... ],
-    "PermissionRequest": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:PORT/permission",
-                           "headers": { ... }, "allowedEnvVars": [...], "timeout": 600 }]}]
-  }
-}
-```
+Each handler sends `X-Tether-Pane: $TETHER_PANE_ID` and
+`X-Tether-Token: $TETHER_TOKEN`, interpolated from env vars Tether injects into
+every pty. That stamps each hook with the tab it belongs to, without parsing
+process trees. HTTP hooks cannot be `async` (command hooks only), so state
+hooks get a 10 s timeout and are answered immediately. Full details, payloads
+and the exact state table: `docs/HOOKS.md`.
 
-The two env vars are injected into every pty Tether spawns. Because HTTP hook
-headers can interpolate allow-listed env vars, each hook arrives already
-stamped with the pane it belongs to. That is the whole session-to-tab mapping
-problem solved without parsing process trees. `session_id`, `cwd`, and
-`transcript_path` arrive in the body.
-
-The port is random per launch, so Tether rewrites the hook URLs on every
-launch. If the settings file is unwritable or the user declines, Tether falls
-back to source B only and the sidebar still works (degraded: no permission
-relay).
-
-State machine driven by hooks:
-
-| Hook | Sidebar state |
-| --- | --- |
-| `SessionStart` | idle (session attached to pane) |
-| `UserPromptSubmit` | working |
-| `PermissionRequest`, `Notification{permission_prompt, idle_prompt, agent_needs_input, elicitation_*}` | needs input (blue) |
-| `Stop` | done (green) until the tab is focused, then idle |
-| `StopFailure` | error (red) |
-| `SessionEnd`, pty child exit | idle / detached |
+State machine: see `docs/HOOKS.md`, which is canonical. Two findings from
+phase 2 shaped it: `Stop` never fires on an Esc interrupt (the `idle_prompt`
+notification is the recovery signal), and a turn that ends with a question is
+treated as needing input.
 
 **B. Transcript tailing.** `transcript_path` points at
 `~/.claude/projects/<encoded cwd>/<session_id>.jsonl`. Tether tails it with a
@@ -426,7 +401,7 @@ doing most of the typing with you reviewing.
 - Exit criterion: you can do a day's work in it with no status features.
 
 ### Phase 2: Hooks and sidebar state (1–2 days)
-- `HookServer` on localhost, settings.json merge/unmerge, per-launch port rewrite.
+- `HookServer` on localhost, per-launch `--settings` hooks file (no global settings edits).
 - State machine from 3.2 and the status badge from 3.11.
 - `docs/HOOKS.md` with captured payloads for the installed CLI version.
 - Native `PermissionRequest` prompt on the Mac (3.3, Mac half) including

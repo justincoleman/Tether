@@ -2,7 +2,7 @@ import Foundation
 import TetherProtocol
 
 /// The subset of a Claude Code hook's JSON body that Tether consumes.
-/// Unknown fields are ignored; see docs/HOOKS.md (phase 2) for captured examples.
+/// Unknown fields are ignored. See docs/HOOKS.md for the shapes.
 public struct HookPayload: Codable, Sendable, Hashable {
     public enum EventName: String, Codable, Sendable {
         case sessionStart = "SessionStart"
@@ -19,35 +19,61 @@ public struct HookPayload: Codable, Sendable, Hashable {
     public var cwd: String
     public var transcriptPath: String?
     public var hookEventName: EventName
+    /// SessionStart: startup, resume, clear, compact, fork.
+    public var source: String?
+    /// UserPromptSubmit.
+    public var prompt: String?
+    /// Notification.
     public var notificationType: String?
+    public var message: String?
+    public var title: String?
+    /// Tool events and PermissionRequest.
     public var toolName: String?
+    public var toolInput: JSONValue?
+    public var permissionSuggestions: JSONValue?
+    /// Stop: Claude's final text for the turn. StopFailure: the API error text.
     public var lastAssistantMessage: String?
+    /// StopFailure: error type, e.g. "rate_limit".
+    public var error: String?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
         case cwd
         case transcriptPath = "transcript_path"
         case hookEventName = "hook_event_name"
+        case source, prompt, message, title, error
         case notificationType = "notification_type"
         case toolName = "tool_name"
+        case toolInput = "tool_input"
+        case permissionSuggestions = "permission_suggestions"
         case lastAssistantMessage = "last_assistant_message"
     }
 
     public init(sessionId: SessionID, cwd: String, transcriptPath: String? = nil,
-                hookEventName: EventName, notificationType: String? = nil,
-                toolName: String? = nil, lastAssistantMessage: String? = nil) {
+                hookEventName: EventName, source: String? = nil, prompt: String? = nil,
+                notificationType: String? = nil, message: String? = nil, title: String? = nil,
+                toolName: String? = nil, toolInput: JSONValue? = nil,
+                permissionSuggestions: JSONValue? = nil,
+                lastAssistantMessage: String? = nil, error: String? = nil) {
         self.sessionId = sessionId
         self.cwd = cwd
         self.transcriptPath = transcriptPath
         self.hookEventName = hookEventName
+        self.source = source
+        self.prompt = prompt
         self.notificationType = notificationType
+        self.message = message
+        self.title = title
         self.toolName = toolName
+        self.toolInput = toolInput
+        self.permissionSuggestions = permissionSuggestions
         self.lastAssistantMessage = lastAssistantMessage
+        self.error = error
     }
 
-    /// Notification types that mean "Claude is waiting on a human".
+    /// Notification types that mean Claude is blocked on a human.
     static let needsInputNotifications: Set<String> = [
-        "permission_prompt", "idle_prompt", "agent_needs_input",
+        "permission_prompt", "agent_needs_input",
         "elicitation_dialog", "elicitation_url_dialog",
     ]
 }

@@ -24,6 +24,7 @@ public struct TerminalLaunch: Hashable, Sendable {
         worktree: Worktree?,
         remoteHost: RemoteHost?,
         token: String,
+        hookSettingsPath: String? = nil,
         shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
         claudeExecutable: String = "claude"
     ) -> TerminalLaunch {
@@ -31,6 +32,7 @@ public struct TerminalLaunch: Hashable, Sendable {
         switch pane.kind {
         case .claude(_, let resume):
             var parts = [claudeExecutable]
+            if let hookSettingsPath { parts += ["--settings", hookSettingsPath] }
             if let resume, !resume.isEmpty { parts += ["--resume", resume] }
             return TerminalLaunch(
                 command: loginShellCommand(shell: shell, parts),

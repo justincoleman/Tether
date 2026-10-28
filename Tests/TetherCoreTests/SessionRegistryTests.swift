@@ -4,35 +4,72 @@ import Testing
 import TetherProtocol
 
 @Suite struct SessionRegistryTests {
-    private func hook(_ name: HookPayload.EventName, notification: String? = nil) -> HookPayload {
-        HookPayload(sessionId: "s1", cwd: "/tmp/proj", transcriptPath: "/tmp/t.jsonl",
-                    hookEventName: name, notificationType: notification)
+    private func hook(_ name: HookPayload.EventName, session: String = "s1",
+                      notification: String? = nil, last: String? = nil) -> HookPayload {
+        HookPayload(sessionId: session, cwd: "/tmp/proj", transcriptPath: "/tmp/t.jsonl",
+                    hookEventName: name, notificationType: notification, lastAssistantMessage: last)
     }
 
     @Test func fullLifecycle() async {
         let r = SessionRegistry()
         let pane = PaneID()
-        #expect(await r.apply(hook(.sessionStart), paneId: pane) == .idle)
-        #expect(await r.apply(hook(.userPromptSubmit), paneId: pane) == .working)
-        #expect(await r.apply(hook(.postToolUse), paneId: pane) == nil)
-        #expect(await r.apply(hook(.permissionRequest), paneId: pane) == .needsInput)
-        #expect(await r.apply(hook(.stop), paneId: pane) == .done)
-        #expect(await r.paneFocused(pane) == .idle)
-        #expect(await r.apply(hook(.sessionEnd), paneId: pane) == .detached)
+        #expect(await r.apply(hook(.sessionStart), paneId: pane).state == .idle)
+        #expect(await r.apply(hook(.userPromptSubmit), paneId: pane).state == .working)
+        #expect(await r.apply(hook(.permissionRequest), paneId: pane).state == .needsInput)
+        #expect(await r.apply(hook(.postToolUse), paneId: pane).state == .working)
+        #expect(await r.apply(hook(.stop, last: "All done."), paneId: pane).state == .done)
+        #expect(await r.paneFocused(pane)?.state == .idle)
+        #expect(await r.apply(hook(.sessionEnd), paneId: pane).state == .detached)
     }
 
-    @Test func onlyWaitingNotificationsFlipState() async {
+    @Test func stopEndingInQuestionNeedsInput() async {
         let r = SessionRegistry()
         await r.apply(hook(.userPromptSubmit), paneId: nil)
-        #expect(await r.apply(hook(.notification, notification: "auth_success"), paneId: nil) == .working)
-        #expect(await r.apply(hook(.notification, notification: "idle_prompt"), paneId: nil) == .needsInput)
+        #expect(await r.apply(hook(.stop, last: "Want me to open a PR?\n"), paneId: nil).state == .needsInput)
+    }
+
+    @Test func onlyBlockingNotificationsFlipToNeedsInput() async {
+        let r = SessionRegistry()
+        await r.apply(hook(.userPromptSubmit), paneId: nil)
+        #expect(await r.apply(hook(.notification, notification: "auth_success"), paneId: nil).state == .working)
+        #expect(await r.apply(hook(.notification, notification: "permission_prompt"), paneId: nil).state == .needsInput)
+    }
+
+    @Test func idlePromptRecoversFromInterrupt() async {
+        let r = SessionRegistry()
+        await r.apply(hook(.userPromptSubmit), paneId: nil)
+        // User pressed Esc: no Stop hook, then idle_prompt arrives.
+        #expect(await r.apply(hook(.notification, notification: "idle_prompt"), paneId: nil).state == .idle)
+    }
+
+    @Test func idlePromptDoesNotClearDone() async {
+        let r = SessionRegistry()
+        await r.apply(hook(.stop, last: "Finished."), paneId: nil)
+        #expect(await r.apply(hook(.notification, notification: "idle_prompt"), paneId: nil).state == .done)
+    }
+
+    @Test func paneFocusOnlyClearsDone() async {
+        let r = SessionRegistry()
+        let pane = PaneID()
+        await r.apply(hook(.userPromptSubmit), paneId: pane)
+        #expect(await r.paneFocused(pane) == nil)
+        #expect(await r.session(forPane: pane)?.state == .working)
+    }
+
+    @Test func newSessionOnSamePaneReplacesOld() async {
+        let r = SessionRegistry()
+        let pane = PaneID()
+        await r.apply(hook(.sessionStart, session: "old"), paneId: pane)
+        await r.apply(hook(.sessionStart, session: "new"), paneId: pane)
+        #expect(await r.sessions["old"] == nil)
+        #expect(await r.session(forPane: pane)?.id == "new")
     }
 
     @Test func paneExitDetachesAndUnmaps() async {
         let r = SessionRegistry()
         let pane = PaneID()
         await r.apply(hook(.sessionStart), paneId: pane)
-        #expect(await r.paneExited(pane) == .detached)
+        #expect(await r.paneExited(pane)?.state == .detached)
         #expect(await r.session(forPane: pane) == nil)
     }
 }

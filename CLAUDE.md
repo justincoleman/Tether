@@ -22,7 +22,15 @@ structural. Work proceeds in the numbered phases there.
 - Text into a pane: `paste(text:)` then `sendKey(.enter)`. A pasted `\r` is a
   character under bracketed paste, never submit. See `TerminalPane.send(prompt:)`.
 - Every pty gets `TETHER_PANE_ID` and `TETHER_TOKEN` in its env
-  (`TerminalLaunch`). Hooks echo them back as HTTP headers in phase 2.
+  (`TerminalLaunch`). Hooks echo them back as HTTP headers.
+
+## Hooks
+- `docs/HOOKS.md` is canonical for the hook wiring, the state machine, and the
+  permission response format. Update it with any change to
+  `SessionRegistry.nextState` or `HookRouter`.
+- Hooks reach Claude only through `claude --settings <hooks.json>`. Never write
+  to `~/.claude/settings.json`.
+- Logic belongs in `TetherCore` with tests; `Apps/Tether/Hooks/` only moves bytes.
 
 ## Rules
 - Swift 6 language mode, strict concurrency. Keep `TetherCore` free of
