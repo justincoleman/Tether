@@ -294,6 +294,22 @@ final class AppModel {
         selectedPaneId = d.id
     }
 
+    /// A Claude tab with its project, for the Overview and the menu bar.
+    struct ClaudeTab {
+        var project: Project
+        var pane: TerminalPane
+        /// The project has more than one Claude tab, so name this one.
+        var showTitle: Bool
+    }
+
+    /// Every Claude tab, in sidebar and tab order.
+    var claudeTabs: [ClaudeTab] {
+        projects.flatMap { project -> [ClaudeTab] in
+            let tabs = panes(for: project.id).filter(\.isClaude)
+            return tabs.map { ClaudeTab(project: project, pane: $0, showTitle: tabs.count > 1) }
+        }
+    }
+
     /// Leaves the Overview for one tab.
     func select(pane: TerminalPane) {
         closeOverlays()

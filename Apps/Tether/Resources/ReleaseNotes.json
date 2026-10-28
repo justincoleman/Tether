@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.5.0",
+    "date": "2026-10-28",
+    "summary": "Tether 0.5.0 shows every Claude tab at a glance, in the window and in the menu bar.",
+    "highlights": [
+      {
+        "title": "Overview.",
+        "body": "The Overview button at the top of the sidebar, or Command-0, shows a card for every Claude tab: what it's doing, what it wants permission for, its last message, lines changed and how long the turn has run. Click a card to open the tab."
+      },
+      {
+        "title": "Menu bar.",
+        "body": "Tether's icon in the menu bar counts the tabs waiting on you. Its menu lists every Claude tab and what it's doing; pick one to jump to it. Turn it off in Settings > Appearance."
+      }
+    ]
+  },
+  {
     "version": "0.4.0",
     "date": "2026-10-28",
     "summary": "Tether 0.4.0 shows two tabs side by side, lets you drag tabs into order, and can update itself from a release.",

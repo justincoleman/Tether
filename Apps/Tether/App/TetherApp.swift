@@ -9,6 +9,7 @@ struct TetherApp: App {
     @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
     @AppStorage("showSidebar") private var showSidebar = true
     @AppStorage("showChat") private var showChat = false
+    @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
@@ -99,5 +100,11 @@ struct TetherApp: App {
         Settings {
             SettingsView().environment(model)
         }
+        MenuBarExtra(isInserted: $showMenuBarExtra) {
+            MenuBarMenu().environment(model)
+        } label: {
+            MenuBarLabel().environment(model)
+        }
+        .menuBarExtraStyle(.menu)
     }
 }
