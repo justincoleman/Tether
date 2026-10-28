@@ -66,8 +66,10 @@ private struct ComposeBar: View {
     @State private var text = ""
 
     private var canSend: Bool {
-        state != .working && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        state != .detached && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    private var queued: Int { model.queuedCounts[paneId] ?? 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -82,8 +84,20 @@ private struct ComposeBar: View {
                     .disabled(!canSend)
                     .keyboardShortcut(.return, modifiers: [.command])
             }
-            if state == .working {
-                Text("Claude is working. Send once it finishes, or type in the terminal.")
+            if state == .detached {
+                Text("Claude isn't running in this tab.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if queued > 0 {
+                Text("\(queued) message\(queued == 1 ? "" : "s") queued. Sent when Claude is ready.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if state == .working {
+                Text("Claude is working. Your message will be sent when it finishes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if state == .needsInput, model.paneAttention[paneId] != .question {
+                Text("Claude is waiting on a prompt. Your message will be sent after you answer it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -93,7 +107,7 @@ private struct ComposeBar: View {
 
     private func send() {
         guard canSend else { return }
-        if model.sendPrompt(text, toPane: paneId) { text = "" }
+        if model.sendOrQueue(text, toPane: paneId) != .failed { text = "" }
     }
 }
 

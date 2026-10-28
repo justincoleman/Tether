@@ -13,17 +13,22 @@ struct RootView: View {
             if let id = model.selectedProjectId,
                let project = model.projects.first(where: { $0.id == id }) {
                 TerminalTabsView(project: project)
-                    .inspector(isPresented: $model.showMirror) {
-                        MirrorView(paneId: model.selectedPaneId)
+                    .inspector(isPresented: $model.showInspector) {
+                        InspectorView()
                             .inspectorColumnWidth(min: 300, ideal: 420, max: 720)
                     }
                     .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button { model.showMirror.toggle() } label: {
+                        ToolbarItemGroup(placement: .primaryAction) {
+                            Button { model.toggleInspector(.chat) } label: {
                                 Label("Chat", systemImage: "bubble.left.and.text.bubble.right")
                             }
                             .help("Show the conversation as chat (⇧⌘M)")
                             .keyboardShortcut("m", modifiers: [.command, .shift])
+                            Button { model.toggleInspector(.changes) } label: {
+                                Label("Changes", systemImage: "plusminus.circle")
+                            }
+                            .help("Show changes against the base branch (⇧⌘D)")
+                            .keyboardShortcut("d", modifiers: [.command, .shift])
                         }
                     }
             } else {
@@ -52,8 +57,9 @@ struct SidebarView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(project.name)
-                            Text(project.baseBranch)
+                            Text(model.branchLabel(for: project))
                                 .font(.caption)
+                                .lineLimit(1)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()

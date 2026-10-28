@@ -38,6 +38,15 @@ structural. Work proceeds in the numbered phases there.
 - `TranscriptModel` lives in `TetherProtocol` so the phone groups steps the
   same way as the Mac.
 
+## Changes panel
+- `docs/CHANGES.md` is canonical for the base-branch rules, the git commands,
+  the watcher and fetch policy, the review message format and the send gate.
+- Parsers are tested against real git output; add a captured fixture when a new
+  git format is parsed. All git reads go through `GitRunner`, which sets
+  `GIT_OPTIONAL_LOCKS=0`. Never call git without it, or the watcher loops.
+- Typing into a Claude tab goes through `AppModel.sendOrQueue`, never straight
+  to `TerminalPane.send`.
+
 ## Handing work to the user for testing
 - No session can compile Swift; the user builds and tests on the Mac mini.
   After every change, give the exact build command and a numbered test list.

@@ -19,21 +19,36 @@ final class AppModel {
     private(set) var pendingPermissions: [PendingPermission] = []
     /// Non-nil when hooks could not be set up; shown in the sidebar footer.
     private(set) var hookStatusMessage: String?
+    /// Why each waiting pane is waiting: a permission, a question, or a dialog.
+    private(set) var paneAttention: [PaneID: AttentionReason] = [:]
+    /// Messages held back per pane until Claude can take them.
+    private(set) var queuedCounts: [PaneID: Int] = [:]
 
     var selectedProjectId: ProjectID? {
-        didSet { selectFirstPaneIfNeeded() }
+        didSet {
+            selectFirstPaneIfNeeded()
+            updateChangesFocus()
+        }
     }
     var selectedPaneId: PaneID? {
         didSet {
+            if selectedPaneId != oldValue { updateChangesFocus() }
             guard let id = selectedPaneId, id != oldValue else { return }
             Task { await self.paneFocused(id) }
         }
     }
     var addProjectRequested = false
-    /// Right-hand chat mirror panel.
-    var showMirror = false
+    /// Right-hand panel, showing Chat or Changes.
+    var showInspector = false
+    var inspectorTab: InspectorTab = .chat
 
     let mirror = MirrorStore()
+    let changes = ChangesStore()
+
+    /// The diff open over the terminal, if any.
+    private(set) var openDiffTarget: OpenDiff?
+    /// Comments collected on diffs, waiting to be sent to Claude as one message.
+    private(set) var reviewComments: [ProjectID: [ReviewComment]] = [:]
 
     /// Live panes keyed by id. Descriptors persist in the store; this does not.
     private var panes: [PaneID: TerminalPane] = [:]
@@ -45,6 +60,9 @@ final class AppModel {
     /// Polls a working session's transcript for the Esc-interrupt record,
     /// since Claude Code fires no hook when the user interrupts.
     private var interruptWatchers: [SessionID: Task<Void, Never>] = [:]
+    /// The folder each Claude tab works in, for its Changes panel.
+    private var paneWorktreePaths: [PaneID: String] = [:]
+    private var promptQueue = PromptQueue()
 
     private let store = ProjectStore(fileURL: ProjectStore.defaultFileURL())
     let registry = SessionRegistry()
@@ -64,6 +82,8 @@ final class AppModel {
         projects = await store.orderedProjects()
         remoteHosts = await store.state.remoteHosts
         if selectedProjectId == nil { selectedProjectId = projects.first?.id }
+        changes.sync(Dictionary(projects.map { ($0.path, $0.baseBranch) }, uniquingKeysWith: { first, _ in first }))
+        updateChangesFocus()
     }
 
     func addProject(at url: URL) async {
@@ -137,11 +157,135 @@ final class AppModel {
         recordedSessions[paneId] ?? launchSessions[paneId]
     }
 
-    /// Types a prompt into a Claude tab and submits it. Returns false if the
-    /// tab is gone or its terminal is not ready.
+    // MARK: Sending prompts
+
+    enum SendOutcome { case sent, queued, failed }
+
+    /// Types a message into a Claude tab now if that is safe, otherwise holds
+    /// it until Claude is ready. A message is never typed into a permission
+    /// prompt or into a turn in progress. The queue lives in memory only.
     @discardableResult
-    func sendPrompt(_ text: String, toPane paneId: PaneID) -> Bool {
-        panes[paneId]?.send(prompt: text) ?? false
+    func sendOrQueue(_ text: String, toPane paneId: PaneID) -> SendOutcome {
+        guard panes[paneId] != nil else { return .failed }
+        promptQueue.enqueue(text, for: paneId)
+        guard promptQueue.count(for: paneId) > 0 else { return .failed } // blank text
+        if flushQueue(paneId) { return .sent }
+        syncQueuedCount(paneId)
+        return .queued
+    }
+
+    private func canSendNow(_ paneId: PaneID) -> Bool {
+        // Without hooks there is no state to wait for.
+        guard hookServer != nil else { return true }
+        guard let state = paneStates[paneId] else { return false } // still starting up
+        return PromptGate.canSend(state: state, attention: paneAttention[paneId])
+    }
+
+    @discardableResult
+    private func flushQueue(_ paneId: PaneID) -> Bool {
+        guard canSendNow(paneId), let text = promptQueue.drain(for: paneId) else {
+            syncQueuedCount(paneId)
+            return false
+        }
+        guard panes[paneId]?.send(prompt: text) == true else {
+            // The terminal is not ready yet: keep the message and try again.
+            promptQueue.enqueue(text, for: paneId)
+            syncQueuedCount(paneId)
+            scheduleFlushRetry(paneId)
+            return false
+        }
+        syncQueuedCount(paneId)
+        return true
+    }
+
+    private func scheduleFlushRetry(_ paneId: PaneID, attempt: Int = 1) {
+        guard attempt <= 5 else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self, self.promptQueue.count(for: paneId) > 0 else { return }
+            if !self.flushQueue(paneId) { self.scheduleFlushRetry(paneId, attempt: attempt + 1) }
+        }
+    }
+
+    private func syncQueuedCount(_ paneId: PaneID) {
+        let count = promptQueue.count(for: paneId)
+        queuedCounts[paneId] = count > 0 ? count : nil
+    }
+
+    // MARK: Changes and diffs
+
+    /// The folder whose changes the panel shows: the selected Claude tab's
+    /// worktree, or the project folder for shell and ssh tabs.
+    var selectedWorktreePath: String? {
+        if let id = selectedPaneId, let path = paneWorktreePaths[id] { return path }
+        guard let pid = selectedProjectId else { return nil }
+        return projects.first { $0.id == pid }?.path
+    }
+
+    func branchLabel(for project: Project) -> String {
+        changes.snapshots[project.path]?.branchLabel ?? project.baseBranch
+    }
+
+    private func updateChangesFocus() {
+        changes.focus(selectedWorktreePath)
+    }
+
+    func toggleInspector(_ tab: InspectorTab) {
+        if showInspector && inspectorTab == tab {
+            showInspector = false
+        } else {
+            inspectorTab = tab
+            showInspector = true
+        }
+    }
+
+    func openDiff(_ file: ChangedFile) {
+        guard let pid = selectedProjectId, let path = selectedWorktreePath else { return }
+        openDiffTarget = OpenDiff(projectId: pid, worktreePath: path, file: file)
+        // Keystrokes should reach the diff's comment field, not the hidden terminal.
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
+    func closeDiff() {
+        openDiffTarget = nil
+    }
+
+    func addReviewComment(_ comment: ReviewComment, project: ProjectID) {
+        reviewComments[project, default: []].append(comment)
+    }
+
+    func removeReviewComment(_ id: UUID, project: ProjectID) {
+        reviewComments[project]?.removeAll { $0.id == id }
+        if reviewComments[project]?.isEmpty == true { reviewComments[project] = nil }
+    }
+
+    enum ReviewSendResult { case sent, queued, noSession }
+
+    /// Sends the collected comments, plus an optional last one, to the
+    /// project's Claude tab as a single message, then returns to the terminal.
+    func sendReview(project: ProjectID, extra: ReviewComment?) -> ReviewSendResult {
+        var comments = reviewComments[project] ?? []
+        if let extra { comments.append(extra) }
+        let message = ReviewMessage.compose(comments)
+        guard !message.isEmpty, let paneId = claudePaneId(forProject: project) else { return .noSession }
+        let outcome = sendOrQueue(message, toPane: paneId)
+        guard outcome != .failed else { return .noSession }
+        reviewComments[project] = nil
+        closeDiff()
+        selectedPaneId = paneId
+        return outcome == .sent ? .sent : .queued
+    }
+
+    private func claudePaneId(forProject project: ProjectID) -> PaneID? {
+        func isClaude(_ pane: TerminalPane) -> Bool {
+            if case .claude = pane.descriptor.kind { return true }
+            return false
+        }
+        if let selected = selectedPaneId, let pane = panes[selected],
+           pane.descriptor.projectId == project, isClaude(pane) {
+            return selected
+        }
+        return panes(for: project).first(where: isClaude)?.id
     }
 
     // MARK: Permissions
@@ -159,6 +303,7 @@ final class AppModel {
             guard let paneId = session.paneId, panes[paneId] != nil else { return }
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
+            paneAttention[paneId] = session.attention
             if let old = sessionId(forPane: paneId), old != session.id {
                 // /clear or a fork gave this tab a new session.
                 mirror.stop(old)
@@ -172,6 +317,12 @@ final class AppModel {
             recomputeProjectStates()
             updateInterruptWatcher(for: session)
             if session.state == .needsInput, previous != .needsInput { requestAttention() }
+            flushQueue(paneId)
+            if previous == .working, session.state != .working, let worktree = paneWorktreePaths[paneId] {
+                // The turn ended: files may have changed, and the base branch may have moved.
+                changes.refresh(worktree)
+                if [.done, .idle, .error].contains(session.state) { changes.fetchNow(worktree) }
+            }
         case .permissionRequested(let request):
             if !pendingPermissions.contains(where: { $0.id == request.id }) {
                 pendingPermissions.append(request)
@@ -306,6 +457,7 @@ final class AppModel {
         switch d.kind {
         case .claude(let wtId, let resume):
             worktree = await store.worktree(wtId)
+            if let worktree { paneWorktreePaths[d.id] = worktree.path }
             if let resume, !resume.isEmpty {
                 launchSession = resume
             } else {
@@ -338,6 +490,10 @@ final class AppModel {
         panes[id] = nil
         paneOrder.removeAll { $0 == id }
         paneStates[id] = nil
+        paneAttention[id] = nil
+        paneWorktreePaths[id] = nil
+        promptQueue.clear(pane: id)
+        queuedCounts[id] = nil
         recordedSessions[id] = nil
         launchSessions[id] = nil
         pendingPermissions.removeAll { $0.paneId == id }
@@ -353,6 +509,17 @@ final class AppModel {
             selectedPaneId = visible.first?.id
         }
     }
+}
+
+enum InspectorTab: String {
+    case chat, changes
+}
+
+/// A file's diff opened over the terminal area.
+struct OpenDiff: Equatable {
+    var projectId: ProjectID
+    var worktreePath: String
+    var file: ChangedFile
 }
 
 private extension SessionState {

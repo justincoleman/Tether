@@ -37,39 +37,49 @@ public actor SessionRegistry {
             session.paneId = paneId
             paneToSession[paneId] = hook.sessionId
         }
-        session.state = Self.nextState(from: session.state, on: hook)
+        let next = Self.transition(from: session.state, attention: session.attention, on: hook)
+        session.state = next.state
+        session.attention = next.attention
         sessions[hook.sessionId] = session
         return session
     }
 
-    static func nextState(from current: SessionState, on hook: HookPayload) -> SessionState {
+    /// The state a hook leads to, and for `needsInput` why: a permission or
+    /// dialog must be answered in place, a question is answered by typing.
+    static func transition(from current: SessionState, attention: AttentionReason?,
+                           on hook: HookPayload) -> (state: SessionState, attention: AttentionReason?) {
+        func stay() -> (SessionState, AttentionReason?) { (current, attention) }
         switch hook.hookEventName {
         case .sessionStart:
-            return .idle
+            return (.idle, nil)
         case .userPromptSubmit:
-            return .working
+            return (.working, nil)
         case .permissionRequest:
-            return .needsInput
+            return (.needsInput, .permission)
         case .postToolUse:
             // A tool ran, so any permission prompt was answered and Claude is moving.
-            return current == .detached ? current : .working
+            return current == .detached ? stay() : (.working, nil)
         case .notification:
-            guard let type = hook.notificationType else { return current }
-            if HookPayload.needsInputNotifications.contains(type) { return .needsInput }
+            guard let type = hook.notificationType else { return stay() }
+            switch type {
+            case "permission_prompt": return (.needsInput, .permission)
+            case "agent_needs_input": return (.needsInput, .question)
+            case "elicitation_dialog", "elicitation_url_dialog": return (.needsInput, .dialog)
             // Stop does not fire on a user interrupt; idle_prompt is the recovery signal.
-            if type == "idle_prompt", current == .working { return .idle }
-            return current
+            case "idle_prompt" where current == .working: return (.idle, nil)
+            default: return stay()
+            }
         case .stop:
             // Heuristic: a turn that ends on a question is waiting on the user.
             if let text = hook.lastAssistantMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
                text.hasSuffix("?") {
-                return .needsInput
+                return (.needsInput, .question)
             }
-            return .done
+            return (.done, nil)
         case .stopFailure:
-            return .error
+            return (.error, nil)
         case .sessionEnd:
-            return .detached
+            return (.detached, nil)
         }
     }
 
@@ -78,6 +88,7 @@ public actor SessionRegistry {
     public func setState(_ state: SessionState, for sessionId: SessionID) -> Session? {
         guard var s = sessions[sessionId] else { return nil }
         s.state = state
+        s.attention = nil
         s.lastEventAt = now()
         sessions[sessionId] = s
         return s
@@ -98,6 +109,7 @@ public actor SessionRegistry {
     public func paneExited(_ paneId: PaneID) -> Session? {
         guard let id = paneToSession[paneId], var s = sessions[id] else { return nil }
         s.state = .detached
+        s.attention = nil
         s.lastEventAt = now()
         sessions[id] = s
         paneToSession[paneId] = nil

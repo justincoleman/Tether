@@ -418,6 +418,9 @@ doing most of the typing with you reviewing.
   stays in sync.
 
 ### Phase 4: Changes panel + highlight-to-ask (2–3 days)
+*Built; see `docs/CHANGES.md`. Deviations: line-level selection instead of text
+highlight (SwiftUI exposes no selection range), comments can be collected and
+sent together, and the send queue is in memory only, not persisted.*
 - `GitWatcher`, Changes panel, diff viewer, fetch timers (3.8).
 - Selection → comment → paste into session (3.9), with queueing (3.4 queue
   logic, Mac-local for now).

@@ -52,6 +52,14 @@ public enum SessionState: String, Codable, Hashable, Sendable {
     case detached
 }
 
+/// Why a session is in `needsInput`. A permission prompt or dialog must be
+/// answered in place; a question is answered by typing a message.
+public enum AttentionReason: String, Codable, Hashable, Sendable {
+    case permission
+    case question
+    case dialog
+}
+
 public struct ContextUsage: Codable, Hashable, Sendable {
     public var inputTokens: Int
     public var contextWindow: Int
@@ -72,10 +80,13 @@ public struct Session: Codable, Hashable, Sendable, Identifiable {
     public var startedAt: Date
     public var lastEventAt: Date
     public var usage: ContextUsage?
+    /// Set only while `state == .needsInput`.
+    public var attention: AttentionReason?
 
     public init(id: SessionID, worktreeId: WorktreeID? = nil, paneId: PaneID? = nil,
                 cwd: String, transcriptPath: String? = nil, state: SessionState = .idle,
-                startedAt: Date, lastEventAt: Date, usage: ContextUsage? = nil) {
+                startedAt: Date, lastEventAt: Date, usage: ContextUsage? = nil,
+                attention: AttentionReason? = nil) {
         self.id = id
         self.worktreeId = worktreeId
         self.paneId = paneId
@@ -85,5 +96,6 @@ public struct Session: Codable, Hashable, Sendable, Identifiable {
         self.startedAt = startedAt
         self.lastEventAt = lastEventAt
         self.usage = usage
+        self.attention = attention
     }
 }

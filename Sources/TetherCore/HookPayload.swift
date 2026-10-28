@@ -70,10 +70,4 @@ public struct HookPayload: Codable, Sendable, Hashable {
         self.lastAssistantMessage = lastAssistantMessage
         self.error = error
     }
-
-    /// Notification types that mean Claude is blocked on a human.
-    static let needsInputNotifications: Set<String> = [
-        "permission_prompt", "agent_needs_input",
-        "elicitation_dialog", "elicitation_url_dialog",
-    ]
 }

@@ -11,6 +11,7 @@ struct TerminalTabsView: View {
 
     var body: some View {
         let panes = model.panes(for: project.id)
+        let diffOpen = model.openDiffTarget?.projectId == project.id
         VStack(spacing: 0) {
             TabStrip(project: project, panes: panes)
             Divider()
@@ -21,7 +22,9 @@ struct TerminalTabsView: View {
                                            description: Text("Open a Claude session with the + button."))
                 }
                 ForEach(panes) { pane in
-                    let selected = pane.id == model.selectedPaneId
+                    // Hidden while a diff covers the terminal, so keystrokes and
+                    // rendering go to the diff instead.
+                    let selected = pane.id == model.selectedPaneId && !diffOpen
                     TerminalSurfaceView(context: pane.terminal)
                         .opacity(selected ? 1 : 0)
                         .allowsHitTesting(selected)
@@ -31,7 +34,13 @@ struct TerminalTabsView: View {
                         }
                 }
             }
+            .overlay {
+                if let target = model.openDiffTarget, target.projectId == project.id {
+                    DiffViewer(target: target)
+                }
+            }
             .overlay(alignment: .bottom) {
+                // Added after the diff so a permission prompt stays on top of it.
                 if let paneId = model.selectedPaneId,
                    let request = model.pendingPermissions.first(where: { $0.paneId == paneId }) {
                     PermissionPromptView(request: request)
@@ -55,6 +64,7 @@ private struct TabStrip: View {
                 HStack(spacing: 2) {
                     ForEach(panes) { pane in
                         TabButton(pane: pane, selected: pane.id == model.selectedPaneId) {
+                            model.closeDiff()
                             model.selectedPaneId = pane.id
                         } close: {
                             Task { await model.closePane(pane.id) }

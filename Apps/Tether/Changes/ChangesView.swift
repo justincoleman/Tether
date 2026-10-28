@@ -1,0 +1,242 @@
+import SwiftUI
+import TetherCore
+import TetherProtocol
+
+/// Right-hand panel: Chat and Changes behind one tab switcher.
+struct InspectorView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        let changeCount = model.selectedWorktreePath.flatMap { model.changes.snapshots[$0]?.files.count } ?? 0
+        VStack(spacing: 0) {
+            Picker("Panel", selection: $model.inspectorTab) {
+                Text("Chat").tag(InspectorTab.chat)
+                Text(changeCount > 0 ? "Changes (\(changeCount))" : "Changes").tag(InspectorTab.changes)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(8)
+            Divider()
+            switch model.inspectorTab {
+            case .chat: MirrorView(paneId: model.selectedPaneId)
+            case .changes: ChangesView()
+            }
+        }
+    }
+}
+
+struct ChangesView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let path = model.selectedWorktreePath
+        let snapshot = path.flatMap { model.changes.snapshots[$0] }
+        let error = path.flatMap { model.changes.errors[$0] }
+        Group {
+            if let snapshot, let path {
+                SnapshotView(snapshot: snapshot, path: path)
+            } else if let error {
+                ContentUnavailableView("Can't read changes", systemImage: "exclamationmark.triangle",
+                                       description: Text(error))
+            } else if path == nil {
+                ContentUnavailableView("No project selected", systemImage: "folder")
+            } else {
+                ProgressView().controlSize(.small).frame(maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+private struct SnapshotView: View {
+    @Environment(AppModel.self) private var model
+    let snapshot: ChangesSnapshot
+    let path: String
+    @State private var commitsExpanded = true
+
+    private var summary: String {
+        let base = snapshot.baseRef.map { "Against \($0)" } ?? "Uncommitted changes"
+        if snapshot.files.isEmpty { return snapshot.commits.isEmpty ? "\(base) · no changes" : base }
+        let n = snapshot.files.count
+        return "\(base) · \(n) file\(n == 1 ? "" : "s")"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            if snapshot.files.isEmpty && snapshot.commits.isEmpty {
+                ContentUnavailableView("No changes", systemImage: "checkmark.circle",
+                                       description: Text(snapshot.baseRef.map { "This branch matches \($0)." }
+                                                         ?? "The working tree is clean."))
+                    .frame(maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(snapshot.files) { file in
+                            FileRow(file: file, selected: model.openDiffTarget?.file.path == file.path
+                                    && model.openDiffTarget?.worktreePath == path)
+                        }
+                        if !snapshot.commits.isEmpty {
+                            commits
+                        }
+                    }
+                }
+            }
+            Divider()
+            footer
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.branch").foregroundStyle(.secondary)
+                Text(snapshot.branchLabel).font(.headline).lineLimit(1)
+                if snapshot.ahead > 0 { Text("↑\(snapshot.ahead)").font(.caption).foregroundStyle(.secondary) }
+                if snapshot.behind > 0 { Text("↓\(snapshot.behind)").font(.caption).foregroundStyle(.orange) }
+                Spacer()
+                if model.changes.refreshing.contains(path) { ProgressView().controlSize(.mini) }
+                Button { model.changes.refresh(path); model.changes.fetchNow(path, force: true) } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Refresh and fetch")
+            }
+            HStack(spacing: 6) {
+                Text(summary).foregroundStyle(.secondary)
+                Spacer()
+                if !snapshot.files.isEmpty {
+                    Text("+\(snapshot.additions)").foregroundStyle(.green)
+                    Text("−\(snapshot.deletions)").foregroundStyle(.red)
+                }
+            }
+            .font(.caption.monospacedDigit())
+        }
+        .padding(10)
+    }
+
+    private var commits: some View {
+        DisclosureGroup(isExpanded: $commitsExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(snapshot.commits) { commit in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(commit.subject).lineLimit(2)
+                        HStack(spacing: 6) {
+                            Text(commit.shortHash).font(.caption.monospaced())
+                            Text(RelativeTime.string(commit.date))
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            Text("Commits (\(snapshot.commits.count))").font(.subheadline.weight(.semibold))
+        }
+        .padding(10)
+    }
+
+    private var footer: some View {
+        HStack {
+            if let info = model.changes.fetchInfo[path] {
+                if let error = info.error {
+                    Label("Fetch failed", systemImage: "exclamationmark.triangle")
+                        .help(error)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Fetched \(RelativeTime.string(info.at))")
+                }
+            } else {
+                Text("Not fetched yet")
+            }
+            Spacer()
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .frame(height: 26)
+    }
+}
+
+private struct FileRow: View {
+    @Environment(AppModel.self) private var model
+    let file: ChangedFile
+    let selected: Bool
+
+    var body: some View {
+        Button { model.openDiff(file) } label: {
+            HStack(spacing: 8) {
+                KindBadge(kind: file.kind)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(file.fileName).lineLimit(1)
+                    if !file.directory.isEmpty {
+                        Text(file.directory)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    }
+                }
+                Spacer(minLength: 4)
+                if file.isBinary {
+                    Text("binary").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 4) {
+                        if let a = file.additions { Text("+\(a)").foregroundStyle(.green) }
+                        if let d = file.deletions { Text("−\(d)").foregroundStyle(.red) }
+                    }
+                    .font(.caption.monospacedDigit())
+                }
+                if file.hasUncommittedChanges {
+                    Circle().fill(.orange).frame(width: 6, height: 6).help("Has uncommitted changes")
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Color.accentColor.opacity(0.15) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct KindBadge: View {
+    let kind: FileChangeKind
+
+    private var color: Color {
+        switch kind {
+        case .added: .green
+        case .modified: .orange
+        case .deleted: .red
+        case .renamed, .copied: .blue
+        case .untracked: .gray
+        case .conflicted: .red
+        }
+    }
+
+    var body: some View {
+        Text(kind.letter)
+            .font(.caption2.monospaced().weight(.bold))
+            .foregroundStyle(color)
+            .frame(width: 16, height: 16)
+            .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+            .accessibilityLabel(kind.rawValue)
+    }
+}
+
+@MainActor
+enum RelativeTime {
+    private static let formatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
+    static func string(_ date: Date) -> String {
+        formatter.localizedString(for: date, relativeTo: Date())
+    }
+}

@@ -65,6 +65,12 @@ must answer state hooks fast. It does no I/O before responding.
 | Tab focused while done | idle |
 | Permission answered in Tether (allow or deny) | working |
 
+`Session.attention` records *why* a session is `needsInput`: `permission`
+(PermissionRequest, or `permission_prompt`), `question` (a Stop ending in `?`, or
+`agent_needs_input`), or `dialog` (`elicitation_*`). It is nil in every other
+state. A question is answered by typing; the other two must be answered in place,
+so Tether will not type queued messages into them (see CHANGES.md).
+
 The sidebar shows the most urgent state across a project's tabs:
 needsInput > error > working > done > idle.
 
