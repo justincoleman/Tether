@@ -3,7 +3,7 @@
 # Requires a signing team configured in Xcode (CODE_SIGN_STYLE=Automatic).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[ -d Apps/Tether.xcodeproj ] || ./scripts/bootstrap.sh
+make project
 
 DEVICE_ID="${TETHER_DEVICE_ID:-$(xcrun devicectl list devices --json-output /dev/stdout 2>/dev/null \
   | python3 -c 'import json,sys; d=json.load(sys.stdin)["result"]["devices"]; print(d[0]["identifier"] if d else "")')}"
