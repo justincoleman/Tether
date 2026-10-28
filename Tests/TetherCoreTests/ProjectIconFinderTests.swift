@@ -12,8 +12,10 @@ import Testing
             try content.write(toFile: path, atomically: true, encoding: .utf8)
         }
         try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
-        // macOS temp folders sit behind /var -> /private/var; the folder walk reports real paths.
-        return URL(fileURLWithPath: root).resolvingSymlinksInPath().path
+        // macOS temp folders sit behind /var -> /private/var and the folder walk reports the
+        // real path. (URL.resolvingSymlinksInPath drops the /private, so use realpath.)
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        return realpath(root, &buffer) != nil ? String(cString: buffer) : root
     }
 
     let iosSet = #"""
