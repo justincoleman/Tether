@@ -12,7 +12,8 @@ import Testing
             try content.write(toFile: path, atomically: true, encoding: .utf8)
         }
         try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
-        return root
+        // macOS temp folders sit behind /var -> /private/var; the folder walk reports real paths.
+        return URL(fileURLWithPath: root).resolvingSymlinksInPath().path
     }
 
     let iosSet = #"""
