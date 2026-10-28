@@ -24,12 +24,16 @@ public enum TranscriptParser {
     // MARK: Assistant
 
     static func assistantEvents(_ message: JSONValue, uuid: String, at: Date) -> [MirrorEvent] {
+        // Placeholders Claude Code writes itself, e.g. after an interrupt.
+        // They never appear in the terminal, so the mirror hides them too.
+        if message["model"]?.stringValue == "<synthetic>" { return [] }
         var events: [MirrorEvent] = []
         if case .array(let blocks)? = message["content"] {
             for (i, block) in blocks.enumerated() {
                 switch block["type"]?.stringValue {
                 case "text":
-                    if let text = block["text"]?.stringValue, !text.trimmed.isEmpty {
+                    if let text = block["text"]?.stringValue, !text.trimmed.isEmpty,
+                       text.trimmed != "No response requested." {
                         events.append(.assistantText(id: "\(uuid)#\(i)", text: text, at: at))
                     }
                 case "tool_use":

@@ -111,9 +111,7 @@ private struct TranscriptItemView: View {
                     .background(Color(red: 0.85, green: 0.47, blue: 0.34), in: RoundedRectangle(cornerRadius: 14))
             }
         case .assistant(_, let text, _):
-            Text(Self.markdown(text))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            MarkdownView(text)
         case .steps(_, let steps):
             StepsView(steps: steps)
         case .notice(_, let text, _):
@@ -124,10 +122,6 @@ private struct TranscriptItemView: View {
         }
     }
 
-    static func markdown(_ text: String) -> AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
-    }
 }
 
 private struct StepsView: View {

@@ -23,7 +23,7 @@ targets:
   Tether:
     type: application
     platform: macOS
-    sources: [Tether]
+    sources: [Tether, Shared]
     dependencies:
       - package: TetherPackage
         product: TetherCore
@@ -50,7 +50,7 @@ targets:
   TetherPhone:
     type: application
     platform: iOS
-    sources: [TetherPhone]
+    sources: [TetherPhone, Shared]
     dependencies:
       - package: TetherPackage
         product: TetherProtocol

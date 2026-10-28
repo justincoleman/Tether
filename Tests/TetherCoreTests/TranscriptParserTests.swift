@@ -142,3 +142,15 @@ enum Fixture {
         #expect(await feed.poll().count == 1)
     }
 }
+
+@Suite struct SyntheticMessageTests {
+    @Test func syntheticAssistantRecordsAreHidden() {
+        let line = #"{"type":"assistant","uuid":"s1","isSidechain":false,"timestamp":"2026-10-28T13:22:09.500Z","message":{"id":"x","role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"No response requested."}]}}"#
+        #expect(TranscriptParser.events(fromLine: line).isEmpty)
+    }
+
+    @Test func placeholderTextIsHiddenEvenWithARealModel() {
+        let line = #"{"type":"assistant","uuid":"s2","isSidechain":false,"timestamp":"2026-10-28T13:22:09.500Z","message":{"id":"x","role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"No response requested."}]}}"#
+        #expect(TranscriptParser.events(fromLine: line).isEmpty)
+    }
+}

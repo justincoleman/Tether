@@ -24,6 +24,11 @@ Skipped regardless of type:
 Claude Code writes **one record per content block**, all sharing
 `message.id`. Each record also carries `message.usage`.
 
+Records with `message.model == "<synthetic>"` are placeholders Claude Code
+writes itself (e.g. "No response requested." after an interrupt). They never
+appear in the terminal and are skipped. A text block that is exactly
+"No response requested." is skipped too, in case the marker changes.
+
 | Block | Becomes |
 | --- | --- |
 | `text` | assistant message |
@@ -46,6 +51,13 @@ transcript; Tether assumes 200k, or 1M once usage passes 200k.
 | Other text starting with `<` (`<local-command-stdout>`, caveats, reminders) | skipped |
 | `image` block | `[image]` appended to your message |
 | `tool_result` (`tool_use_id`, `content` string or list, `is_error`) | result on the matching step: first non-empty line, 300 chars |
+
+## Formatting
+
+Assistant text is split into blocks by `MarkdownBlocks` (headings, lists,
+tables, fenced code, quotes, rules) in `TetherProtocol`, and rendered by
+`Apps/Shared/MarkdownView.swift`, which both apps compile. Inline formatting
+inside a block uses Foundation's inline markdown.
 
 ## Display grouping
 
