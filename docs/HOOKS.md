@@ -39,7 +39,8 @@ pty:
 
 | Event | Path | Timeout | Notes |
 | --- | --- | --- | --- |
-| SessionStart, UserPromptSubmit, Stop, StopFailure, Notification, SessionEnd, PostToolUse | `/tether/hook` | 10 s | Answered immediately with an empty 200 |
+| UserPromptSubmit, Stop, StopFailure, Notification, SessionEnd, PostToolUse | `/tether/hook` | 10 s | Answered immediately with an empty 200 |
+| SessionStart | `/tether/hook` via `curl` | 5 s | **Command hook**, not http: Claude Code runs only command and MCP tool hooks on SessionStart and silently skips an http one. The command posts stdin with the same two headers, prints nothing (SessionStart stdout becomes Claude's context) and always exits 0. |
 | PermissionRequest | `/tether/permission` | 600 s | Held open until answered |
 
 HTTP hooks cannot be `async` (that flag is command-hook only), so the server

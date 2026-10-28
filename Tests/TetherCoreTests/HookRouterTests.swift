@@ -154,6 +154,21 @@ actor EventLog {
         #expect(handler["headers"]?[HookSettings.paneHeader]?.stringValue == "$TETHER_PANE_ID")
         #expect(handler["async"] == nil) // HTTP hooks do not support async
     }
+
+    /// SessionStart accepts only command hooks; an http one is silently never run.
+    @Test func sessionStartIsACurlCommand() throws {
+        let root = try JSONDecoder().decode(JSONValue.self, from: HookSettings.settingsJSON(port: 54321))
+        guard case .array(let groups)? = root["hooks"]?["SessionStart"],
+              case .array(let handlers)? = groups.first?["hooks"],
+              let handler = handlers.first else { Issue.record("bad shape"); return }
+        #expect(handler["type"]?.stringValue == "command")
+        let command = handler["command"]?.stringValue ?? ""
+        #expect(command.hasPrefix("curl -s -o /dev/null"))
+        #expect(command.contains(#"-H "X-Tether-Pane: $TETHER_PANE_ID""#))
+        #expect(command.contains(#"-H "X-Tether-Token: $TETHER_TOKEN""#))
+        #expect(command.contains("--data-binary @- http://127.0.0.1:54321/tether/hook"))
+        #expect(command.hasSuffix("|| true"))
+    }
 }
 
 @Suite struct PermissionSummaryTests {
