@@ -108,19 +108,12 @@ struct SessionView: View {
                     }
                 }
             }
+        }
+        // Its own row under the header, not a toolbar item: iOS groups trailing
+        // items into one glass capsule, which squeezed this against the menu.
+        .safeAreaInset(edge: .top, spacing: 0) {
             if transcript?.usage != nil || session?.status?.costUSD != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    VStack(alignment: .trailing, spacing: 0) {
-                        if let usage = transcript?.usage {
-                            Text("\(usage.inputTokens / 1000)k of \(usage.contextWindow / 1000)k")
-                        }
-                        if let cost = session?.status?.costUSD {
-                            Text(cost.formatted(.currency(code: "USD")))
-                        }
-                    }
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                }
+                PhoneContextMeter(usage: transcript?.usage, costUSD: session?.status?.costUSD)
             }
         }
         .task(id: sessionId) { connection.subscribe(sessionId) }
@@ -242,6 +235,54 @@ private struct ModelPreset: Identifiable {
     static func matching(_ modelId: String?) -> String? {
         guard let modelId else { return nil }
         return ["opus", "sonnet", "haiku"].first { modelId.contains($0) }
+    }
+}
+
+/// "148k of 1M context · $1.24" with a ring, like the Mac's ContextMeter.
+/// Either half may be missing until the transcript or status line reports it.
+private struct PhoneContextMeter: View {
+    let usage: ContextUsage?
+    let costUSD: Double?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let usage {
+                let fraction = Self.fraction(usage)
+                ZStack {
+                    Circle().stroke(.quaternary, lineWidth: 2.5)
+                    Circle()
+                        .trim(from: 0, to: fraction)
+                        .stroke(fraction > 0.85 ? Color.red : Color(red: 0.85, green: 0.47, blue: 0.34),
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 13, height: 13)
+                .accessibilityHidden(true)
+                Text("\(Self.short(usage.inputTokens)) of \(Self.short(usage.contextWindow))")
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel("\(Int(fraction * 100)) percent of context used")
+                Text("context").foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+            if let costUSD {
+                if usage != nil { Text("·").foregroundStyle(.secondary).accessibilityHidden(true) }
+                Text(costUSD.formatted(.currency(code: "USD")))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Cost \(costUSD.formatted(.currency(code: "USD")))")
+            }
+        }
+        .font(.footnote.monospacedDigit())
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(.bar)
+        .accessibilityElement(children: .combine)
+    }
+
+    static func fraction(_ usage: ContextUsage) -> Double {
+        min(1, Double(usage.inputTokens) / Double(max(usage.contextWindow, 1)))
+    }
+
+    static func short(_ n: Int) -> String {
+        n >= 1_000_000 ? "\(n / 1_000_000)M" : "\(n / 1000)k"
     }
 }
 
