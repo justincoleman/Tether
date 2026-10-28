@@ -89,6 +89,7 @@ struct RootView: View {
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
+    @Environment(\.openWindow) private var openWindow
     @Binding var showSidebar: Bool
 
     var body: some View {
@@ -141,7 +142,19 @@ struct SidebarView: View {
                     .foregroundStyle(theme.secondaryText)
                     .padding(12)
             }
+
+            if model.releases.showToast, let latest = model.releases.unseen.first {
+                WhatsNewToast(version: latest.version) {
+                    openWindow(id: "whats-new")
+                } dismiss: {
+                    model.releases.markSeen()
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .animation(.snappy, value: model.releases.showToast)
     }
 }
 
@@ -151,6 +164,7 @@ private struct ProjectRow: View {
     let project: Project
     let selected: Bool
     @State private var hovering = false
+    @AppStorage("useProjectIcons") private var useProjectIcons = true
     @State private var renaming = false
     @State private var newName = ""
     /// Inline rename, started by double-clicking the name.
@@ -169,7 +183,8 @@ private struct ProjectRow: View {
     private var projectLine: some View {
         let state = model.sessionStates[project.id] ?? .idle
         return HStack(spacing: 10) {
-            ProjectAvatar(name: project.name, state: state)
+            ProjectAvatar(name: project.name, state: state,
+                          icon: useProjectIcons ? model.projectIcons[project.id] : nil)
             VStack(alignment: .leading, spacing: 1) {
                 if editing {
                     TextField("Name", text: $newName)
@@ -349,13 +364,13 @@ struct ProjectAvatar: View {
     @Environment(\.theme) private var theme
     let name: String
     let state: SessionState
+    /// The project's own app icon, when one was found in its folder.
+    var icon: NSImage?
 
     var body: some View {
-        Text(name.first.map { String($0).uppercased() } ?? "?")
-            .font(.system(size: 14, weight: .bold, design: .rounded))
-            .foregroundStyle(theme.avatarText)
+        tile
             .frame(width: 30, height: 30)
-            .background(theme.avatar(for: name), in: RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay {
                 if let ring = state.ringColor(theme) {
                     RoundedRectangle(cornerRadius: 10)
@@ -364,5 +379,21 @@ struct ProjectAvatar: View {
                 }
             }
             .padding(3)
+    }
+
+    @ViewBuilder
+    private var tile: some View {
+        if let icon {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fill)
+        } else {
+            Text(name.first.map { String($0).uppercased() } ?? "?")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(theme.avatarText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(theme.avatar(for: name))
+        }
     }
 }

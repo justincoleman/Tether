@@ -311,6 +311,11 @@ Session { id (claude session_id), worktreeId, paneId, state, startedAt, lastEven
   under a Tether-managed directory, new tab, new session. Worktrees nest under
   their project in the sidebar. Finishing: Tether offers "remove worktree"
   once the branch is merged (detected by the git watcher).
+- Icons (built, Mac only): `ProjectIconFinder` checks `.tether/icon.png`, then the
+  largest default-appearance image of an `AppIcon.appiconset` (skipping build and
+  dependency folders), then favicon/logo paths; none means the letter tile. Rescanned
+  on launch, project add and app activation (30 s throttle). The phone still shows
+  letter tiles: sending icons would need a protocol message.
 - Reorder projects by drag (Mac) or long-press drag (phone); order is stored
   by the Mac and broadcast in the next snapshot.
 

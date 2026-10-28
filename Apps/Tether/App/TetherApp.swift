@@ -8,6 +8,7 @@ struct TetherApp: App {
     @State private var model = AppModel()
     @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
     @AppStorage("showSidebar") private var showSidebar = true
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         let theme = Theme.current(appearance)
@@ -24,7 +25,18 @@ struct TetherApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowBackgroundDragBehavior(.enabled)
+        Window("What's New", id: "whats-new") {
+            WhatsNewView()
+                .environment(model)
+                .environment(\.theme, theme)
+                .tint(theme.accent)
+        }
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 580, height: 680)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("What's New in Tether") { openWindow(id: "whats-new") }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Add Project…") { model.addProjectRequested = true }
                     .keyboardShortcut("n", modifiers: [.command, .shift])

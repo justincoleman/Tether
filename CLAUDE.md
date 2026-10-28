@@ -36,6 +36,15 @@ structural. Work proceeds in the numbered phases there.
   Settings → Appearance says so. Never hard-code `Color.accentColor`, `.blue`,
   `textBackgroundColor` etc. for chrome.
 
+## Releases and What's New
+- Bumping `MARKETING_VERSION` in `Apps/project.yml` requires a new entry at the
+  top of `Apps/Tether/Resources/ReleaseNotes.json` (`ReleaseNotesTests` fails
+  otherwise). The sidebar toast and the What's New window read that file; users
+  see every release since the one they last opened.
+- Project icons come from `ProjectIconFinder` (TetherCore, tested): `.tether/icon.png`,
+  then an Xcode `AppIcon.appiconset`, then web icon locations. Never write into a
+  user's project folder to create one.
+
 ## Hooks
 - `docs/HOOKS.md` is canonical for the hook wiring, the state machine, and the
   permission response format. Update it with any change to

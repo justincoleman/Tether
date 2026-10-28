@@ -18,6 +18,7 @@ struct SettingsView: View {
 /// Whether the window follows the Ghostty theme or the system appearance.
 struct AppearanceSettings: View {
     @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
+    @AppStorage("useProjectIcons") private var useProjectIcons = true
 
     var body: some View {
         Form {
@@ -29,6 +30,10 @@ struct AppearanceSettings: View {
             .pickerStyle(.radioGroup)
             Text("Match terminal theme colors the sidebar, tabs and panels from your Ghostty theme. "
                  + "The terminal itself always uses your Ghostty config.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Show each project's app icon in the sidebar", isOn: $useProjectIcons)
+            Text("Looks for .tether/icon.png, then an Xcode AppIcon, then a favicon or logo in the project folder.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if !TerminalHost.configWarnings.isEmpty {

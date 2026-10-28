@@ -1,0 +1,56 @@
+[
+  {
+    "version": "0.2.0",
+    "date": "2026-10-28",
+    "summary": "Tether 0.2.0 puts your Claude sessions on your iPhone and gives the Mac app its own look.",
+    "highlights": [
+      {
+        "title": "Your iPhone, connected.",
+        "body": "Pair the iPhone app with a QR code in Settings > iPhone. It connects over Tailscale, lists every project and thread, mirrors the conversation live, and lets you message Claude and answer permission prompts."
+      },
+      {
+        "title": "Notifications and Live Activities.",
+        "body": "Lock-screen alerts when Claude needs permission, asks a question or finishes, with Allow, Deny and Reply buttons that work without opening the app. A Live Activity follows each running thread. Add your Apple push key in Settings > iPhone > Notifications."
+      },
+      {
+        "title": "Start work from your phone.",
+        "body": "Start a task in any project, optionally on a new branch with its own worktree, in the permission mode you pick. Worktrees nest under their project in the sidebar and can be removed once merged."
+      },
+      {
+        "title": "One look.",
+        "body": "The whole window follows your Ghostty theme, with letter tiles, pill tabs and a rounded terminal card. Settings > Appearance switches back to the system look."
+      },
+      {
+        "title": "Project icons.",
+        "body": "If a project has an app icon, Tether shows it in the sidebar. It looks for .tether/icon.png, then an Xcode AppIcon, then a favicon or logo."
+      },
+      {
+        "title": "Move faster.",
+        "body": "Command-1 to 9 switch projects, Command-T opens a Claude tab, Command-W closes one, and double-clicking a project name renames it."
+      }
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "date": "2026-10-20",
+    "summary": "Tether 0.1.0 is a terminal workspace with a Claude session ready in every project.",
+    "highlights": [
+      {
+        "title": "A Claude session in every project.",
+        "body": "Each project opens with Claude Code running, built on libghostty so your Ghostty theme and font carry over. Add shells and SSH tabs next to it."
+      },
+      {
+        "title": "Know what Claude is doing.",
+        "body": "The sidebar shows sparkles while Claude works, a blue dot when it needs you and a green check when it's done."
+      },
+      {
+        "title": "Chat view.",
+        "body": "Read any Claude tab as a conversation, with tool steps collapsed, and send messages without touching the terminal."
+      },
+      {
+        "title": "Changes against origin.",
+        "body": "See what changed since the branch left main, open a diff, select lines and tell Claude what to change."
+      }
+    ]
+  }
+]

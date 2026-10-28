@@ -11,6 +11,10 @@ import TetherProtocol
 final class AppModel {
     private(set) var projects: [Project] = []
     private(set) var remoteHosts: [RemoteHost] = []
+    /// Icons found in project folders (see `ProjectIconFinder`), by project.
+    private(set) var projectIcons: [ProjectID: NSImage] = [:]
+    @ObservationIgnored private var iconStamps: [ProjectID: String] = [:]
+    @ObservationIgnored private var lastIconScan = Date.distantPast
     /// Every worktree, primary ones included. Branch worktrees nest under
     /// their project in the sidebar.
     private(set) var worktrees: [Worktree] = []
@@ -46,6 +50,7 @@ final class AppModel {
     var inspectorTab: InspectorTab = .chat
 
     let mirror = MirrorStore()
+    let releases = ReleaseNotesStore()
     let changes = ChangesStore()
     let companion = CompanionHub()
 
@@ -88,7 +93,10 @@ final class AppModel {
         for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
                      Notification.Name.NSProcessInfoPowerStateDidChange] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updatePolling() }
+                MainActor.assumeIsolated {
+                    self?.updatePolling()
+                    if name == NSApplication.didBecomeActiveNotification { self?.refreshProjectIconsIfStale() }
+                }
             }
         }
         mirror.onEvents = { [weak self] sessionId, events in
@@ -115,6 +123,7 @@ final class AppModel {
             }
         }
         changes.sync(watched)
+        refreshProjectIcons()
         updateChangesFocus()
         companion.setNeedsSnapshot()
     }
@@ -284,6 +293,34 @@ final class AppModel {
     func openSSHPane(project: Project, host: RemoteHost) async {
         let d = PaneDescriptor(projectId: project.id, kind: .ssh(hostId: host.id), title: host.name)
         await open(d)
+    }
+
+    // MARK: Project icons
+
+    /// Rescans when the app comes to the front, at most every 30 seconds, so
+    /// an icon Claude just added shows up without a relaunch.
+    func refreshProjectIconsIfStale() {
+        if Date().timeIntervalSince(lastIconScan) > 30 { refreshProjectIcons() }
+    }
+
+    func refreshProjectIcons() {
+        lastIconScan = Date()
+        let jobs = projects.map { (id: $0.id, path: $0.path, stamp: iconStamps[$0.id]) }
+        let live = Set(jobs.map(\.id))
+        for id in projectIcons.keys where !live.contains(id) {
+            projectIcons[id] = nil
+            iconStamps[id] = nil
+        }
+        Task {
+            for job in jobs {
+                let result = await Task.detached(priority: .utility) {
+                    ProjectIconLoader.load(projectPath: job.path, knownStamp: job.stamp)
+                }.value
+                guard !result.unchanged else { continue }
+                iconStamps[job.id] = result.stamp
+                projectIcons[job.id] = result.png.flatMap { NSImage(data: $0) }
+            }
+        }
     }
 
     // MARK: Energy
