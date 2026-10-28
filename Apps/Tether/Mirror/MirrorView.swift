@@ -18,7 +18,9 @@ struct MirrorView: View {
                 Text("Chat").font(.headline)
                 StatusBadge(state: state)
                 Spacer()
-                if let usage = transcript?.usage { ContextMeter(usage: usage) }
+                if let usage = transcript?.usage {
+                    ContextMeter(usage: usage.reported(window: paneId.flatMap { model.paneStatus[$0]?.contextWindow }))
+                }
             }
             .padding(.horizontal, 12)
             .frame(height: 36)

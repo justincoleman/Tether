@@ -75,6 +75,7 @@ prints nothing.
 | `session_id` | required, else ignored |
 | `model.id`, `model.display_name` | `SessionStatus.modelId`, `modelName` |
 | `cost.total_cost_usd` | `SessionStatus.costUSD` |
+| `context_window.context_window_size`, else 1M when `model.id` ends in `[1m]` | `SessionStatus.contextWindow`, which overrides the transcript's guessed window in both context meters |
 | `rate_limits.five_hour` / `seven_day` `.used_percentage`, `.resets_at` (epoch seconds; ISO 8601 also accepted) | `UsageLimits` (absent for API-key sessions) |
 
 The router emits `.status(paneId:)` without touching `SessionRegistry`: the

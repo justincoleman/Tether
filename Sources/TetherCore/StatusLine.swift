@@ -22,12 +22,21 @@ public struct StatusLineReport: Sendable, Hashable {
               let sessionId = root["session_id"]?.stringValue, !sessionId.isEmpty
         else { return nil }
         self.sessionId = sessionId
-        status = SessionStatus(modelId: root["model"]?["id"]?.stringValue,
+        let modelId = root["model"]?["id"]?.stringValue
+        status = SessionStatus(modelId: modelId,
                                modelName: root["model"]?["display_name"]?.stringValue,
-                               costUSD: Self.number(root["cost"]?["total_cost_usd"]))
+                               costUSD: Self.number(root["cost"]?["total_cost_usd"]),
+                               contextWindow: Self.contextWindow(root, modelId: modelId))
         let fiveHour = Self.limit(root["rate_limits"]?["five_hour"])
         let sevenDay = Self.limit(root["rate_limits"]?["seven_day"])
         limits = fiveHour == nil && sevenDay == nil ? nil : UsageLimits(fiveHour: fiveHour, sevenDay: sevenDay)
+    }
+
+    /// `context_window.context_window_size`, else 1M for a `[1m]` model id.
+    static func contextWindow(_ root: JSONValue, modelId: String?) -> Int? {
+        if let size = number(root["context_window"]?["context_window_size"]), size > 0 { return Int(size) }
+        if let id = modelId?.lowercased(), id.hasSuffix("[1m]") { return ContextWindow.large }
+        return nil
     }
 
     static func number(_ value: JSONValue?) -> Double? {

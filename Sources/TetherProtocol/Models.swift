@@ -68,6 +68,12 @@ public struct ContextUsage: Codable, Hashable, Sendable {
         self.inputTokens = inputTokens
         self.contextWindow = contextWindow
     }
+
+    /// This usage measured against the window the status line reported, if any.
+    public func reported(window: Int?) -> ContextUsage {
+        guard let window, window > 0 else { return self }
+        return ContextUsage(inputTokens: inputTokens, contextWindow: window)
+    }
 }
 
 /// What Claude Code's status line reports about a session that hooks don't.
@@ -78,11 +84,16 @@ public struct SessionStatus: Codable, Hashable, Sendable {
     public var modelName: String?
     /// Estimated cost of the session so far, in US dollars.
     public var costUSD: Double?
+    /// The context window Claude Code reports, e.g. 1_000_000. The transcript
+    /// can't tell a 1M session from a 200k one, so this wins when present.
+    public var contextWindow: Int?
 
-    public init(modelId: String? = nil, modelName: String? = nil, costUSD: Double? = nil) {
+    public init(modelId: String? = nil, modelName: String? = nil, costUSD: Double? = nil,
+                contextWindow: Int? = nil) {
         self.modelId = modelId
         self.modelName = modelName
         self.costUSD = costUSD
+        self.contextWindow = contextWindow
     }
 }
 

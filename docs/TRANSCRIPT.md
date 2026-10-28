@@ -45,7 +45,9 @@ transcript: `message.model` is the API id (`claude-opus-5-5`) with no `[1m]`
 marker. `TranscriptFeed` reads `model` from `~/.claude/settings.json` (where
 `/model` saves the choice) whenever a batch has usage: a value ending in `[1m]`
 means 1M. Otherwise Tether assumes 200k, or 1M once usage passes 200k. Project
-settings, `--model` and `ANTHROPIC_MODEL` are not consulted.
+settings, `--model` and `ANTHROPIC_MODEL` are not consulted. The meters prefer
+the status line's `context_window_size` (`SessionStatus.contextWindow`, see
+docs/HOOKS.md) over this guess whenever it has reported.
 
 ### user
 
