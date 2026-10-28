@@ -22,6 +22,7 @@ struct AppearanceSettings: View {
     @Environment(AppModel.self) private var model
     @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
     @AppStorage("useProjectIcons") private var useProjectIcons = true
+    @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
 
     var body: some View {
         Form {
@@ -38,6 +39,10 @@ struct AppearanceSettings: View {
             Toggle("Show each project's app icon in the sidebar and on the iPhone", isOn: $useProjectIcons)
                 .onChange(of: useProjectIcons) { model.companion.sendProjectIcons() }
             Text("Looks for .tether/icon.png, then an Xcode AppIcon, then a favicon or logo in the project folder.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Show Tether in the menu bar", isOn: $showMenuBarExtra)
+            Text("Lists every Claude tab and what it's doing, with a count of the ones waiting on you.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if !TerminalHost.configWarnings.isEmpty {
