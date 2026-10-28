@@ -58,7 +58,8 @@ public actor SessionRegistry {
             return (.needsInput, .permission)
         case .postToolUse:
             // A tool ran, so any permission prompt was answered and Claude is moving.
-            return current == .detached ? stay() : (.working, nil)
+            if current == .detached { return stay() }
+            return (.working, nil)
         case .notification:
             guard let type = hook.notificationType else { return stay() }
             switch type {

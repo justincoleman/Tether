@@ -18,14 +18,14 @@ public enum GitError: Error, Sendable, Equatable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .notARepository:
-            "Not a git repository"
+            return "Not a git repository"
         case .failed(let command, let status, let stderr):
             let line = stderr.split(whereSeparator: \.isNewline).first.map(String.init) ?? "exit \(status)"
             return "git \(command): \(line)"
         case .timedOut(let command):
-            "git \(command) timed out"
+            return "git \(command) timed out"
         case .launchFailed(let reason):
-            "Could not run git: \(reason)"
+            return "Could not run git: \(reason)"
         }
     }
 }
