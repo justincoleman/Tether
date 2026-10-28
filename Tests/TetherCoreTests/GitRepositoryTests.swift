@@ -230,6 +230,32 @@ private struct TempGitRepo {
         }
     }
 
+    @Test func removeRefusesDirtyThenForces() async throws {
+        let repo = try await TempGitRepo.make()
+        let creator = WorktreeCreator(root: repo.root.appendingPathComponent("wt"), runner: repo.runner)
+        let path = try await creator.create(repoPath: repo.work, branch: "scratch", baseBranch: "main")
+        try Data("dirty\n".utf8).write(to: URL(fileURLWithPath: path + "/new.txt"))
+        await #expect(throws: WorktreeCreator.Failure.dirty) {
+            try await creator.remove(repoPath: repo.work, worktreePath: path, branch: "scratch", force: false)
+        }
+        let removal = try await creator.remove(repoPath: repo.work, worktreePath: path, branch: "scratch", force: true)
+        #expect(removal.branchDeleted) // no commits, so it counts as merged
+        #expect(!FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func removeKeepsUnmergedBranch() async throws {
+        let repo = try await TempGitRepo.make()
+        let creator = WorktreeCreator(root: repo.root.appendingPathComponent("wt"), runner: repo.runner)
+        let path = try await creator.create(repoPath: repo.work, branch: "work", baseBranch: "main")
+        try Data("x\n".utf8).write(to: URL(fileURLWithPath: path + "/x.txt"))
+        try await repo.git("add", "-A", in: path)
+        try await repo.git("commit", "-q", "-m", "unmerged", in: path)
+        let removal = try await creator.remove(repoPath: repo.work, worktreePath: path, branch: "work", force: false)
+        #expect(!removal.branchDeleted)
+        let branches = try await repo.git("branch", "--list", "work")
+        #expect(branches.contains("work"))
+    }
+
     @Test func branchNameRules() {
         for ok in ["fix-login", "feature/login", "v1.2", "justin/ui_tweaks"] {
             #expect(WorktreeCreator.isValidBranchName(ok), "\(ok)")

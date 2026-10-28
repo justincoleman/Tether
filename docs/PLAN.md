@@ -466,8 +466,11 @@ sent together, and the send queue is in memory only, not persisted.*
   Agent on a Branch" on both devices via `WorktreeCreator`, project reorder by
   drag on the Mac sidebar and in a phone sheet. A new tab gets its task as
   `claude "<prompt>"` rather than typed in, so it can't race the TUI's start.
-  Worktrees don't yet nest in the sidebar; their tab is titled with the
-  branch, and removal after merge is still to do.
+  Branch worktrees nest under their project in the Mac sidebar (branch,
+  tab status, "Merged · Remove" once the branch has nothing the base lacks).
+  Removing closes the tabs, runs `git worktree remove` (refusing a dirty
+  worktree unless confirmed) and `git branch -d`, keeping an unmerged branch.
+  Every worktree is watched for the Changes panel, not just the main folder.
   6b: APNs and Live Activities. Needs a paid developer account, an APNs
   `.p8` key and the Push capability on the phone's App ID.
 

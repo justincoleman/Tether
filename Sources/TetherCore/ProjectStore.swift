@@ -94,6 +94,12 @@ public actor ProjectStore {
         state.worktrees.first { $0.id == id }
     }
 
+    public func removeWorktree(_ id: WorktreeID) throws {
+        state.worktrees.removeAll { $0.id == id && !$0.isPrimary }
+        state.panes.removeAll { if case .claude(let wt, _) = $0.kind { return wt == id } else { return false } }
+        try save()
+    }
+
     @discardableResult
     public func addWorktree(projectId: ProjectID, path: String, branch: String) throws -> Worktree {
         let worktree = Worktree(projectId: projectId, path: path, branch: branch, isPrimary: false)

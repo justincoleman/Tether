@@ -11,12 +11,14 @@ public struct WorktreeCreator: Sendable {
     public enum Failure: Error, Equatable, CustomStringConvertible {
         case invalidBranch(String)
         case branchExists(String)
+        case dirty
         case git(String)
 
         public var description: String {
             switch self {
             case .invalidBranch(let b): return "“\(b)” isn't a valid branch name."
             case .branchExists(let b): return "A branch named “\(b)” already exists."
+            case .dirty: return "The worktree has uncommitted changes."
             case .git(let message): return message
             }
         }
@@ -57,6 +59,34 @@ public struct WorktreeCreator: Sendable {
             throw Failure.git(error.description)
         }
         return path
+    }
+
+    public struct Removal: Equatable, Sendable {
+        /// False when git refused `branch -d` because the branch has unmerged
+        /// commits; the branch is kept so no work is lost.
+        public var branchDeleted: Bool
+    }
+
+    /// Removes a worktree Tether created and, if fully merged, its branch.
+    /// Without `force`, a worktree with uncommitted changes is refused with
+    /// `.dirty` so nothing is lost by accident.
+    public func remove(repoPath: String, worktreePath: String, branch: String, force: Bool) async throws -> Removal {
+        var args = ["worktree", "remove"]
+        if force { args.append("--force") }
+        args.append(worktreePath)
+        do {
+            _ = try await runner.run(args, in: repoPath, timeout: 120)
+        } catch let error as GitError {
+            if case .failed(_, _, let stderr) = error,
+               stderr.contains("modified or untracked files") || stderr.contains("use --force") {
+                throw Failure.dirty
+            }
+            // Already gone from disk: prune the stale registration and carry on.
+            guard !FileManager.default.fileExists(atPath: worktreePath) else { throw Failure.git(error.description) }
+            _ = try? await runner.run(["worktree", "prune"], in: repoPath)
+        }
+        let deleted = (try? await runner.run(["branch", "-d", branch], in: repoPath)) != nil
+        return Removal(branchDeleted: deleted)
     }
 
     func startPoint(repoPath: String, baseBranch: String) async -> String {

@@ -1,4 +1,5 @@
 import SwiftUI
+import TetherCore
 import UniformTypeIdentifiers
 import TetherProtocol
 
@@ -144,8 +145,17 @@ private struct ProjectRow: View {
     @State private var newName = ""
 
     var body: some View {
+        VStack(spacing: 2) {
+            projectLine
+            ForEach(model.branchWorktrees(for: project.id)) { worktree in
+                WorktreeRow(worktree: worktree)
+            }
+        }
+    }
+
+    private var projectLine: some View {
         let state = model.sessionStates[project.id] ?? .idle
-        HStack(spacing: 10) {
+        return HStack(spacing: 10) {
             ProjectAvatar(name: project.name, state: state)
             VStack(alignment: .leading, spacing: 1) {
                 Text(project.name)
@@ -197,6 +207,91 @@ private struct ProjectRow: View {
     private var rowFill: Color {
         if selected { return theme.elevated }
         return hovering ? theme.hover : .clear
+    }
+}
+
+/// A branch worktree under its project: its branch, its tab's status, and
+/// a way to remove it once the work is merged.
+private struct WorktreeRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    let worktree: Worktree
+    @State private var hovering = false
+    @State private var confirming = false
+    @State private var dirty = false
+    @State private var note: String?
+
+    var body: some View {
+        let panes = model.panes(onWorktree: worktree.id)
+        let state = panes.map { model.paneStates[$0.id] ?? .idle }.max { $0.urgency < $1.urgency } ?? .idle
+        let selected = panes.contains { $0.id == model.selectedPaneId }
+        let merged = model.isMerged(worktree)
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.caption)
+                .foregroundStyle(theme.secondaryText)
+            Text(worktree.branch)
+                .font(.callout)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if merged {
+                Button("Merged · Remove") { confirming = true }
+                    .buttonStyle(.plain)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(theme.green)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(theme.green.opacity(0.15), in: Capsule())
+                    .help("This branch has nothing the base branch doesn't. Remove the worktree and branch.")
+            } else if panes.isEmpty {
+                Text("no tab").font(.caption2).foregroundStyle(theme.secondaryText)
+            }
+            Spacer(minLength: 4)
+            StatusBadge(state: state).scaleEffect(0.8)
+        }
+        .padding(.leading, 38)
+        .padding(.trailing, 8)
+        .padding(.vertical, 4)
+        .background(selected ? theme.elevated : hovering ? theme.hover : .clear, in: RoundedRectangle(cornerRadius: 7))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if panes.isEmpty {
+                // Reopen a Claude tab on the worktree.
+                Task { await model.startSession(worktree: worktree) }
+            } else {
+                model.selectWorktree(worktree)
+            }
+        }
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button("Remove Worktree…", role: .destructive) { confirming = true }
+        }
+        .confirmationDialog("Remove the worktree for “\(worktree.branch)”?", isPresented: $confirming) {
+            Button("Remove", role: .destructive) { remove(force: false) }
+        } message: {
+            Text("Closes its tabs and deletes the folder. The branch is deleted too if it's merged; otherwise it's kept.")
+        }
+        .alert("Uncommitted changes", isPresented: $dirty) {
+            Button("Cancel", role: .cancel) {}
+            Button("Remove Anyway", role: .destructive) { remove(force: true) }
+        } message: {
+            Text("“\(worktree.branch)” has changes that aren't committed. Removing it deletes them.")
+        }
+        .alert(note ?? "", isPresented: Binding(get: { note != nil }, set: { if !$0 { note = nil } })) {
+            Button("OK") {}
+        }
+    }
+
+    private func remove(force: Bool) {
+        Task {
+            do {
+                note = try await model.removeWorktree(worktree.id, force: force)
+            } catch WorktreeCreator.Failure.dirty {
+                dirty = true
+            } catch {
+                note = "\(error)"
+            }
+        }
     }
 }
 

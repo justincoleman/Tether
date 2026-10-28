@@ -11,6 +11,9 @@ import TetherProtocol
 final class AppModel {
     private(set) var projects: [Project] = []
     private(set) var remoteHosts: [RemoteHost] = []
+    /// Every worktree, primary ones included. Branch worktrees nest under
+    /// their project in the sidebar.
+    private(set) var worktrees: [Worktree] = []
     /// Most urgent state across a project's panes, for the sidebar.
     private(set) var sessionStates: [ProjectID: SessionState] = [:]
     /// Per-pane state, for tab badges.
@@ -94,8 +97,17 @@ final class AppModel {
     func reload() async {
         projects = await store.orderedProjects()
         remoteHosts = await store.state.remoteHosts
+        worktrees = await store.state.worktrees
         if selectedProjectId == nil { selectedProjectId = projects.first?.id }
-        changes.sync(Dictionary(projects.map { ($0.path, $0.baseBranch) }, uniquingKeysWith: { first, _ in first }))
+        // Branch worktrees too, or their tabs' Changes panels never load.
+        var watched: [String: String] = [:]
+        for project in projects { watched[project.path] = project.baseBranch }
+        for wt in worktrees where !wt.isPrimary {
+            if let project = projects.first(where: { $0.id == wt.projectId }) {
+                watched[wt.path] = watched[wt.path] ?? project.baseBranch
+            }
+        }
+        changes.sync(watched)
         updateChangesFocus()
         companion.setNeedsSnapshot()
     }
@@ -175,6 +187,7 @@ final class AppModel {
                 let path = try await WorktreeCreator().create(
                     repoPath: project.path, branch: branchName, baseBranch: project.baseBranch)
                 worktree = try await store.addWorktree(projectId: project.id, path: path, branch: branchName)
+                await reload()
             } catch let failure as WorktreeCreator.Failure {
                 throw StartError(description: failure.description)
             }
@@ -193,6 +206,57 @@ final class AppModel {
             selectedPaneId = d.id
         }
         return d.id
+    }
+
+    // MARK: Worktrees
+
+    func branchWorktrees(for projectId: ProjectID) -> [Worktree] {
+        worktrees.filter { $0.projectId == projectId && !$0.isPrimary }
+    }
+
+    func panes(onWorktree id: WorktreeID) -> [TerminalPane] {
+        paneOrder.compactMap { panes[$0] }.filter {
+            if case .claude(let wt, _) = $0.descriptor.kind { return wt == id }
+            return false
+        }
+    }
+
+    /// Nothing left on the branch that the base doesn't have: no commits
+    /// since the merge base and no uncommitted files.
+    func isMerged(_ worktree: Worktree) -> Bool {
+        guard let snapshot = changes.snapshots[worktree.path], snapshot.baseRef != nil else { return false }
+        return snapshot.files.isEmpty && snapshot.commits.isEmpty
+    }
+
+    /// Closes the worktree's tabs, removes the worktree, and deletes the
+    /// branch if it's merged. Returns a note for the user when the branch
+    /// was kept. Throws `.dirty` without `force` if there are uncommitted changes.
+    @discardableResult
+    func removeWorktree(_ id: WorktreeID, force: Bool) async throws -> String? {
+        guard let wt = worktrees.first(where: { $0.id == id }), !wt.isPrimary,
+              let project = projects.first(where: { $0.id == wt.projectId }) else { return nil }
+        let removal = try await WorktreeCreator().remove(repoPath: project.path, worktreePath: wt.path,
+                                                         branch: wt.branch, force: force)
+        for pane in panes(onWorktree: id) { tearDown(pane.id) }
+        try? await store.removeWorktree(id)
+        await reload()
+        return removal.branchDeleted ? nil
+            : "The branch “\(wt.branch)” has commits that aren't merged, so it was kept."
+    }
+
+    /// A fresh Claude tab on an existing worktree whose tabs were closed.
+    func startSession(worktree: Worktree) async {
+        let d = PaneDescriptor(projectId: worktree.projectId,
+                               kind: .claude(worktreeId: worktree.id, resumeSessionId: nil),
+                               title: worktree.branch)
+        await open(d)
+        selectedProjectId = worktree.projectId
+        selectedPaneId = d.id
+    }
+
+    func selectWorktree(_ worktree: Worktree) {
+        selectedProjectId = worktree.projectId
+        if let pane = panes(onWorktree: worktree.id).first { selectedPaneId = pane.id }
     }
 
     func renameProject(_ id: ProjectID, to name: String) async {
@@ -602,7 +666,7 @@ struct OpenDiff: Equatable {
     var file: ChangedFile
 }
 
-private extension SessionState {
+extension SessionState {
     /// Which state wins when a project has several panes.
     var urgency: Int {
         switch self {
