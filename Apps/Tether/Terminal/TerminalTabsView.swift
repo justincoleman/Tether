@@ -212,6 +212,12 @@ private struct TabStrip: View {
     @State private var showNewAgent = false
     @State private var showHistory = false
     @State private var editingShortcuts = false
+    /// Tab frames in the strip's space, for finding where a dragged tab lands.
+    @State private var tabFrames: [PaneID: CGRect] = [:]
+    @State private var dragging: PaneID?
+    @State private var dragOffset: CGFloat = 0
+    /// The dragged tab is below the strip, over the terminal.
+    @State private var overTerminal = false
 
     /// Shortcuts with their own button; the rest are in the + menu.
     private static let barShortcutLimit = 3
@@ -234,14 +240,25 @@ private struct TabStrip: View {
                         } close: {
                             model.requestClose(pane.id)
                         }
-                        // Drag a tab onto another to move it there.
-                        .draggable(pane.id.uuidString)
-                        .dropDestination(for: String.self) { items, _ in
-                            guard let dragged = items.first.flatMap(UUID.init(uuidString:)),
-                                  dragged != pane.id else { return false }
-                            Task { await model.movePane(dragged, onto: pane.id) }
-                            return true
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("tabStrip")) } action: {
+                            tabFrames[pane.id] = $0
                         }
+                        .offset(x: dragging == pane.id ? dragOffset : 0)
+                        .opacity(dragging == pane.id && overTerminal ? 0.5 : 1)
+                        .zIndex(dragging == pane.id ? 1 : 0)
+                        // A gesture rather than .draggable: in the title bar area the
+                        // window takes a drag that no SwiftUI gesture claims.
+                        .gesture(
+                            DragGesture(minimumDistance: 4, coordinateSpace: .named("tabStrip"))
+                                .onChanged { value in
+                                    dragging = pane.id
+                                    dragOffset = value.translation.width
+                                    overTerminal = value.location.y > ChromeMetrics.headerHeight
+                                }
+                                .onEnded { value in
+                                    finishDrag(pane.id, at: value.location)
+                                }
+                        )
                     }
                 }
             }
@@ -299,12 +316,35 @@ private struct TabStrip: View {
         }
         .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
         .frame(height: ChromeMetrics.headerHeight)
+        .coordinateSpace(.named("tabStrip"))
         .sheet(isPresented: $showNewAgent) {
             NewAgentSheet(project: project)
         }
         .sheet(isPresented: $editingShortcuts) {
             ShortcutsEditor(project: project)
         }
+    }
+}
+
+extension TabStrip {
+    /// Dropped on another tab, the tab moves there. Dropped on the terminal
+    /// below, it opens beside the selected tab.
+    fileprivate func finishDrag(_ id: PaneID, at location: CGPoint) {
+        defer {
+            dragging = nil
+            dragOffset = 0
+            overTerminal = false
+        }
+        if location.y > ChromeMetrics.headerHeight {
+            if id != model.selectedPaneId { Task { await model.showBesideSelected(id) } }
+            return
+        }
+        let target = panes.first { pane in
+            guard pane.id != id, let frame = tabFrames[pane.id] else { return false }
+            return frame.minX...frame.maxX ~= location.x
+        }
+        guard let target = target?.id else { return }
+        Task { await model.movePane(id, onto: target) }
     }
 }
 

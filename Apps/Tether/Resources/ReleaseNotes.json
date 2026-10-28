@@ -10,7 +10,7 @@
       },
       {
         "title": "Drag tabs.",
-        "body": "Drag a tab onto another to move it there. The order is kept when Tether restarts."
+        "body": "Drag a tab left or right onto another to move it there; the order is kept when Tether restarts. Drag a tab down onto the terminal to show it beside the one you are on."
       },
       {
         "title": "Updates.",
