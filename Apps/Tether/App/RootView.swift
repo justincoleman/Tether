@@ -154,6 +154,18 @@ struct SidebarView: View {
                     .padding(12)
             }
 
+            if let update = model.updater.available {
+                Button {
+                    UpdatePrompt.confirmInstall(update, updater: model.updater)
+                } label: {
+                    Label("Tether \(update.version.description) is available", systemImage: "arrow.down.circle")
+                        .font(.caption)
+                        .foregroundStyle(theme.accent)
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+            }
+
             if model.releases.showToast, let latest = model.releases.unseen.first {
                 WhatsNewToast(version: latest.version) {
                     openWindow(id: "whats-new")

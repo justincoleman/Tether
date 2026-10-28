@@ -5,7 +5,7 @@ import TetherProtocol
 
 /// Header row (tabs and panel buttons) over a rounded card holding every
 /// pane of the selected project. Hidden panes keep their grid and
-/// scrollback; only rendering stops.
+/// scrollback; only rendering stops. A split shows two panes at once.
 struct TerminalTabsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
@@ -23,30 +23,7 @@ struct TerminalTabsView: View {
         let card = RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius)
         VStack(spacing: 0) {
             TabStrip(project: project, panes: panes, showSidebar: $showSidebar)
-            ZStack {
-                if panes.isEmpty {
-                    ContentUnavailableView("No terminals",
-                                           systemImage: "terminal",
-                                           description: Text("Open a Claude session with the + button."))
-                }
-                ForEach(panes) { pane in
-                    // Hidden while a diff, a file or the chat covers the terminal,
-                    // so keystrokes and rendering go there instead.
-                    let selected = pane.id == model.selectedPaneId && !overlayOpen && !chatShown
-                    TerminalSurfaceView(context: pane.terminal)
-                        .opacity(selected ? 1 : 0)
-                        .allowsHitTesting(selected)
-                        .onChange(of: selected, initial: true) { _, isSelected in
-                            pane.setVisible(isSelected)
-                            if isSelected { pane.focus() }
-                        }
-                }
-                if chatShown, let selectedPane {
-                    MirrorView(paneId: selectedPane.id)
-                        .padding(.horizontal, -10)
-                        .padding(.vertical, -8)
-                }
-            }
+            TerminalCard(panes: panes, overlayOpen: overlayOpen, chatShown: chatShown)
             // The card is the terminal's own background, so this inset reads
             // as padding and the AppKit surface never needs clipping.
             .padding(.horizontal, 10)
@@ -76,6 +53,155 @@ struct TerminalTabsView: View {
     }
 }
 
+/// Every pane of the project, stacked, with the selected one (and its split
+/// partner) on top. Panes are never re-parented: a split only changes their
+/// frames, so libghostty surfaces keep their state.
+private struct TerminalCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    let panes: [TerminalPane]
+    let overlayOpen: Bool
+    let chatShown: Bool
+    /// The divider position while it's being dragged.
+    @State private var dragFraction: Double?
+
+    /// Room between the halves; the divider line sits in the middle.
+    private static let gap: CGFloat = 9
+
+    var body: some View {
+        let selectedId = model.selectedPaneId
+        let split = visibleSplit
+        GeometryReader { geo in
+            let full = CGRect(origin: .zero, size: geo.size)
+            let halves = split.map { Self.halves(in: full, axis: $0.axis, fraction: dragFraction ?? $0.fraction) }
+            ZStack(alignment: .topLeading) {
+                if panes.isEmpty {
+                    ContentUnavailableView("No terminals",
+                                           systemImage: "terminal",
+                                           description: Text("Open a Claude session with the + button."))
+                        .frame(width: geo.size.width, height: geo.size.height)
+                }
+                ForEach(panes) { pane in
+                    let rect = frame(of: pane.id, split: split, halves: halves, full: full)
+                    // Hidden while a diff or a file covers the card, and while the
+                    // chat covers this pane, so keystrokes and rendering go there.
+                    let shown = rect != nil && !overlayOpen && !(chatShown && pane.id == selectedId)
+                    let focused = shown && pane.id == selectedId
+                    let r = rect ?? full
+                    TerminalSurfaceView(context: pane.terminal)
+                        .frame(width: r.width, height: r.height)
+                        .overlay {
+                            // First click on the other half focuses it, like Ghostty.
+                            if shown && !focused {
+                                theme.window.opacity(0.22)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { model.selectedPaneId = pane.id }
+                            }
+                        }
+                        .offset(x: r.minX, y: r.minY)
+                        .opacity(shown ? 1 : 0)
+                        .allowsHitTesting(shown)
+                        .onChange(of: shown, initial: true) { _, isShown in
+                            pane.setVisible(isShown)
+                        }
+                        .onChange(of: focused, initial: true) { _, isFocused in
+                            if isFocused {
+                                pane.setVisible(true)
+                                pane.focus()
+                            }
+                        }
+                }
+                if chatShown, let selectedId {
+                    let r = frame(of: selectedId, split: split, halves: halves, full: full) ?? full
+                    MirrorView(paneId: selectedId)
+                        // Alone, the chat fills the card edge to edge.
+                        .padding(.horizontal, split == nil ? -10 : 0)
+                        .padding(.vertical, split == nil ? -8 : 0)
+                        .frame(width: r.width, height: r.height)
+                        .offset(x: r.minX, y: r.minY)
+                }
+                if let split, let halves, !overlayOpen {
+                    divider(split: split, rect: halves.divider, size: geo.size)
+                }
+            }
+            .coordinateSpace(.named("terminalCard"))
+        }
+    }
+
+    /// The selected tab's split, when both of its tabs are in this project.
+    private var visibleSplit: PaneSplit? {
+        guard let id = model.selectedPaneId, let split = model.split(containing: id),
+              let partner = split.partner(of: id) else { return nil }
+        return panes.contains { $0.id == partner } ? split : nil
+    }
+
+    private func frame(of id: PaneID, split: PaneSplit?,
+                       halves: (first: CGRect, second: CGRect, divider: CGRect)?, full: CGRect) -> CGRect? {
+        if let split, let halves {
+            if id == split.first { return halves.first }
+            if id == split.second { return halves.second }
+            return nil
+        }
+        return id == model.selectedPaneId ? full : nil
+    }
+
+    static func halves(in full: CGRect, axis: SplitAxis, fraction: Double)
+        -> (first: CGRect, second: CGRect, divider: CGRect) {
+        switch axis {
+        case .horizontal:
+            let w = max(full.width - gap, 0)
+            let a = (w * fraction).rounded()
+            return (CGRect(x: 0, y: 0, width: a, height: full.height),
+                    CGRect(x: a + gap, y: 0, width: w - a, height: full.height),
+                    CGRect(x: a, y: 0, width: gap, height: full.height))
+        case .vertical:
+            let h = max(full.height - gap, 0)
+            let a = (h * fraction).rounded()
+            return (CGRect(x: 0, y: 0, width: full.width, height: a),
+                    CGRect(x: 0, y: a + gap, width: full.width, height: h - a),
+                    CGRect(x: 0, y: a, width: full.width, height: gap))
+        }
+    }
+
+    private func divider(split: PaneSplit, rect: CGRect, size: CGSize) -> some View {
+        let horizontal = split.axis == .horizontal
+        let pane = split.first
+        return ZStack {
+            Color.clear
+            Rectangle()
+                .fill(theme.border)
+                .frame(width: horizontal ? 1 : nil, height: horizontal ? nil : 1)
+        }
+        .frame(width: rect.width, height: rect.height)
+        .contentShape(Rectangle())
+        .pointerStyle(horizontal ? .columnResize : .rowResize)
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .named("terminalCard"))
+                .onChanged { value in
+                    let total = horizontal ? size.width : size.height
+                    guard total > Self.gap else { return }
+                    let at = horizontal ? value.location.x : value.location.y
+                    dragFraction = PaneSplit.clamp(Double((at - Self.gap / 2) / (total - Self.gap)))
+                }
+                .onEnded { _ in
+                    if let dragFraction { model.setSplitFraction(dragFraction, forPane: pane) }
+                    dragFraction = nil
+                }
+        )
+        .onTapGesture(count: 2) { model.setSplitFraction(0.5, forPane: pane) }
+        .contextMenu {
+            Button(horizontal ? "Stack Vertically" : "Side by Side") {
+                Task { await model.toggleSplitAxis(forPane: pane) }
+            }
+            Button("Even Split") { model.setSplitFraction(0.5, forPane: pane) }
+            Divider()
+            Button("Unsplit") { Task { await model.unsplit(pane) } }
+        }
+        .help("Drag to resize. Double-click to even out.")
+        .offset(x: rect.minX, y: rect.minY)
+    }
+}
+
 private struct TabStrip: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
@@ -99,12 +225,22 @@ private struct TabStrip: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
+                    let partner = model.selectedPaneId.flatMap { model.split(containing: $0)?.partner(of: $0) }
                     ForEach(panes) { pane in
-                        TabButton(pane: pane, selected: pane.id == model.selectedPaneId) {
+                        TabButton(pane: pane, selected: pane.id == model.selectedPaneId,
+                                  besideSelected: pane.id == partner) {
                             model.closeOverlays()
                             model.selectedPaneId = pane.id
                         } close: {
                             model.requestClose(pane.id)
+                        }
+                        // Drag a tab onto another to move it there.
+                        .draggable(pane.id.uuidString)
+                        .dropDestination(for: String.self) { items, _ in
+                            guard let dragged = items.first.flatMap(UUID.init(uuidString:)),
+                                  dragged != pane.id else { return false }
+                            Task { await model.movePane(dragged, onto: pane.id) }
+                            return true
                         }
                     }
                 }
@@ -294,6 +430,8 @@ private struct TabButton: View {
     @Environment(\.theme) private var theme
     let pane: TerminalPane
     let selected: Bool
+    /// The other half of the selected tab's split, shown with it.
+    let besideSelected: Bool
     let select: () -> Void
     let close: () -> Void
     @State private var hovering = false
@@ -319,10 +457,23 @@ private struct TabButton: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(selected ? theme.elevated : hovering ? theme.hover : .clear, in: Capsule())
+        .background(selected ? theme.elevated : hovering || besideSelected ? theme.hover : .clear, in: Capsule())
+        .overlay {
+            if besideSelected { Capsule().strokeBorder(theme.border) }
+        }
         .contentShape(Rectangle())
         .onTapGesture(perform: select)
         .onHover { hovering = $0 }
+        .contextMenu {
+            if !selected && !besideSelected {
+                Button("Show Beside Current Tab") { Task { await model.showBesideSelected(pane.id) } }
+            }
+            if model.split(containing: pane.id) != nil {
+                Button("Unsplit") { Task { await model.unsplit(pane.id) } }
+            }
+            Divider()
+            Button("Close Tab", action: close)
+        }
     }
 
     private var state: SessionState { model.paneStates[pane.id] ?? .idle }

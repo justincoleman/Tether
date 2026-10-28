@@ -8,18 +8,21 @@ public struct ProjectStoreState: Codable, Sendable, Equatable {
     public var remoteHosts: [RemoteHost] = []
     public var panes: [PaneDescriptor] = []
     public var quickActions: [QuickAction] = []
+    /// Tabs shown side by side. Only splits between persisted panes are kept.
+    public var splits: [PaneSplit] = []
 
     public init(projects: [Project] = [], worktrees: [Worktree] = [],
                 remoteHosts: [RemoteHost] = [], panes: [PaneDescriptor] = [],
-                quickActions: [QuickAction] = []) {
+                quickActions: [QuickAction] = [], splits: [PaneSplit] = []) {
         self.projects = projects
         self.worktrees = worktrees
         self.remoteHosts = remoteHosts
         self.panes = panes
         self.quickActions = quickActions
+        self.splits = splits
     }
 
-    enum CodingKeys: String, CodingKey { case projects, worktrees, remoteHosts, panes, quickActions }
+    enum CodingKeys: String, CodingKey { case projects, worktrees, remoteHosts, panes, quickActions, splits }
 
     /// Missing keys decode as empty so older state files keep loading.
     public init(from decoder: any Decoder) throws {
@@ -29,6 +32,7 @@ public struct ProjectStoreState: Codable, Sendable, Equatable {
         remoteHosts = try c.decodeIfPresent([RemoteHost].self, forKey: .remoteHosts) ?? []
         panes = try c.decodeIfPresent([PaneDescriptor].self, forKey: .panes) ?? []
         quickActions = try c.decodeIfPresent([QuickAction].self, forKey: .quickActions) ?? []
+        splits = try c.decodeIfPresent([PaneSplit].self, forKey: .splits) ?? []
     }
 }
 
@@ -172,6 +176,19 @@ public actor ProjectStore {
         try save()
     }
 
+    /// Puts the project's tabs in `order` (see `PaneLayout.reordering`).
+    public func reorderPanes(_ order: [PaneID], in projectId: ProjectID) throws {
+        state.panes = PaneLayout.reordering(state.panes, id: \.id,
+                                            inProject: { $0.projectId == projectId }, to: order)
+        try save()
+    }
+
+    /// Replaces every split. Ones naming a pane that isn't persisted are dropped.
+    public func setSplits(_ splits: [PaneSplit]) throws {
+        state.splits = splits
+        try save()
+    }
+
     /// Remember the Claude session running in a pane so the next launch resumes it.
     public func recordSession(_ sessionId: SessionID, forPane paneId: PaneID) throws {
         guard let i = state.panes.firstIndex(where: { $0.id == paneId }),
@@ -181,6 +198,8 @@ public actor ProjectStore {
     }
 
     public func save() throws {
+        // Removing a pane, worktree, host or project can orphan a split.
+        state.splits = PaneLayout.pruning(state.splits, existing: Set(state.panes.map(\.id)))
         let dir = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let data = try WireCodec.encoder().encode(state)

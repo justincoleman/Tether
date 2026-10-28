@@ -10,6 +10,8 @@ struct SettingsView: View {
                 .tabItem { Label("iPhone", systemImage: "iphone") }
             RemoteHostsSettings()
                 .tabItem { Label("Remote Hosts", systemImage: "network") }
+            UpdatesSettings()
+                .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
         .frame(width: 620, height: 600)
     }
