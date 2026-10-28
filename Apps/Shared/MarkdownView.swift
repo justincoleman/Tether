@@ -67,26 +67,27 @@ private struct TableBlock: View {
 
     var body: some View {
         let columns = max(header.count, rows.map(\.count).max() ?? 0)
-        ScrollView(.horizontal, showsIndicators: false) {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                GridRow {
-                    ForEach(0..<columns, id: \.self) { c in
-                        Text(MarkdownView.inline(c < header.count ? header[c] : "")).bold()
-                    }
+        // No horizontal scroll: cells wrap to the panel width, which reads
+        // better than a long single line in a narrow sidebar.
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+            GridRow {
+                ForEach(0..<columns, id: \.self) { c in
+                    Text(MarkdownView.inline(c < header.count ? header[c] : "")).bold()
                 }
-                Divider()
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    GridRow(alignment: .top) {
-                        ForEach(0..<columns, id: \.self) { c in
-                            Text(MarkdownView.inline(c < row.count ? row[c] : ""))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+            }
+            Divider()
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                GridRow(alignment: .top) {
+                    ForEach(0..<columns, id: \.self) { c in
+                        Text(MarkdownView.inline(c < row.count ? row[c] : ""))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
-            .font(.callout)
-            .padding(8)
         }
+        .font(.callout)
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
     }
 }
