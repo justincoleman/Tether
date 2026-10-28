@@ -52,9 +52,12 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     /// The latest message in the conversation, shortened, so tabs are
     /// recognisable in a list. See `TranscriptModel.preview`.
     public var preview: String?
+    /// Permission mode from hooks, e.g. "auto". Nil until a hook reports it.
+    public var permissionMode: String?
 
     public init(id: PaneID, projectId: ProjectID, sessionId: SessionID?, title: String,
-                state: SessionState, attention: AttentionReason?, queued: Int, preview: String? = nil) {
+                state: SessionState, attention: AttentionReason?, queued: Int, preview: String? = nil,
+                permissionMode: String? = nil) {
         self.id = id
         self.projectId = projectId
         self.sessionId = sessionId
@@ -63,6 +66,7 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
         self.attention = attention
         self.queued = queued
         self.preview = preview
+        self.permissionMode = permissionMode
     }
 }
 
@@ -135,8 +139,10 @@ public enum PhoneMessage: Codable, Sendable {
     case sendMessage(paneId: PaneID, text: String)
     case permissionDecision(requestId: UUID, allow: Bool)
     /// Opens a Claude tab in the project, on a new worktree branch when
-    /// `branch` is set, starting on `prompt` when it isn't empty.
-    case startSession(requestId: UUID, projectId: ProjectID, branch: String?, prompt: String)
+    /// `branch` is set, starting on `prompt` when it isn't empty, in
+    /// `permissionMode` when set (otherwise the user's configured default).
+    case startSession(requestId: UUID, projectId: ProjectID, branch: String?, prompt: String,
+                      permissionMode: String?)
     /// Sidebar order, all of the Mac's project ids.
     case reorderProjects(ids: [ProjectID])
     // Phase 6b.

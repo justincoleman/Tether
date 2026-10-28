@@ -22,6 +22,20 @@ import TetherProtocol
         #expect(await r.apply(hook(.sessionEnd), paneId: pane).state == .detached)
     }
 
+    @Test func permissionModeIsKeptUntilAHookReportsAnother() async throws {
+        let r = SessionRegistry()
+        func payload(_ json: String) throws -> HookPayload {
+            try JSONDecoder().decode(HookPayload.self, from: Data(json.utf8))
+        }
+        let start = try payload(#"{"session_id":"s1","cwd":"/p","hook_event_name":"UserPromptSubmit","permission_mode":"auto"}"#)
+        #expect(await r.apply(start, paneId: nil).permissionMode == "auto")
+        // An event without the field leaves the last known mode alone.
+        let note = try payload(#"{"session_id":"s1","cwd":"/p","hook_event_name":"Notification","notification_type":"idle_prompt"}"#)
+        #expect(await r.apply(note, paneId: nil).permissionMode == "auto")
+        let stop = try payload(#"{"session_id":"s1","cwd":"/p","hook_event_name":"Stop","permission_mode":"plan"}"#)
+        #expect(await r.apply(stop, paneId: nil).permissionMode == "plan")
+    }
+
     @Test func stopEndingInQuestionNeedsInput() async {
         let r = SessionRegistry()
         await r.apply(hook(.userPromptSubmit), paneId: nil)

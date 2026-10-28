@@ -46,6 +46,13 @@ pty:
 HTTP hooks cannot be `async` (that flag is command-hook only), so the server
 must answer state hooks fast. It does no I/O before responding.
 
+## Permission mode
+
+Most hook payloads carry `permission_mode`. `SessionRegistry` keeps the last
+value it saw, so a Shift+Tab change shows up at the next hook, not instantly:
+no hook fires on a mode change alone. Changing a running tab's mode from the
+phone is deferred (issue #3).
+
 ## State machine
 
 `SessionRegistry.nextState`. Keep this table and the code in sync.

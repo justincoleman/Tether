@@ -82,6 +82,8 @@ public struct Session: Codable, Hashable, Sendable, Identifiable {
     public var usage: ContextUsage?
     /// Set only while `state == .needsInput`.
     public var attention: AttentionReason?
+    /// Claude Code's permission mode as of the last hook that reported it.
+    public var permissionMode: String?
 
     public init(id: SessionID, worktreeId: WorktreeID? = nil, paneId: PaneID? = nil,
                 cwd: String, transcriptPath: String? = nil, state: SessionState = .idle,

@@ -29,6 +29,7 @@ public actor SessionRegistry {
             transcriptPath: hook.transcriptPath, startedAt: t, lastEventAt: t)
         session.lastEventAt = t
         if let path = hook.transcriptPath { session.transcriptPath = path }
+        if let mode = hook.permissionMode { session.permissionMode = mode }
         if let paneId {
             // /clear and resume give the same pane a new session id; drop the old one.
             if let previous = paneToSession[paneId], previous != hook.sessionId {

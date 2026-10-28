@@ -66,6 +66,11 @@ final class AppModel {
     private var promptQueue = PromptQueue()
     /// The task a new Claude tab starts on, passed as `claude "<prompt>"`.
     private var initialPrompts: [PaneID: String] = [:]
+    /// `--permission-mode` for a tab started from the phone. Not persisted:
+    /// a resumed tab gets the user's default again (issue #3).
+    private var initialModes: [PaneID: String] = [:]
+    /// Permission mode per tab, as last reported by a hook.
+    private(set) var paneModes: [PaneID: String] = [:]
 
     private let store = ProjectStore(fileURL: ProjectStore.defaultFileURL())
     let registry = SessionRegistry()
@@ -153,7 +158,8 @@ final class AppModel {
     /// starting on `prompt` when given. `select` is false for phone requests,
     /// so the Mac's view doesn't jump.
     @discardableResult
-    func startSession(projectId: ProjectID, branch: String?, prompt: String?, select: Bool) async throws -> PaneID {
+    func startSession(projectId: ProjectID, branch: String?, prompt: String?,
+                      permissionMode: String? = nil, select: Bool) async throws -> PaneID {
         guard let project = projects.first(where: { $0.id == projectId }) else {
             throw StartError(description: "That project is no longer on the Mac.")
         }
@@ -179,6 +185,7 @@ final class AppModel {
         if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             initialPrompts[d.id] = prompt
         }
+        if let permissionMode { initialModes[d.id] = permissionMode }
         try? await store.addPane(d)
         await mount(d)
         if select {
@@ -363,6 +370,7 @@ final class AppModel {
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
             paneAttention[paneId] = session.attention
+            if let mode = session.permissionMode { paneModes[paneId] = mode }
             if let old = sessionId(forPane: paneId), old != session.id {
                 // /clear or a fork gave this tab a new session.
                 mirror.stop(old)
@@ -532,7 +540,8 @@ final class AppModel {
         let launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host,
                                          token: launchToken, hookSettingsPath: hookSettingsPath,
                                          newSessionId: launchSession,
-                                         initialPrompt: initialPrompts.removeValue(forKey: d.id))
+                                         initialPrompt: initialPrompts.removeValue(forKey: d.id),
+                                         permissionMode: initialModes.removeValue(forKey: d.id))
         let pane = TerminalPane(descriptor: d, launch: launch, controller: TerminalHost.controller)
         pane.onExit = { [weak self] id in
             guard let self else { return }
@@ -556,6 +565,7 @@ final class AppModel {
         paneOrder.removeAll { $0 == id }
         paneStates[id] = nil
         paneAttention[id] = nil
+        paneModes[id] = nil
         paneWorktreePaths[id] = nil
         promptQueue.clear(pane: id)
         queuedCounts[id] = nil
@@ -617,7 +627,8 @@ extension AppModel {
                     id: pane.id, projectId: project.id, sessionId: sessionId(forPane: pane.id),
                     title: pane.title, state: paneStates[pane.id] ?? .idle,
                     attention: paneAttention[pane.id], queued: queuedCounts[pane.id] ?? 0,
-                    preview: mirror.model(for: sessionId(forPane: pane.id))?.preview()))
+                    preview: mirror.model(for: sessionId(forPane: pane.id))?.preview(),
+                    permissionMode: paneModes[pane.id]))
             }
         }
         let permissions = pendingPermissions.map { request in

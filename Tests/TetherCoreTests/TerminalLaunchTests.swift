@@ -29,6 +29,19 @@ import TetherProtocol
         #expect(r.command == "/bin/zsh -l -c 'claude --resume abc'")
     }
 
+    @Test func permissionModeFlagOnlyForSafeModes() {
+        let wt = Worktree(projectId: project.id, path: "/tmp/p", branch: "main", isPrimary: true)
+        let pane = PaneDescriptor(projectId: project.id, kind: .claude(worktreeId: wt.id, resumeSessionId: nil), title: "Claude")
+        let plan = TerminalLaunch.make(pane: pane, worktree: wt, remoteHost: nil, token: "t",
+                                       newSessionId: "S1", permissionMode: "plan", shell: "/bin/zsh")
+        #expect(plan.command == "/bin/zsh -l -c 'claude --permission-mode plan --session-id S1'")
+        for unsafe in ["bypassPermissions", "dontAsk", "nonsense"] {
+            let launch = TerminalLaunch.make(pane: pane, worktree: wt, remoteHost: nil, token: "t",
+                                             newSessionId: "S1", permissionMode: unsafe, shell: "/bin/zsh")
+            #expect(launch.command == "/bin/zsh -l -c 'claude --session-id S1'", "\(unsafe)")
+        }
+    }
+
     @Test func shellLaunchHasNoCommand() {
         let pane = PaneDescriptor(projectId: project.id, kind: .shell(cwd: "/tmp/x"), title: "Shell")
         let launch = TerminalLaunch.make(pane: pane, worktree: nil, remoteHost: nil, token: "t")

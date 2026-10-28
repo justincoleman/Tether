@@ -106,13 +106,15 @@ final class MacConnection: Identifiable {
 
     /// Asks the Mac to open a Claude tab, optionally on a new branch.
     /// Creating a worktree can take a while on a big repo.
-    func startSession(projectId: ProjectID, branch: String?, prompt: String) async -> StartOutcome {
+    func startSession(projectId: ProjectID, branch: String?, prompt: String,
+                      permissionMode: String?) async -> StartOutcome {
         guard status == .online, let channel else { return .failed("\(mac.name) is offline.") }
         let requestId = UUID()
         return await withCheckedContinuation { continuation in
             pendingStarts[requestId] = continuation
             channel.send(PhoneMessage.startSession(requestId: requestId, projectId: projectId,
-                                                   branch: branch, prompt: prompt))
+                                                   branch: branch, prompt: prompt,
+                                                   permissionMode: permissionMode))
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(90))
                 self?.finishStart(requestId, .failed("\(self?.mac.name ?? "The Mac") didn't answer."))

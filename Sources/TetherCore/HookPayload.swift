@@ -35,6 +35,9 @@ public struct HookPayload: Codable, Sendable, Hashable {
     public var lastAssistantMessage: String?
     /// StopFailure: error type, e.g. "rate_limit".
     public var error: String?
+    /// Most events: "default", "acceptEdits", "plan", "auto", "dontAsk" or
+    /// "bypassPermissions". No hook fires when only the mode changes.
+    public var permissionMode: String?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -47,6 +50,7 @@ public struct HookPayload: Codable, Sendable, Hashable {
         case toolInput = "tool_input"
         case permissionSuggestions = "permission_suggestions"
         case lastAssistantMessage = "last_assistant_message"
+        case permissionMode = "permission_mode"
     }
 
     public init(sessionId: SessionID, cwd: String, transcriptPath: String? = nil,

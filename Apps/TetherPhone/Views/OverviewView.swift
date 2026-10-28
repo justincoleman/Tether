@@ -236,8 +236,11 @@ private struct ThreadRow: View {
             PhoneStatusBadge(state: session.state)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
-                HStack {
+                HStack(spacing: 6) {
                     Text(session.title).font(.subheadline.weight(.semibold))
+                    if let mode = session.permissionMode {
+                        PermissionModeTag(mode: mode)
+                    }
                     Spacer()
                     if let note = session.statusNote {
                         Text(note)

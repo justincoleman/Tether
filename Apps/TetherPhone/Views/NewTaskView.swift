@@ -16,6 +16,8 @@ struct NewTaskView: View {
     @State private var onBranch = false
     @State private var branch = ""
     @State private var prompt = ""
+    /// Nil starts Claude in the mode from the Mac's Claude Code settings.
+    @State private var mode: String?
     @State private var error: String?
     @State private var starting = false
 
@@ -66,6 +68,16 @@ struct NewTaskView: View {
                         TextField("What should Claude do?", text: $prompt, axis: .vertical)
                             .lineLimit(4...12)
                     }
+                    Section {
+                        Picker("Mode", selection: $mode) {
+                            Text("Default from settings").tag(String?.none)
+                            ForEach(PermissionModeName.launchable, id: \.self) { m in
+                                Text(PermissionModeName.label(m)).tag(Optional(m))
+                            }
+                        }
+                    } footer: {
+                        Text(PermissionModeName.explanation(mode))
+                    }
                     if let error {
                         Text(error).foregroundStyle(.red)
                     }
@@ -101,7 +113,8 @@ struct NewTaskView: View {
         error = nil
         let branchName = onBranch ? branch.trimmingCharacters(in: .whitespaces) : nil
         Task {
-            switch await connection.startSession(projectId: projectId, branch: branchName, prompt: prompt) {
+            switch await connection.startSession(projectId: projectId, branch: branchName, prompt: prompt,
+                                                 permissionMode: mode) {
             case .started(let paneId):
                 dismiss()
                 opened(SessionRoute(macId: connection.id, paneId: paneId))
@@ -141,5 +154,60 @@ struct ReorderProjectsView: View {
             }
             .onAppear { projects = connection.snapshot?.projects ?? [] }
         }
+    }
+}
+
+/// Claude Code's permission modes as the phone shows them. The Mac only
+/// launches the ones in `launchable` (TerminalLaunch.launchablePermissionModes).
+enum PermissionModeName {
+    static let launchable = ["default", "acceptEdits", "plan", "auto"]
+
+    static func label(_ mode: String) -> String {
+        switch mode {
+        case "default": "Manual"
+        case "acceptEdits": "Accept edits"
+        case "plan": "Plan"
+        case "auto": "Auto"
+        case "dontAsk": "Don't ask"
+        case "bypassPermissions": "Bypass permissions"
+        default: mode
+        }
+    }
+
+    static func explanation(_ mode: String?) -> String {
+        switch mode {
+        case nil: "Uses the default mode from Claude Code's settings on the Mac."
+        case "default": "Asks before every command and edit. Prompts come to this phone."
+        case "acceptEdits": "Edits files without asking; asks before commands."
+        case "plan": "Researches and proposes a plan without changing anything."
+        case "auto": "Runs without routine prompts; only risky actions ask."
+        default: ""
+        }
+    }
+
+    static func symbol(_ mode: String) -> String {
+        switch mode {
+        case "default": "hand.raised"
+        case "acceptEdits": "pencil"
+        case "plan": "list.bullet.clipboard"
+        case "auto": "bolt"
+        case "bypassPermissions": "exclamationmark.shield"
+        default: "questionmark.circle"
+        }
+    }
+}
+
+/// Small "Auto" / "Plan" tag for a tab's current mode.
+struct PermissionModeTag: View {
+    let mode: String
+
+    var body: some View {
+        Label(PermissionModeName.label(mode), systemImage: PermissionModeName.symbol(mode))
+            .font(.caption2.weight(.medium))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(mode == "bypassPermissions" ? Color.red.opacity(0.15) : Color.secondary.opacity(0.12),
+                        in: Capsule())
+            .foregroundStyle(mode == "bypassPermissions" ? Color.red : Color.secondary)
     }
 }

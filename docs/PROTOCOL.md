@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 6).
+`ProtocolVersion.current` with any shape change (currently 7).
 
 ## Transport
 
@@ -50,7 +50,7 @@ Mac → phone (`MacMessage`):
 | `hello` | Reply to the phone's hello. |
 | `paired` / `authenticated` | Auth succeeded. |
 | `authFailed(reason)` | Wrong/expired code, revoked token. Connection closes; the phone stops retrying. |
-| `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects in sidebar order, Claude tabs in tab order (`SessionSummary`, keyed by pane id, with `preview`: the latest message on one line from `TranscriptModel.preview`), pending permissions. Also resent when new transcript events change a preview. |
+| `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects in sidebar order, Claude tabs in tab order (`SessionSummary`, keyed by pane id, with `preview`: the latest message on one line from `TranscriptModel.preview`, and `permissionMode` from the last hook that reported one), pending permissions. Also resent when new transcript events change a preview. |
 | `transcript(sessionId, events, reset)` | After `subscribe`: `reset: true` with history, then appends as the Mac's mirror reads new transcript records. Folded with `TranscriptModel`, same as the Mac. |
 | `sendResult(paneId, outcome)` | `sent`, `queued` or `failed` for a `sendMessage`. |
 | `startResult(requestId, paneId?, error?)` | Answer to `startSession`: the new tab's pane id, or a message to show. |
@@ -64,7 +64,7 @@ Phone → Mac (`PhoneMessage`):
 | `subscribe(sessionId?)` | Stream that session's transcript; nil stops. One per connection. |
 | `sendMessage(paneId, text)` | `AppModel.sendOrQueue`: typed now if Claude can take it, else queued (never into a permission prompt). |
 | `permissionDecision(requestId, allow)` | `allow` or `deny("Denied from iPhone.")`. First answer wins across Mac and phones. |
-| `startSession(requestId, projectId, branch?, prompt)` | `AppModel.startSession`: a new Claude tab, launched as `claude "<prompt>"`. With `branch`, first a worktree on a new branch from `origin/<base>` (else `<base>`, else `HEAD`) under `~/Library/Application Support/Tether/Worktrees/<repo>/<branch-slug>` (`WorktreeCreator`). The Mac doesn't switch its own selected tab. The phone waits up to 90 s. |
+| `startSession(requestId, projectId, branch?, prompt, permissionMode?)` | `AppModel.startSession`: a new Claude tab, launched as `claude "<prompt>"`, with `--permission-mode` when given (only `default`, `acceptEdits`, `plan`, `auto`; anything else is ignored and the user's default applies). With `branch`, first a worktree on a new branch from `origin/<base>` (else `<base>`, else `HEAD`) under `~/Library/Application Support/Tether/Worktrees/<repo>/<branch-slug>` (`WorktreeCreator`). The Mac doesn't switch its own selected tab. The phone waits up to 90 s. |
 | `reorderProjects(ids)` | Saves the sidebar order; the next snapshot carries it. |
 | `registerPush` | Phase 6b; the Mac replies `error` for now. |
 

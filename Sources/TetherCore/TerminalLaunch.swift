@@ -27,6 +27,7 @@ public struct TerminalLaunch: Hashable, Sendable {
         hookSettingsPath: String? = nil,
         newSessionId: SessionID? = nil,
         initialPrompt: String? = nil,
+        permissionMode: String? = nil,
         shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
         claudeExecutable: String = "claude"
     ) -> TerminalLaunch {
@@ -35,6 +36,9 @@ public struct TerminalLaunch: Hashable, Sendable {
         case .claude(_, let resume):
             var parts = [claudeExecutable]
             if let hookSettingsPath { parts += ["--settings", hookSettingsPath] }
+            if let permissionMode, launchablePermissionModes.contains(permissionMode) {
+                parts += ["--permission-mode", permissionMode]
+            }
             if let resume, !resume.isEmpty {
                 parts += ["--resume", resume]
             } else if let newSessionId {
@@ -73,6 +77,10 @@ public struct TerminalLaunch: Hashable, Sendable {
         let joined = argv.map(shellQuote).joined(separator: " ")
         return "\(shell) -l -c \(shellQuote(joined))"
     }
+
+    /// Modes the phone may start a tab in. `dontAsk` and `bypassPermissions`
+    /// are left out on purpose: neither should be one tap away on a phone.
+    public static let launchablePermissionModes: Set<String> = ["default", "acceptEdits", "plan", "auto"]
 
     /// POSIX single-quote escaping.
     public static func shellQuote(_ s: String) -> String {

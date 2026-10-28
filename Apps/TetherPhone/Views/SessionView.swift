@@ -81,6 +81,9 @@ struct SessionView: View {
                         HStack(spacing: 4) {
                             PhoneStatusBadge(state: session.state).frame(width: 14)
                             Text(session.statusNote ?? session.title)
+                            if let mode = session.permissionMode {
+                                Text("· \(PermissionModeName.label(mode))")
+                            }
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
