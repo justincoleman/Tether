@@ -32,9 +32,13 @@ final class AppModel {
     private(set) var paneAttention: [PaneID: AttentionReason] = [:]
     /// Messages held back per pane until Claude can take them.
     private(set) var queuedCounts: [PaneID: Int] = [:]
+    /// When each tab's current turn started, while Claude works or waits on
+    /// you mid-turn. Shown as elapsed time in the Overview.
+    private(set) var turnStartedAt: [PaneID: Date] = [:]
 
     var selectedProjectId: ProjectID? {
         didSet {
+            showOverview = false
             selectFirstPaneIfNeeded()
             updateChangesFocus()
         }
@@ -47,6 +51,9 @@ final class AppModel {
         }
     }
     var addProjectRequested = false
+    /// The Overview grid replaces the tabs in the detail column. Picking a
+    /// project, or opening or switching a tab, leaves it.
+    var showOverview = false
     /// Right-hand panel, showing Changes or Files.
     var showInspector = false
     var inspectorTab: InspectorTab = .changes
@@ -283,6 +290,18 @@ final class AppModel {
         selectedPaneId = d.id
     }
 
+    /// Leaves the Overview for one tab.
+    func select(pane: TerminalPane) {
+        closeOverlays()
+        selectedProjectId = pane.descriptor.projectId
+        selectedPaneId = pane.id
+    }
+
+    /// The folder a tab works in: its worktree for Claude tabs, else nil.
+    func worktreePath(forPane id: PaneID) -> String? {
+        paneWorktreePaths[id]
+    }
+
     func selectWorktree(_ worktree: Worktree) {
         selectedProjectId = worktree.projectId
         if let pane = panes(onWorktree: worktree.id).first { selectedPaneId = pane.id }
@@ -450,6 +469,7 @@ final class AppModel {
         let current = visible.firstIndex { $0.id == selectedPaneId } ?? 0
         let next = (current + offset + visible.count) % visible.count
         closeOverlays()
+        showOverview = false
         selectedPaneId = visible[next].id
     }
 
@@ -664,6 +684,7 @@ final class AppModel {
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
             paneAttention[paneId] = session.attention
+            updateTurnStart(paneId, previous: previous, state: session.state)
             if let mode = session.permissionMode { paneModes[paneId] = mode }
             if let old = sessionId(forPane: paneId), old != session.id {
                 // /clear or a fork gave this tab a new session.
@@ -756,8 +777,20 @@ final class AppModel {
         if let session = await registry.paneExited(id) {
             let previous = paneStates[id]
             paneStates[id] = session.state
+            turnStartedAt[id] = nil
             recomputeProjectStates()
             notifyPhones(paneId: id, previous: previous, state: session.state, attention: nil)
+        }
+    }
+
+    /// Same rule as the phone's Live Activity timer: a turn starts when Claude
+    /// starts working and ends when it is neither working nor waiting on you.
+    private func updateTurnStart(_ paneId: PaneID, previous: SessionState?, state: SessionState) {
+        let active: Set<SessionState> = [.working, .needsInput]
+        if state == .working, !(previous.map(active.contains) ?? false) {
+            turnStartedAt[paneId] = Date()
+        } else if !active.contains(state) {
+            turnStartedAt[paneId] = nil
         }
     }
 
@@ -833,6 +866,7 @@ final class AppModel {
     private func open(_ d: PaneDescriptor, persist: Bool = true) async {
         if persist { try? await store.addPane(d) }
         await mount(d)
+        showOverview = false
         selectedPaneId = d.id
     }
 
@@ -886,6 +920,7 @@ final class AppModel {
         paneWorktreePaths[id] = nil
         promptQueue.clear(pane: id)
         queuedCounts[id] = nil
+        turnStartedAt[id] = nil
         recordedSessions[id] = nil
         launchSessions[id] = nil
         pendingPermissions.removeAll { $0.paneId == id }

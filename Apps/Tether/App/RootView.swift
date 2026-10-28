@@ -31,8 +31,8 @@ struct RootView: View {
             }
             detail
                 .padding(.leading, showSidebar ? 0 : 8)
-                .padding(.trailing, model.showInspector ? 0 : 8)
-            if model.showInspector {
+                .padding(.trailing, inspectorShown ? 0 : 8)
+            if inspectorShown {
                 ColumnResizer(width: $inspectorWidth, range: 300...720, sign: -1)
                 InspectorView()
                     .frame(width: inspectorWidth)
@@ -41,7 +41,7 @@ struct RootView: View {
         .background(theme.window)
         .ignoresSafeArea(.container, edges: .top)
         .animation(.snappy(duration: 0.2), value: showSidebar)
-        .animation(.snappy(duration: 0.2), value: model.showInspector)
+        .animation(.snappy(duration: 0.2), value: inspectorShown)
         .confirmationDialog("Close this tab?", isPresented: Binding(get: { model.pendingClose != nil },
                                                                     set: { if !$0 { model.pendingClose = nil } }),
                             titleVisibility: .visible) {
@@ -60,9 +60,15 @@ struct RootView: View {
         }
     }
 
+    /// Changes and Files follow the selected tab, so the Overview hides them
+    /// without turning the setting off.
+    private var inspectorShown: Bool { model.showInspector && !model.showOverview }
+
     @ViewBuilder
     private var detail: some View {
-        if let id = model.selectedProjectId,
+        if model.showOverview {
+            OverviewView(showSidebar: $showSidebar)
+        } else if let id = model.selectedProjectId,
            let project = model.projects.first(where: { $0.id == id }) {
             TerminalTabsView(project: project, showSidebar: $showSidebar)
         } else {
@@ -102,6 +108,10 @@ struct SidebarView: View {
             .padding(.trailing, 8)
             .frame(height: ChromeMetrics.headerHeight)
 
+            OverviewButton()
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+
             HStack {
                 Text("Projects")
                     .font(.caption.weight(.semibold))
@@ -122,7 +132,8 @@ struct SidebarView: View {
             // their own selection, so List selection stays off.
             List {
                 ForEach(model.projects) { project in
-                    ProjectRow(project: project, selected: model.selectedProjectId == project.id)
+                    ProjectRow(project: project,
+                               selected: !model.showOverview && model.selectedProjectId == project.id)
                         .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -155,6 +166,51 @@ struct SidebarView: View {
             }
         }
         .animation(.snappy, value: model.releases.showToast)
+    }
+}
+
+/// Top of the sidebar: every Claude tab across projects, as a grid.
+private struct OverviewButton: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    @State private var hovering = false
+
+    var body: some View {
+        let selected = model.showOverview
+        let waiting = model.paneStates.values.filter { $0 == .needsInput }.count
+        HStack(spacing: 10) {
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(selected ? theme.text : theme.secondaryText)
+                .frame(width: 30, height: 22)
+            Text("Overview")
+                .font(.body.weight(.medium))
+            Spacer(minLength: 4)
+            if waiting > 0 {
+                Text("\(waiting)")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(theme.avatarText)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(theme.blue, in: Capsule())
+                    .help(waiting == 1 ? "1 tab needs you" : "\(waiting) tabs need you")
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(selected ? theme.elevated : hovering ? theme.hover : .clear, in: RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            if selected { RoundedRectangle(cornerRadius: 9).strokeBorder(theme.border) }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            model.closeOverlays()
+            model.showOverview = true
+        }
+        .onHover { hovering = $0 }
+        .help("Every Claude tab at a glance (⌘0)")
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
