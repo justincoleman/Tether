@@ -83,9 +83,9 @@ public enum ReviewMessage {
             ? comment.lines.map { marker($0.kind) + $0.text }.joined(separator: "\n")
             : comment.lines.map(\.text).joined(separator: "\n")
         let language = mixed ? "diff" : CodeLanguage.hint(forPath: comment.path)
-        let fence = fence(for: snippet)
+        let marks = fence(for: snippet)
         let instruction = comment.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-        return "\(header)\n\n\(fence)\(language)\n\(snippet)\n\(fence)\n\n\(instruction)"
+        return "\(header)\n\n\(marks)\(language)\n\(snippet)\n\(marks)\n\n\(instruction)"
     }
 
     private static func marker(_ kind: DiffLineKind) -> String {
