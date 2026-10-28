@@ -74,6 +74,31 @@ collapsed "N steps · used X, ran Y" row (ran = `Bash`). Text between tool calls
 starts a new group. Applying the same event twice is a no-op, so re-reading a
 file is safe.
 
+## Session history
+
+The History popover lists past sessions with `SessionHistory`
+(`Sources/TetherCore/SessionHistory.swift`). It looks in
+`~/.claude/projects/<encoded folder>/` for the project folder and each
+worktree. The encoding replaces every character other than an ASCII letter or
+digit with `-`; when that folder doesn't exist (Claude Code shortens long
+names) it checks each folder's first transcript for a matching `cwd`.
+`agent-*.jsonl` files are subagents and are skipped. Only the first 128 KB
+and last 64 KB of each file are read; lines cut at a chunk edge don't parse
+and are skipped.
+
+| Record | Used for |
+| --- | --- |
+| `custom-title` (`customTitle`, from `/rename`) | title, wins over the rest |
+| `ai-title` (`aiTitle`, rewritten as the session goes) | title, last one seen |
+| `summary` (`summary`, older versions) | title fallback |
+| first `user` record that isn't `isMeta` or `isSidechain` | first prompt, same text rules as the mirror (`<command-name>` reads as `/x args`, other `<…>` text and interrupts are not prompts) |
+| `user` `cwd` (first) and `gitBranch` (last) | folder to resume in, branch label |
+
+A file with no prompt is left out. Last activity is the file's modification
+time. Opening a session runs `claude --resume <id>` in the worktree whose path
+equals its `cwd` (the primary worktree otherwise), or selects the tab already
+running it.
+
 ## When the format changes
 
 Unknown records and blocks are skipped, never fatal. If the mirror goes quiet

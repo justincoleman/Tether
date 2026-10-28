@@ -117,7 +117,7 @@ you move between files, and are dropped when sent.
 
 Otherwise the message waits in `PromptQueue` and goes out as soon as a hook
 event says Claude is ready. Several queued messages are sent together as one
-message. The chat panel shows "N messages queued". The queue lives in memory
+message. The chat view shows "N messages queued". The queue lives in memory
 only and is lost if Tether quits.
 
 `Session.attention` (permission, question, dialog) carries the reason a session
