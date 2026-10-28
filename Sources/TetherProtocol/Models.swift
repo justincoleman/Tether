@@ -1,0 +1,89 @@
+import Foundation
+
+public typealias ProjectID = UUID
+public typealias WorktreeID = UUID
+public typealias PaneID = UUID
+/// Claude Code's own session identifier, as delivered in hook payloads.
+public typealias SessionID = String
+
+public struct Project: Codable, Hashable, Sendable, Identifiable {
+    public var id: ProjectID
+    public var name: String
+    public var path: String
+    public var baseBranch: String
+    public var order: Int
+    public var remoteHost: String?
+
+    public init(id: ProjectID = UUID(), name: String, path: String,
+                baseBranch: String = "main", order: Int = 0, remoteHost: String? = nil) {
+        self.id = id
+        self.name = name
+        self.path = path
+        self.baseBranch = baseBranch
+        self.order = order
+        self.remoteHost = remoteHost
+    }
+}
+
+public struct Worktree: Codable, Hashable, Sendable, Identifiable {
+    public var id: WorktreeID
+    public var projectId: ProjectID
+    public var path: String
+    public var branch: String
+    public var isPrimary: Bool
+
+    public init(id: WorktreeID = UUID(), projectId: ProjectID, path: String,
+                branch: String, isPrimary: Bool) {
+        self.id = id
+        self.projectId = projectId
+        self.path = path
+        self.branch = branch
+        self.isPrimary = isPrimary
+    }
+}
+
+/// What the sidebar badge shows. See PLAN.md section 3.2 for the transitions.
+public enum SessionState: String, Codable, Hashable, Sendable {
+    case idle
+    case working
+    case needsInput
+    case done
+    case error
+    case detached
+}
+
+public struct ContextUsage: Codable, Hashable, Sendable {
+    public var inputTokens: Int
+    public var contextWindow: Int
+
+    public init(inputTokens: Int, contextWindow: Int) {
+        self.inputTokens = inputTokens
+        self.contextWindow = contextWindow
+    }
+}
+
+public struct Session: Codable, Hashable, Sendable, Identifiable {
+    public var id: SessionID
+    public var worktreeId: WorktreeID?
+    public var paneId: PaneID?
+    public var cwd: String
+    public var transcriptPath: String?
+    public var state: SessionState
+    public var startedAt: Date
+    public var lastEventAt: Date
+    public var usage: ContextUsage?
+
+    public init(id: SessionID, worktreeId: WorktreeID? = nil, paneId: PaneID? = nil,
+                cwd: String, transcriptPath: String? = nil, state: SessionState = .idle,
+                startedAt: Date, lastEventAt: Date, usage: ContextUsage? = nil) {
+        self.id = id
+        self.worktreeId = worktreeId
+        self.paneId = paneId
+        self.cwd = cwd
+        self.transcriptPath = transcriptPath
+        self.state = state
+        self.startedAt = startedAt
+        self.lastEventAt = lastEventAt
+        self.usage = usage
+    }
+}

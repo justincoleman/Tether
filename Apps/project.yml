@@ -1,0 +1,75 @@
+name: Tether
+options:
+  bundleIdPrefix: com.justincoleman
+  deploymentTarget:
+    macOS: "26.0"
+    iOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+packages:
+  TetherPackage:
+    path: ..
+targets:
+  Tether:
+    type: application
+    platform: macOS
+    sources: [Tether]
+    dependencies:
+      - package: TetherPackage
+        product: TetherCore
+      - package: TetherPackage
+        product: TetherProtocol
+    info:
+      path: Tether/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Tether
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSHumanReadableCopyright: ""
+    entitlements:
+      path: Tether/Resources/Tether.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.network.server: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.justincoleman.tether
+        ENABLE_HARDENED_RUNTIME: true
+  TetherPhone:
+    type: application
+    platform: iOS
+    sources: [TetherPhone]
+    dependencies:
+      - package: TetherPackage
+        product: TetherProtocol
+    info:
+      path: TetherPhone/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Tether
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSCameraUsageDescription: Tether scans a QR code shown by your Mac to pair.
+        NSSupportsLiveActivities: true
+        UIBackgroundModes: [remote-notification]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.justincoleman.tether.phone
+        TARGETED_DEVICE_FAMILY: "1"
+schemes:
+  Tether:
+    build:
+      targets: { Tether: all }
+    run:
+      config: Debug
+  TetherPhone:
+    build:
+      targets: { TetherPhone: all }
+    run:
+      config: Debug
