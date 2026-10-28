@@ -5,8 +5,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 make project
 
-DEVICE_ID="${TETHER_DEVICE_ID:-$(xcrun devicectl list devices --json-output /dev/stdout 2>/dev/null \
-  | python3 -c 'import json,sys; d=json.load(sys.stdin)["result"]["devices"]; print(d[0]["identifier"] if d else "")')}"
+# devicectl also lists simulators; take the first physical iOS device.
+DEVICE_ID="${TETHER_DEVICE_ID:-$(xcrun devicectl list devices --json-output /dev/stdout 2>/dev/null | python3 -c '
+import json, sys
+devices = json.load(sys.stdin)["result"]["devices"]
+phones = [d for d in devices
+          if d.get("hardwareProperties", {}).get("reality") == "physical"
+          and d.get("hardwareProperties", {}).get("platform") == "iOS"]
+print(phones[0]["identifier"] if phones else "")
+')}"
 [ -n "$DEVICE_ID" ] || { echo "No connected iPhone found. Set TETHER_DEVICE_ID." >&2; exit 1; }
 
 # The project is regenerated on every build, so the team comes from the
@@ -17,6 +24,8 @@ TEAM="${TETHER_TEAM_ID:-}"
 xcodebuild -project Apps/Tether.xcodeproj -scheme TetherPhone -configuration Debug \
   -destination "id=$DEVICE_ID" -derivedDataPath build/phone -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$TEAM" build
-APP="$(find build/phone/Build/Products -name 'TetherPhone.app' -maxdepth 2 | head -1)"
+# Device builds land in Debug-iphoneos; `make phone` leaves a simulator build beside it.
+APP="build/phone/Build/Products/Debug-iphoneos/TetherPhone.app"
+[ -d "$APP" ] || { echo "No device build at $APP" >&2; exit 1; }
 xcrun devicectl device install app --device "$DEVICE_ID" "$APP"
 echo "Installed $APP on $DEVICE_ID"
