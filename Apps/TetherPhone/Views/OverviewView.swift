@@ -143,6 +143,11 @@ private struct MacProjects: View {
     let connection: MacConnection
     let showMacName: Bool
     let startTask: (ProjectID) -> Void
+    @State private var closing: SessionSummary?
+
+    private func closeTitle(_ session: SessionSummary) -> String {
+        "Close “\(session.title)” on \(connection.mac.name)?"
+    }
 
     var body: some View {
         if showMacName || connection.status != .online || connection.snapshot == nil {
@@ -171,6 +176,20 @@ private struct MacProjects: View {
                     ForEach(sessions) { session in
                         NavigationLink(value: SessionRoute(macId: connection.id, paneId: session.id)) {
                             ThreadRow(session: session)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button("Close", systemImage: "xmark.circle", role: .destructive) { closing = session }
+                        }
+                        .confirmationDialog(closeTitle(session), titleVisibility: .visible,
+                                            isPresented: Binding(get: { closing?.id == session.id },
+                                                                 set: { if !$0 { closing = nil } })) {
+                            Button("Close Thread", role: .destructive) {
+                                connection.closeSession(paneId: session.id)
+                            }
+                        } message: {
+                            Text(session.state == .working
+                                 ? "Claude is working right now. Closing stops it."
+                                 : "The tab closes on the Mac. The conversation stays in Claude's history.")
                         }
                     }
                 } header: {

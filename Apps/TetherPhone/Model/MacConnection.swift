@@ -149,6 +149,12 @@ final class MacConnection: Identifiable {
         }
     }
 
+    func closeSession(paneId: PaneID) {
+        channel?.send(PhoneMessage.closeSession(paneId: paneId))
+        // Drop the row now; the next snapshot confirms.
+        snapshot?.sessions.removeAll { $0.id == paneId }
+    }
+
     func renameProject(_ id: ProjectID, to name: String) {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }

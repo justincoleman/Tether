@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 9).
+`ProtocolVersion.current` with any shape change (currently 10).
 
 ## Transport
 
@@ -67,6 +67,7 @@ Phone → Mac (`PhoneMessage`):
 | `startSession(requestId, projectId, branch?, prompt, permissionMode?)` | `AppModel.startSession`: a new Claude tab, launched as `claude "<prompt>"`, with `--permission-mode` when given (only `default`, `acceptEdits`, `plan`, `auto`; anything else is ignored and the user's default applies). With `branch`, first a worktree on a new branch from `origin/<base>` (else `<base>`, else `HEAD`) under `~/Library/Application Support/Tether/Worktrees/<repo>/<branch-slug>` (`WorktreeCreator`). The Mac doesn't switch its own selected tab. The phone waits up to 90 s. |
 | `reorderProjects(ids)` | Saves the sidebar order; the next snapshot carries it. |
 | `renameProject(id, name)` | Display name only (`ProjectStore.renameProject`); the folder isn't touched. Blank names are ignored. |
+| `closeSession(paneId)` | `AppModel.closePane`: closes the tab like its x button, ending a running turn. A branch worktree stays on disk; remove it from the Mac sidebar. |
 | `registerPush(PushRegistration)` | APNs device token, ActivityKit push-to-start token, bundle id, sandbox flag. Sent after every auth and when a token changes; stored on the paired device in `companion.json`. |
 | `registerActivity(paneId, token?)` | The update token of that tab's Live Activity, or nil when it ended. |
 

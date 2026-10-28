@@ -147,6 +147,8 @@ public enum PhoneMessage: Codable, Sendable {
     case reorderProjects(ids: [ProjectID])
     /// Display name only; the folder is untouched.
     case renameProject(id: ProjectID, name: String)
+    /// Closes a Claude tab on the Mac, like its x button. Ends a running turn.
+    case closeSession(paneId: PaneID)
     /// Push tokens for this phone; sent after auth and when they change.
     case registerPush(PushRegistration)
     /// The update token of the Live Activity for a tab, or nil when it ended.

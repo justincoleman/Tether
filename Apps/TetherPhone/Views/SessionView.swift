@@ -9,6 +9,8 @@ struct SessionView: View {
     let paneId: PaneID
     @State private var text = ""
     @State private var answering: PermissionRequested?
+    @State private var confirmClose = false
+    @Environment(\.dismiss) private var dismiss
     /// A tab started from the phone shows up in the next snapshot, a moment later.
     @State private var waitedForTab = false
 
@@ -91,6 +93,15 @@ struct SessionView: View {
                     }
                 }
             }
+            if session != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Close Thread", systemImage: "xmark.circle", role: .destructive) { confirmClose = true }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
             if let usage = transcript?.usage {
                 ToolbarItem(placement: .topBarTrailing) {
                     Text("\(usage.inputTokens / 1000)k of \(usage.contextWindow / 1000)k")
@@ -108,6 +119,17 @@ struct SessionView: View {
         .onDisappear {
             connection.subscribe(nil)
             if store.visiblePaneId == paneId { store.visiblePaneId = nil }
+        }
+        .confirmationDialog("Close this thread on \(connection.mac.name)?", isPresented: $confirmClose,
+                            titleVisibility: .visible) {
+            Button("Close Thread", role: .destructive) {
+                connection.closeSession(paneId: paneId)
+                dismiss()
+            }
+        } message: {
+            Text(session?.state == .working
+                 ? "Claude is working right now. Closing stops it."
+                 : "The tab closes on the Mac. The conversation stays in Claude's history.")
         }
         .sheet(item: $answering) { request in
             PermissionSheet(connection: connection, request: request)
