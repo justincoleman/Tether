@@ -3,18 +3,21 @@ import SwiftUI
 import TetherCore
 import TetherProtocol
 
-/// Tab strip plus every pane of the selected project mounted at once. Hidden
-/// panes keep their grid and scrollback; only rendering stops.
+/// Header row (tabs and panel buttons) over a rounded card holding every
+/// pane of the selected project. Hidden panes keep their grid and
+/// scrollback; only rendering stops.
 struct TerminalTabsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let project: Project
+    @Binding var showSidebar: Bool
 
     var body: some View {
         let panes = model.panes(for: project.id)
         let diffOpen = model.openDiffTarget?.projectId == project.id
+        let card = RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius)
         VStack(spacing: 0) {
-            TabStrip(project: project, panes: panes)
-            Divider()
+            TabStrip(project: project, panes: panes, showSidebar: $showSidebar)
             ZStack {
                 if panes.isEmpty {
                     ContentUnavailableView("No terminals",
@@ -34,11 +37,18 @@ struct TerminalTabsView: View {
                         }
                 }
             }
+            // The card is the terminal's own background, so this inset reads
+            // as padding and the AppKit surface never needs clipping.
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(theme.surface, in: card)
             .overlay {
                 if let target = model.openDiffTarget, target.projectId == project.id {
                     DiffViewer(target: target)
+                        .clipShape(card)
                 }
             }
+            .overlay(card.strokeBorder(theme.border.opacity(0.6), lineWidth: 0.5))
             .overlay(alignment: .bottom) {
                 // Added after the diff so a permission prompt stays on top of it.
                 if let paneId = model.selectedPaneId,
@@ -48,18 +58,23 @@ struct TerminalTabsView: View {
                 }
             }
             .animation(.snappy, value: model.pendingPermissions.map(\.id))
+            .padding(.bottom, 8)
         }
-        .background(Color(nsColor: .textBackgroundColor))
     }
 }
 
 private struct TabStrip: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let project: Project
     let panes: [TerminalPane]
+    @Binding var showSidebar: Bool
 
     var body: some View {
         HStack(spacing: 4) {
+            if !showSidebar {
+                ChromeButton(systemImage: "sidebar.left", help: "Show sidebar (⌃⌘S)") { showSidebar = true }
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
                     ForEach(panes) { pane in
@@ -71,7 +86,6 @@ private struct TabStrip: View {
                         }
                     }
                 }
-                .padding(.horizontal, 6)
             }
             Spacer(minLength: 0)
             Menu {
@@ -85,17 +99,29 @@ private struct TabStrip: View {
                 }
             } label: {
                 Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.secondaryText)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .padding(.trailing, 8)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .frame(width: 28, height: 28)
+            .help("New tab")
+            ChromeButton(systemImage: "bubble.left.and.text.bubble.right",
+                         active: model.showInspector && model.inspectorTab == .chat,
+                         help: "Chat (⇧⌘M)") { model.toggleInspector(.chat) }
+            ChromeButton(systemImage: "plusminus.circle",
+                         active: model.showInspector && model.inspectorTab == .changes,
+                         help: "Changes against the base branch (⇧⌘D)") { model.toggleInspector(.changes) }
         }
-        .frame(height: 30)
+        .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
+        .frame(height: ChromeMetrics.headerHeight)
     }
 }
 
 private struct TabButton: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let pane: TerminalPane
     let selected: Bool
     let select: () -> Void
@@ -103,12 +129,17 @@ private struct TabButton: View {
     @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon).font(.caption)
-            Text(pane.title).lineLimit(1)
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(isClaude ? theme.claude : theme.secondaryText)
+            Text(pane.title)
+                .font(.callout.weight(selected ? .medium : .regular))
+                .foregroundStyle(selected ? theme.text : theme.secondaryText)
+                .lineLimit(1)
             StatusBadge(state: state).scaleEffect(0.75)
             if pane.hasExited {
-                Text("exited").font(.caption2).foregroundStyle(.secondary)
+                Text("exited").font(.caption2).foregroundStyle(theme.secondaryText)
             }
             Button(action: close) {
                 Image(systemName: "xmark").font(.caption2)
@@ -116,16 +147,20 @@ private struct TabButton: View {
             .buttonStyle(.plain)
             .opacity(hovering || selected ? 1 : 0)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(selected ? Color.accentColor.opacity(0.15) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 6))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(selected ? theme.elevated : hovering ? theme.hover : .clear, in: Capsule())
         .contentShape(Rectangle())
         .onTapGesture(perform: select)
         .onHover { hovering = $0 }
     }
 
     private var state: SessionState { model.paneStates[pane.id] ?? .idle }
+
+    private var isClaude: Bool {
+        if case .claude = pane.descriptor.kind { return true }
+        return false
+    }
 
     private var icon: String {
         switch pane.descriptor.kind {

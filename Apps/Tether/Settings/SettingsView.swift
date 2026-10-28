@@ -4,10 +4,41 @@ import TetherCore
 struct SettingsView: View {
     var body: some View {
         TabView {
+            AppearanceSettings()
+                .tabItem { Label("Appearance", systemImage: "paintpalette") }
             RemoteHostsSettings()
                 .tabItem { Label("Remote Hosts", systemImage: "network") }
         }
         .frame(width: 480, height: 320)
+    }
+}
+
+/// Whether the window follows the Ghostty theme or the system appearance.
+struct AppearanceSettings: View {
+    @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
+
+    var body: some View {
+        Form {
+            Picker("Window colors", selection: $appearance) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.radioGroup)
+            Text("Match terminal theme colors the sidebar, tabs and panels from your Ghostty theme. "
+                 + "The terminal itself always uses your Ghostty config.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if !TerminalHost.configWarnings.isEmpty {
+                Section("Ghostty config") {
+                    ForEach(TerminalHost.configWarnings, id: \.self) { warning in
+                        Label(warning, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                    }
+                }
+            }
+        }
+        .padding()
     }
 }
 

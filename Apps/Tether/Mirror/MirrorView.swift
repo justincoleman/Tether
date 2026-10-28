@@ -61,6 +61,7 @@ struct MirrorView: View {
 
 private struct ComposeBar: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let paneId: PaneID
     let state: SessionState
     @State private var text = ""
@@ -80,10 +81,14 @@ private struct ComposeBar: View {
                     .onSubmit(send)
                 Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                     .buttonStyle(.plain)
-                    .foregroundStyle(canSend ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(canSend ? theme.accent : theme.secondaryText)
                     .disabled(!canSend)
                     .keyboardShortcut(.return, modifiers: [.command])
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(theme.surface, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.border, lineWidth: 0.5))
             if state == .detached {
                 Text("Claude isn't running in this tab.")
                     .font(.caption)
@@ -112,6 +117,7 @@ private struct ComposeBar: View {
 }
 
 private struct TranscriptItemView: View {
+    @Environment(\.theme) private var theme
     let item: TranscriptItem
 
     var body: some View {
@@ -124,7 +130,7 @@ private struct TranscriptItemView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .foregroundStyle(.white)
-                    .background(Color(red: 0.85, green: 0.47, blue: 0.34), in: RoundedRectangle(cornerRadius: 14))
+                    .background(theme.claude, in: RoundedRectangle(cornerRadius: 14))
             }
         case .assistant(_, let text, _):
             MarkdownView(text)
@@ -141,6 +147,7 @@ private struct TranscriptItemView: View {
 }
 
 private struct StepsView: View {
+    @Environment(\.theme) private var theme
     let steps: [ToolStep]
     @State private var expanded = false
 
@@ -171,7 +178,7 @@ private struct StepsView: View {
                             if let result = step.result, !result.isEmpty {
                                 Text(result)
                                     .font(.caption.monospaced())
-                                    .foregroundStyle(step.isError ? Color.red : Color.secondary)
+                                    .foregroundStyle(step.isError ? theme.red : theme.secondaryText)
                                     .lineLimit(2)
                             }
                         }
@@ -186,13 +193,13 @@ private struct StepsView: View {
                 Image(systemName: "hammer").font(.caption)
                 Text(label).font(.callout)
                 if steps.contains(where: \.isError) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red)
+                    Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(theme.red)
                 }
             }
             .foregroundStyle(.secondary)
         }
         .padding(8)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        .background(theme.hover, in: RoundedRectangle(cornerRadius: 8))
     }
 
     static func icon(_ tool: String) -> String {
@@ -211,6 +218,7 @@ private struct StepsView: View {
 
 /// "174k of 200k" with a ring, like the phone header.
 struct ContextMeter: View {
+    @Environment(\.theme) private var theme
     let usage: ContextUsage
 
     private var fraction: Double {
@@ -223,10 +231,10 @@ struct ContextMeter: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
             ZStack {
-                Circle().stroke(.quaternary, lineWidth: 2.5)
+                Circle().stroke(theme.border, lineWidth: 2.5)
                 Circle()
                     .trim(from: 0, to: fraction)
-                    .stroke(fraction > 0.85 ? Color.red : Color.orange,
+                    .stroke(fraction > 0.85 ? theme.red : theme.claude,
                             style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }

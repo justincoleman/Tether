@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import GhosttyTerminal
 import OSLog
@@ -24,18 +23,33 @@ enum TerminalHost {
         return candidates.first { FileManager.default.fileExists(atPath: $0) }
     }
 
-    static let controller: TerminalController = {
+    /// The system appearance at launch; picks the side of `theme = light:X,dark:Y`.
+    /// Read from defaults because NSApp may not exist yet when this first runs.
+    private static var systemIsDark: Bool {
+        UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+    }
+
+    /// The user's config with themes inlined; nil when there is no config.
+    private static let prepared: GhosttyConfig.Prepared? = {
         guard let path = ghosttyConfigPath,
               let text = try? String(contentsOfFile: path, encoding: .utf8)
-        else { return TerminalController() }
-
+        else { return nil }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let isDark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) != .aqua
         let dirs = GhosttyConfig.themeDirectories(
             home: home, resourcesDir: ProcessInfo.processInfo.environment["GHOSTTY_RESOURCES_DIR"])
-        var prepared = GhosttyConfig.inlineThemes(in: text, isDark: isDark, themeDirs: dirs)
+        return GhosttyConfig.inlineThemes(in: text, isDark: systemIsDark, themeDirs: dirs)
+    }()
 
-        // An empty theme keeps the wrapper's built-in default from painting over the user's colors.
+    /// Chrome colors derived from the same config the terminal renders with.
+    static let palette = ChromePalette(terminal: TerminalColors.parse(prepared?.contents ?? ""))
+
+    static let controller: TerminalController = {
+        // An empty theme keeps the wrapper's built-in default from painting
+        // over the user's colors, and keeps Ghostty's own defaults (which
+        // `palette` assumes) when there is no config.
+        guard var prepared = Self.prepared else {
+            return TerminalController(configSource: .none, theme: TerminalTheme())
+        }
         let controller = TerminalController(
             configSource: .generated(prepared.contents), theme: TerminalTheme())
         var warnings = prepared.warnings

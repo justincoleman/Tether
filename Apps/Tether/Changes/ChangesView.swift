@@ -5,23 +5,28 @@ import TetherProtocol
 /// Right-hand panel: Chat and Changes behind one tab switcher.
 struct InspectorView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
 
     var body: some View {
         @Bindable var model = model
         let changeCount = model.selectedWorktreePath.flatMap { model.changes.snapshots[$0]?.files.count } ?? 0
         VStack(spacing: 0) {
-            Picker("Panel", selection: $model.inspectorTab) {
-                Text("Chat").tag(InspectorTab.chat)
-                Text(changeCount > 0 ? "Changes (\(changeCount))" : "Changes").tag(InspectorTab.changes)
+            PillPicker(selection: $model.inspectorTab, options: [.chat, .changes]) { tab in
+                switch tab {
+                case .chat: "Chat"
+                case .changes: changeCount > 0 ? "Changes \(changeCount)" : "Changes"
+                }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(8)
-            Divider()
-            switch model.inspectorTab {
-            case .chat: MirrorView(paneId: model.selectedPaneId)
-            case .changes: ChangesView()
+            .frame(height: ChromeMetrics.headerHeight)
+            Group {
+                switch model.inspectorTab {
+                case .chat: MirrorView(paneId: model.selectedPaneId)
+                case .changes: ChangesView()
+                }
             }
+            .background(theme.surface.opacity(0.5), in: RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius))
+            .padding(.bottom, 8)
+            .padding(.trailing, 8)
         }
     }
 }
@@ -51,6 +56,7 @@ struct ChangesView: View {
 
 private struct SnapshotView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let snapshot: ChangesSnapshot
     let path: String
     @State private var commitsExpanded = true
@@ -95,7 +101,7 @@ private struct SnapshotView: View {
                 Image(systemName: "arrow.triangle.branch").foregroundStyle(.secondary)
                 Text(snapshot.branchLabel).font(.headline).lineLimit(1)
                 if snapshot.ahead > 0 { Text("↑\(snapshot.ahead)").font(.caption).foregroundStyle(.secondary) }
-                if snapshot.behind > 0 { Text("↓\(snapshot.behind)").font(.caption).foregroundStyle(.orange) }
+                if snapshot.behind > 0 { Text("↓\(snapshot.behind)").font(.caption).foregroundStyle(theme.claude) }
                 Spacer()
                 if model.changes.refreshing.contains(path) { ProgressView().controlSize(.mini) }
                 Button { model.changes.refresh(path); model.changes.fetchNow(path, force: true) } label: {
@@ -108,8 +114,8 @@ private struct SnapshotView: View {
                 Text(summary).foregroundStyle(.secondary)
                 Spacer()
                 if !snapshot.files.isEmpty {
-                    Text("+\(snapshot.additions)").foregroundStyle(.green)
-                    Text("−\(snapshot.deletions)").foregroundStyle(.red)
+                    Text("+\(snapshot.additions)").foregroundStyle(theme.green)
+                    Text("−\(snapshot.deletions)").foregroundStyle(theme.red)
                 }
             }
             .font(.caption.monospacedDigit())
@@ -145,7 +151,7 @@ private struct SnapshotView: View {
                 if let error = info.error {
                     Label("Fetch failed", systemImage: "exclamationmark.triangle")
                         .help(error)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(theme.claude)
                 } else {
                     Text("Fetched \(RelativeTime.string(info.at))")
                 }
@@ -163,6 +169,7 @@ private struct SnapshotView: View {
 
 private struct FileRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let file: ChangedFile
     let selected: Bool
 
@@ -185,19 +192,20 @@ private struct FileRow: View {
                     Text("binary").font(.caption).foregroundStyle(.secondary)
                 } else {
                     HStack(spacing: 4) {
-                        if let a = file.additions { Text("+\(a)").foregroundStyle(.green) }
-                        if let d = file.deletions { Text("−\(d)").foregroundStyle(.red) }
+                        if let a = file.additions { Text("+\(a)").foregroundStyle(theme.green) }
+                        if let d = file.deletions { Text("−\(d)").foregroundStyle(theme.red) }
                     }
                     .font(.caption.monospacedDigit())
                 }
                 if file.hasUncommittedChanges {
-                    Circle().fill(.orange).frame(width: 6, height: 6).help("Has uncommitted changes")
+                    Circle().fill(theme.claude).frame(width: 6, height: 6).help("Has uncommitted changes")
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? Color.accentColor.opacity(0.15) : Color.clear)
+            .background(selected ? theme.elevated : .clear, in: RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -205,16 +213,17 @@ private struct FileRow: View {
 }
 
 struct KindBadge: View {
+    @Environment(\.theme) private var theme
     let kind: FileChangeKind
 
     private var color: Color {
         switch kind {
-        case .added: .green
-        case .modified: .orange
-        case .deleted: .red
-        case .renamed, .copied: .blue
-        case .untracked: .gray
-        case .conflicted: .red
+        case .added: theme.green
+        case .modified: theme.claude
+        case .deleted: theme.red
+        case .renamed, .copied: theme.blue
+        case .untracked: theme.secondaryText
+        case .conflicted: theme.red
         }
     }
 

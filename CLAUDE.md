@@ -30,6 +30,12 @@ structural. Work proceeds in the numbered phases there.
 - Every pty gets `TETHER_PANE_ID` and `TETHER_TOKEN` in its env
   (`TerminalLaunch`). Hooks echo them back as HTTP headers.
 
+## Look and feel
+- Chrome colors come from `@Environment(\.theme)` (`Apps/Tether/App/Theme.swift`),
+  derived by `ChromePalette` from the Ghostty config, or system colors when
+  Settings → Appearance says so. Never hard-code `Color.accentColor`, `.blue`,
+  `textBackgroundColor` etc. for chrome.
+
 ## Hooks
 - `docs/HOOKS.md` is canonical for the hook wiring, the state machine, and the
   permission response format. Update it with any change to

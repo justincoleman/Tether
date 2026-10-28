@@ -4,19 +4,20 @@ import TetherProtocol
 /// Per-project status: drifting sparkles while Claude works, a pulsing blue
 /// dot when it needs you, a green check when it finished.
 struct StatusBadge: View {
+    @Environment(\.theme) private var theme
     let state: SessionState
 
     var body: some View {
         Group {
             switch state {
             case .working:
-                WorkingSparkles()
+                WorkingSparkles(color: theme.claude)
             case .needsInput:
-                PulsingDot(color: .blue)
+                PulsingDot(color: theme.blue)
             case .done:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(theme.green)
             case .error:
-                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(theme.red)
             case .idle, .detached:
                 EmptyView()
             }
@@ -37,19 +38,21 @@ extension SessionState {
         }
     }
 
-    /// Row tint behind the project in the sidebar.
-    var tint: Color? {
+    /// Ring around the project's avatar in the sidebar.
+    func ringColor(_ theme: Theme) -> Color? {
         switch self {
-        case .working: Color.orange.opacity(0.10)
-        case .needsInput: Color.blue.opacity(0.14)
-        case .done: Color.green.opacity(0.14)
-        case .error: Color.red.opacity(0.12)
+        case .working: theme.claude.opacity(0.7)
+        case .needsInput: theme.blue
+        case .done: theme.green
+        case .error: theme.red
         case .idle, .detached: nil
         }
     }
 }
 
 private struct WorkingSparkles: View {
+    let color: Color
+
     var body: some View {
         // TimelineView pauses on its own when the window is occluded.
         TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { context in
@@ -59,7 +62,7 @@ private struct WorkingSparkles: View {
                     let phase = t * 1.6 + Double(i) * 2.1
                     Image(systemName: "sparkle")
                         .font(.system(size: 6 + 3 * CGFloat((sin(phase) + 1) / 2)))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(color)
                         .opacity(0.35 + 0.65 * (sin(phase * 1.3) + 1) / 2)
                         .offset(x: CGFloat(cos(phase * 0.7)) * 5, y: CGFloat(sin(phase * 0.9)) * 5)
                 }

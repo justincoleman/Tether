@@ -427,6 +427,20 @@ sent together, and the send queue is in memory only, not persisted.*
 - Exit criterion: PR merged by Claude shows as "No changes" within a minute,
   and you can send a line-range instruction without typing a path.
 
+### Phase 4.5: Look and feel (1 day)
+- One cohesive theme: `ChromePalette` (TetherCore, tested) derives window,
+  surface, elevated, border, text and accent colors from the same prepared
+  Ghostty config the terminal renders, so chrome and terminal match.
+  Settings → Appearance switches to standard system light/dark chrome.
+- Views read colors from `@Environment(\.theme)`; no fixed system colors for chrome.
+- Hand-drawn layout instead of `NavigationSplitView`/`.inspector` so every
+  surface takes the theme: sidebar | terminal card | inspector, hidden title
+  bar, header rows aligned with the traffic lights, resizable columns.
+- Sidebar: letter-tile avatars colored from the ANSI palette, with a status
+  ring; pill tabs; pill Chat/Changes switcher.
+- Notes: a `theme = light:X,dark:Y` side is picked at launch only; named X11
+  colors in the config fall back to Ghostty defaults for the chrome.
+
 ### Phase 5: Companion protocol + pairing (3 days)
 - `TetherProtocol` messages, `docs/PROTOCOL.md`, version handshake.
 - `CompanionServer` (TLS WebSocket on tailnet IP, Bonjour fallback), identity

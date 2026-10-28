@@ -5,13 +5,14 @@ import TetherCore
 /// running. "Ask in terminal" hands the decision back to the TUI.
 struct PermissionPromptView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let request: PendingPermission
 
     var body: some View {
         let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Circle().fill(.blue).frame(width: 8, height: 8)
+                Circle().fill(theme.blue).frame(width: 8, height: 8)
                 Text("Claude wants to \(summary.title.lowercased())")
                     .font(.headline)
                 Spacer()
@@ -28,7 +29,7 @@ struct PermissionPromptView: View {
                 }
                 .frame(maxHeight: 120)
                 .padding(8)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+                .background(theme.surface, in: RoundedRectangle(cornerRadius: 6))
             }
             HStack {
                 Button("Ask in Terminal") { model.resolvePermission(request.id, .askInTerminal) }
@@ -45,9 +46,10 @@ struct PermissionPromptView: View {
             }
         }
         .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.blue.opacity(0.5)))
-        .shadow(radius: 8, y: 2)
+        .background(theme.elevated, in: RoundedRectangle(cornerRadius: 10))
+        .background(theme.window, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.blue.opacity(0.6)))
+        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
         .padding(12)
     }
 }

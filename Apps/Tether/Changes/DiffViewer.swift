@@ -60,6 +60,7 @@ private struct LoadKey: Hashable {
 /// covers the terminal area while open.
 struct DiffViewer: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let target: OpenDiff
 
     @State private var diff: FileDiff?
@@ -99,7 +100,7 @@ struct DiffViewer: View {
                 composer
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(theme.surface)
         .task(id: LoadKey(revision: model.changes.revisions[target.worktreePath] ?? 0,
                           path: target.file.path)) {
             await load()
@@ -122,8 +123,8 @@ struct DiffViewer: View {
             Spacer()
             if let diff, !diff.isBinary, !diff.hunks.isEmpty {
                 HStack(spacing: 6) {
-                    Text("+\(diff.additions)").foregroundStyle(.green)
-                    Text("−\(diff.deletions)").foregroundStyle(.red)
+                    Text("+\(diff.additions)").foregroundStyle(theme.green)
+                    Text("−\(diff.deletions)").foregroundStyle(theme.red)
                 }
                 .font(.callout.monospacedDigit())
             }
@@ -274,7 +275,7 @@ struct DiffViewer: View {
                     .disabled(!canSend)
             }
             if let sendError {
-                Text(sendError).font(.caption).foregroundStyle(.red)
+                Text(sendError).font(.caption).foregroundStyle(theme.red)
             }
         }
         .padding(12)
@@ -295,7 +296,7 @@ struct DiffViewer: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+                .background(theme.hover, in: RoundedRectangle(cornerRadius: 6))
             }
         }
     }
@@ -348,6 +349,7 @@ struct DiffViewer: View {
 }
 
 private struct DiffRowView: View {
+    @Environment(\.theme) private var theme
     let row: DiffRow
     let selected: Bool
     let width: CGFloat
@@ -362,7 +364,7 @@ private struct DiffRowView: View {
                     .lineLimit(1)
                     .padding(.leading, 8)
                     .frame(width: width, height: DiffMetrics.rowHeight, alignment: .leading)
-                    .background(Color.blue.opacity(0.08))
+                    .background(theme.blue.opacity(0.08))
             case .line(let line):
                 HStack(spacing: 0) {
                     number(line.oldNumber)
@@ -380,7 +382,7 @@ private struct DiffRowView: View {
                 .background(background(line.kind))
             }
         }
-        .overlay(selected ? Color.accentColor.opacity(0.28) : Color.clear)
+        .overlay(selected ? theme.accent.opacity(0.28) : Color.clear)
     }
 
     private func number(_ n: Int?) -> some View {
@@ -400,8 +402,8 @@ private struct DiffRowView: View {
 
     private func background(_ kind: DiffLineKind) -> Color {
         switch kind {
-        case .add: Color.green.opacity(0.16)
-        case .delete: Color.red.opacity(0.16)
+        case .add: theme.green.opacity(0.16)
+        case .delete: theme.red.opacity(0.16)
         case .context: Color.clear
         }
     }
