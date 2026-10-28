@@ -32,6 +32,9 @@ final class AppModel {
     private(set) var paneAttention: [PaneID: AttentionReason] = [:]
     /// Messages held back per pane until Claude can take them.
     private(set) var queuedCounts: [PaneID: Int] = [:]
+    /// Tabs shown together. The app's copy is authoritative: it also holds
+    /// splits with unpersisted shortcut tabs, which the store drops.
+    private(set) var splits: [PaneSplit] = []
 
     var selectedProjectId: ProjectID? {
         didSet {
@@ -301,6 +304,102 @@ final class AppModel {
     func openShellPane(project: Project) async {
         let d = PaneDescriptor(projectId: project.id, kind: .shell(cwd: project.path), title: "Shell")
         await open(d)
+    }
+
+    // MARK: Tab order and splits
+
+    /// Drops a dragged tab where `target` is, within one project.
+    func movePane(_ id: PaneID, onto target: PaneID) async {
+        guard let projectId = panes[id]?.descriptor.projectId,
+              panes[target]?.descriptor.projectId == projectId else { return }
+        await applyOrder(PaneLayout.moving(id, onto: target, in: panes(for: projectId).map(\.id)),
+                         in: projectId)
+    }
+
+    private func applyOrder(_ order: [PaneID], in projectId: ProjectID) async {
+        paneOrder = PaneLayout.reordering(paneOrder, id: { $0 },
+                                          inProject: { self.panes[$0]?.descriptor.projectId == projectId },
+                                          to: order)
+        companion.setNeedsSnapshot()
+        try? await store.reorderPanes(order, in: projectId)
+    }
+
+    func split(containing pane: PaneID?) -> PaneSplit? {
+        PaneLayout.split(containing: pane, in: splits)
+    }
+
+    /// Opens a shell beside the selected tab, in the folder that tab works in.
+    func splitSelectedPane(_ axis: SplitAxis) async {
+        guard let current = selectedPaneId, let pane = panes[current] else { return }
+        let projectId = pane.descriptor.projectId
+        let d = PaneDescriptor(projectId: projectId, kind: .shell(cwd: folder(of: pane)), title: "Shell")
+        closeOverlays()
+        // Set before the pane opens so the new tab appears already beside this one.
+        splits = PaneLayout.adding(PaneSplit(projectId: projectId, first: current, second: d.id, axis: axis),
+                                   to: splits)
+        await open(d)
+        await applyOrder(PaneLayout.placing(d.id, after: current, in: panes(for: projectId).map(\.id)),
+                         in: projectId)
+        await persistSplits()
+    }
+
+    /// Shows `other` beside the selected tab, which keeps focus.
+    func showBesideSelected(_ other: PaneID) async {
+        guard let current = selectedPaneId, current != other,
+              let projectId = panes[current]?.descriptor.projectId,
+              panes[other]?.descriptor.projectId == projectId else { return }
+        closeOverlays()
+        splits = PaneLayout.adding(PaneSplit(projectId: projectId, first: current, second: other), to: splits)
+        await applyOrder(PaneLayout.placing(other, after: current, in: panes(for: projectId).map(\.id)),
+                         in: projectId)
+        await persistSplits()
+    }
+
+    /// Takes the tab's split apart; both tabs stay open.
+    func unsplit(_ pane: PaneID) async {
+        splits.removeAll { $0.contains(pane) }
+        await persistSplits()
+    }
+
+    func unsplitSelectedPane() {
+        guard let id = selectedPaneId else { return }
+        Task { await unsplit(id) }
+    }
+
+    /// Moves focus to the other half of the selected tab's split.
+    func focusOtherSplitHalf() {
+        guard let id = selectedPaneId, let partner = split(containing: id)?.partner(of: id) else { return }
+        closeOverlays()
+        selectedPaneId = partner
+    }
+
+    /// Called when a divider drag ends; the view tracks the drag itself.
+    /// Synchronous so the divider doesn't jump back for a frame.
+    func setSplitFraction(_ fraction: Double, forPane pane: PaneID) {
+        guard let i = splits.firstIndex(where: { $0.contains(pane) }) else { return }
+        splits[i].fraction = PaneSplit.clamp(fraction)
+        Task { await persistSplits() }
+    }
+
+    func toggleSplitAxis(forPane pane: PaneID) async {
+        guard let i = splits.firstIndex(where: { $0.contains(pane) }) else { return }
+        splits[i].axis = splits[i].axis.toggled
+        await persistSplits()
+    }
+
+    private func persistSplits() async {
+        try? await store.setSplits(splits)
+    }
+
+    /// The folder a tab works in, for a shell opened beside it.
+    private func folder(of pane: TerminalPane) -> String {
+        switch pane.descriptor.kind {
+        case .shell(let cwd), .command(let cwd, _): return cwd
+        case .claude, .ssh:
+            return paneWorktreePaths[pane.id]
+                ?? projects.first { $0.id == pane.descriptor.projectId }?.path
+                ?? FileManager.default.homeDirectoryForCurrentUser.path
+        }
     }
 
     // MARK: Quick actions
@@ -813,6 +912,7 @@ final class AppModel {
         await startHookServer()
         companion.start()
         await reload()
+        splits = await store.state.splits
         var descriptors = await store.state.panes
         for project in projects where !descriptors.contains(where: { $0.projectId == project.id }) {
             if let wt = await store.primaryWorktree(for: project.id) {
@@ -875,6 +975,8 @@ final class AppModel {
     }
 
     private func tearDown(_ id: PaneID) {
+        let partner = split(containing: id)?.partner(of: id)
+        splits.removeAll { $0.contains(id) }
         stopInterruptWatcher(forPane: id)
         stopMirror(forPane: id)
         panes[id] = nil
@@ -890,7 +992,14 @@ final class AppModel {
         launchSessions[id] = nil
         pendingPermissions.removeAll { $0.paneId == id }
         Task { _ = await self.broker.cancelAll(paneId: id) }
-        if selectedPaneId == id { selectFirstPaneIfNeeded(force: true) }
+        if selectedPaneId == id {
+            // Closing half of a split leaves the other half selected.
+            if let partner, panes[partner] != nil {
+                selectedPaneId = partner
+            } else {
+                selectFirstPaneIfNeeded(force: true)
+            }
+        }
         recomputeProjectStates()
     }
 

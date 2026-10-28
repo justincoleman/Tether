@@ -13,6 +13,22 @@ public enum GhosttyConfig {
         public var warnings: [String]
     }
 
+    /// Shortcuts Tether's menus own. Ghostty binds several by default (tabs,
+    /// splits), and a focused surface that matches a binding takes the key
+    /// before the menu bar sees it, so these are unbound for the embedded
+    /// terminal. Appended last, so they win over the user's own config.
+    public static let tetherKeys = [
+        "super+t", "super+shift+t", "super+w", "super+d", "super+shift+d", "super+shift+e",
+        "super+shift+m", "super+shift+n", "super+[", "super+]", "super+shift+[", "super+shift+]",
+        "ctrl+super+s",
+    ] + (1...9).map { "super+\($0)" }
+
+    /// `contents` with `tetherKeys` unbound at the end.
+    public static func reservingTetherKeys(in contents: String) -> String {
+        let lines = tetherKeys.map { "keybind = \($0)=unbind" }.joined(separator: "\n")
+        return contents.isEmpty ? lines : contents + "\n" + lines
+    }
+
     /// Directories Ghostty searches for theme files, in priority order.
     public static func themeDirectories(home: String, resourcesDir: String? = nil) -> [String] {
         var dirs = [

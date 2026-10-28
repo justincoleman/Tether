@@ -21,6 +21,15 @@ import Testing
         #expect(r.contents == "font-size = 14\nbackground = 303446\npalette = 0=#51576d\nbackground = 000000")
     }
 
+    @Test func reservesTetherShortcutsAfterUserConfig() {
+        let out = GhosttyConfig.reservingTetherKeys(in: "keybind = super+d=new_split:right")
+        let lines = out.split(separator: "\n").map(String.init)
+        #expect(lines.first == "keybind = super+d=new_split:right")
+        #expect(lines.contains("keybind = super+d=unbind"))
+        #expect(lines.contains("keybind = super+9=unbind"))
+        #expect(GhosttyConfig.reservingTetherKeys(in: "").hasPrefix("keybind = super+t=unbind"))
+    }
+
     @Test func picksLightOrDarkVariant() throws {
         let dir = try themeDir(["L": "background = ffffff", "D": "background = 000000"])
         let cfg = "theme = light:L,dark:D"
