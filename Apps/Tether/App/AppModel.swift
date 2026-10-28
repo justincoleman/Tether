@@ -195,6 +195,11 @@ final class AppModel {
         return d.id
     }
 
+    func renameProject(_ id: ProjectID, to name: String) async {
+        try? await store.renameProject(id, to: name)
+        await reload()
+    }
+
     func reorderProjects(_ ids: [ProjectID]) async {
         try? await store.reorder(ids)
         await reload()

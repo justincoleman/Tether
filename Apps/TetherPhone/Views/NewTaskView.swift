@@ -126,20 +126,51 @@ struct NewTaskView: View {
     }
 }
 
-/// Drag to reorder a Mac's projects; the Mac's sidebar follows.
+/// Drag to reorder a Mac's projects, tap the pencil to rename one. The
+/// Mac's sidebar follows.
 struct ReorderProjectsView: View {
     let connection: MacConnection
     @Environment(\.dismiss) private var dismiss
     @State private var projects: [ProjectSummary] = []
+    @State private var renaming: ProjectSummary?
+    @State private var newName = ""
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(projects) { Text($0.name) }
-                    .onMove { projects.move(fromOffsets: $0, toOffset: $1) }
+                ForEach(projects) { project in
+                    HStack {
+                        ProjectTile(name: project.name)
+                        Text(project.name)
+                        Spacer()
+                        Button {
+                            newName = project.name
+                            renaming = project
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Rename \(project.name)")
+                    }
+                }
+                .onMove { projects.move(fromOffsets: $0, toOffset: $1) }
+            }
+            .alert("Rename Project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("Name", text: $newName)
+                Button("Cancel", role: .cancel) {}
+                Button("Rename") {
+                    guard let project = renaming else { return }
+                    connection.renameProject(project.id, to: newName)
+                    if let i = projects.firstIndex(where: { $0.id == project.id }) {
+                        let clean = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !clean.isEmpty { projects[i].name = clean }
+                    }
+                }
+            } message: {
+                Text("Changes the name Tether shows. The folder on the Mac isn't renamed.")
             }
             .environment(\.editMode, .constant(.active))
-            .navigationTitle("Projects on \(connection.mac.name)")
+            .navigationTitle("Edit Projects")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

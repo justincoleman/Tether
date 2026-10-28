@@ -140,6 +140,8 @@ private struct ProjectRow: View {
     let project: Project
     let selected: Bool
     @State private var hovering = false
+    @State private var renaming = false
+    @State private var newName = ""
 
     var body: some View {
         let state = model.sessionStates[project.id] ?? .idle
@@ -169,9 +171,24 @@ private struct ProjectRow: View {
         .onTapGesture { model.selectedProjectId = project.id }
         .onHover { hovering = $0 }
         .contextMenu {
+            Button("Rename…") {
+                newName = project.name
+                renaming = true
+            }
+            Divider()
             Button("Remove Project", role: .destructive) {
                 Task { await model.removeProject(project.id) }
             }
+        }
+        .alert("Rename Project", isPresented: $renaming) {
+            TextField("Name", text: $newName)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                let name = newName
+                Task { await model.renameProject(project.id, to: name) }
+            }
+        } message: {
+            Text("Changes the name Tether shows. The folder isn't renamed.")
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)

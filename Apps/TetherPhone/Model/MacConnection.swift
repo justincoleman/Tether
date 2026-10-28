@@ -131,6 +131,16 @@ final class MacConnection: Identifiable {
         }
     }
 
+    func renameProject(_ id: ProjectID, to name: String) {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        channel?.send(PhoneMessage.renameProject(id: id, name: clean))
+        if var snapshot, let i = snapshot.projects.firstIndex(where: { $0.id == id }) {
+            snapshot.projects[i].name = clean
+            self.snapshot = snapshot
+        }
+    }
+
     private func finishStart(_ requestId: UUID, _ outcome: StartOutcome) {
         pendingStarts.removeValue(forKey: requestId)?.resume(returning: outcome)
     }

@@ -69,6 +69,14 @@ public actor ProjectStore {
         try save()
     }
 
+    /// Display name only; the folder and git are untouched. Blank names are ignored.
+    public func renameProject(_ id: ProjectID, to name: String) throws {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let i = state.projects.firstIndex(where: { $0.id == id }) else { return }
+        state.projects[i].name = clean
+        try save()
+    }
+
     public func reorder(_ ids: [ProjectID]) throws {
         var index: [ProjectID: Int] = [:]
         for (i, id) in ids.enumerated() { index[id] = i }

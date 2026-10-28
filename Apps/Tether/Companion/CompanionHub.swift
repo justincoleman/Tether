@@ -234,6 +234,8 @@ final class CompanionHub {
             }
         case .reorderProjects(let ids):
             Task { await model.reorderProjects(ids) }
+        case .renameProject(let id, let name):
+            Task { await model.renameProject(id, to: name) }
         case .registerPush:
             client.send(.error(message: "This Mac doesn't support that yet."))
         case .hello, .pair, .authenticate:

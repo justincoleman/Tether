@@ -145,6 +145,8 @@ public enum PhoneMessage: Codable, Sendable {
                       permissionMode: String?)
     /// Sidebar order, all of the Mac's project ids.
     case reorderProjects(ids: [ProjectID])
+    /// Display name only; the folder is untouched.
+    case renameProject(id: ProjectID, name: String)
     // Phase 6b.
     case registerPush(deviceToken: String, liveActivityPushToStartToken: String?)
 }

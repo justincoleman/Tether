@@ -20,6 +20,16 @@ import TetherProtocol
         #expect(worktrees.count == 1 && worktrees[0].isPrimary)
     }
 
+    @Test func renameTrimsAndIgnoresBlank() async throws {
+        let url = tempURL()
+        let store = ProjectStore(fileURL: url)
+        let p = try await store.addProject(name: "CreditBenefitsTracker", path: "/tmp/cbt")
+        try await store.renameProject(p.id, to: "  Credit Buddy \n")
+        try await store.renameProject(p.id, to: "   ")
+        #expect(await ProjectStore(fileURL: url).orderedProjects().first?.name == "Credit Buddy")
+        #expect(await store.orderedProjects().first?.path == "/tmp/cbt")
+    }
+
     @Test func reorderAssignsOrderByPosition() async throws {
         let store = ProjectStore(fileURL: tempURL())
         let a = try await store.addProject(name: "a", path: "/a")
