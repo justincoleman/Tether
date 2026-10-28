@@ -62,6 +62,9 @@ struct TetherApp: App {
                     .disabled(model.split(containing: model.selectedPaneId) == nil)
             }
             CommandMenu("Go") {
+                Button("Overview") { model.showOverview = true }
+                    .keyboardShortcut("0", modifiers: .command)
+                Divider()
                 Button("Next Tab") { model.selectAdjacentPane(1) }
                     .keyboardShortcut("]", modifiers: [.command, .shift])
                 Button("Previous Tab") { model.selectAdjacentPane(-1) }

@@ -21,7 +21,7 @@ public enum GhosttyConfig {
         "super+t", "super+shift+t", "super+w", "super+d", "super+shift+d", "super+shift+e",
         "super+shift+m", "super+shift+n", "super+[", "super+]", "super+shift+[", "super+shift+]",
         "ctrl+super+s",
-    ] + (1...9).map { "super+\($0)" }
+    ] + (0...9).map { "super+\($0)" }
 
     /// `contents` with `tetherKeys` unbound at the end.
     public static func reservingTetherKeys(in contents: String) -> String {
