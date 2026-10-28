@@ -180,9 +180,10 @@ private struct MacProjects: View {
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button("Close", systemImage: "xmark.circle", role: .destructive) { closing = session }
                         }
-                        .confirmationDialog(closeTitle(session), titleVisibility: .visible,
+                        .confirmationDialog(closeTitle(session),
                                             isPresented: Binding(get: { closing?.id == session.id },
-                                                                 set: { if !$0 { closing = nil } })) {
+                                                                 set: { if !$0 { closing = nil } }),
+                                            titleVisibility: .visible) {
                             Button("Close Thread", role: .destructive) {
                                 connection.closeSession(paneId: session.id)
                             }
