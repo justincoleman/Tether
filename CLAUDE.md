@@ -69,6 +69,14 @@ structural. Work proceeds in the numbered phases there.
   needs permission, a task long enough to interrupt).
 - Note any mode the tab must be in (auto mode skips permission prompts).
 
+## Companion (iPhone)
+- `docs/PROTOCOL.md` is canonical for the wire format, pairing and transport.
+  Update it with any change to `TetherProtocol` messages or `CompanionHub`.
+- Phones connect only over Tailscale (`Tailnet.isAllowedPeer`); never widen
+  that without adding TLS.
+- Pairing and token logic live in `TetherCore/CompanionAuth.swift` with tests;
+  `Apps/Tether/Companion/` and `Apps/Shared/WebSocketChannel.swift` only move bytes.
+
 ## Rules
 - Swift 6 language mode, strict concurrency. Keep `TetherCore` free of
   AppKit/UIKit/SwiftUI so it keeps testing on Linux CI.

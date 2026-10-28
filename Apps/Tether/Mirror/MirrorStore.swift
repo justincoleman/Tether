@@ -12,6 +12,15 @@ final class MirrorStore {
     @ObservationIgnored private var feeds: [SessionID: Task<Void, Never>] = [:]
     /// Resolved transcript path per tracked session; nil while still looking.
     @ObservationIgnored private var paths: [SessionID: String] = [:]
+    /// Raw events per session, so a phone that subscribes late gets the history.
+    @ObservationIgnored private var logs: [SessionID: [MirrorEvent]] = [:]
+    /// New events as they arrive, for the companion server.
+    @ObservationIgnored var onEvents: ((SessionID, [MirrorEvent]) -> Void)?
+
+    /// The most recent events for a session, capped so a resend stays small.
+    func events(for sessionId: SessionID, limit: Int = 1500) -> [MirrorEvent] {
+        Array((logs[sessionId] ?? []).suffix(limit))
+    }
 
     func model(for sessionId: SessionID?) -> TranscriptModel? {
         sessionId.flatMap { models[$0] }
@@ -45,6 +54,8 @@ final class MirrorStore {
                     var model = self.models[id] ?? TranscriptModel()
                     model.apply(events)
                     self.models[id] = model
+                    self.logs[id, default: []].append(contentsOf: events)
+                    self.onEvents?(id, events)
                 }
                 try? await Task.sleep(for: .milliseconds(500))
             }
@@ -55,5 +66,6 @@ final class MirrorStore {
         feeds.removeValue(forKey: sessionId)?.cancel()
         paths[sessionId] = nil
         models[sessionId] = nil
+        logs[sessionId] = nil
     }
 }

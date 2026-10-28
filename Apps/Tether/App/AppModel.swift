@@ -44,6 +44,7 @@ final class AppModel {
 
     let mirror = MirrorStore()
     let changes = ChangesStore()
+    let companion = CompanionHub()
 
     /// The diff open over the terminal, if any.
     private(set) var openDiffTarget: OpenDiff?
@@ -73,6 +74,10 @@ final class AppModel {
     let launchToken = UUID().uuidString
 
     init() {
+        companion.model = self
+        mirror.onEvents = { [weak self] sessionId, events in
+            self?.companion.publish(events, sessionId: sessionId)
+        }
         Task { await restore() }
     }
 
@@ -84,6 +89,7 @@ final class AppModel {
         if selectedProjectId == nil { selectedProjectId = projects.first?.id }
         changes.sync(Dictionary(projects.map { ($0.path, $0.baseBranch) }, uniquingKeysWith: { first, _ in first }))
         updateChangesFocus()
+        companion.setNeedsSnapshot()
     }
 
     func addProject(at url: URL) async {
@@ -210,6 +216,7 @@ final class AppModel {
     private func syncQueuedCount(_ paneId: PaneID) {
         let count = promptQueue.count(for: paneId)
         queuedCounts[paneId] = count > 0 ? count : nil
+        companion.setNeedsSnapshot()
     }
 
     // MARK: Changes and diffs
@@ -292,6 +299,7 @@ final class AppModel {
 
     func resolvePermission(_ id: UUID, _ decision: PermissionDecision) {
         pendingPermissions.removeAll { $0.id == id }
+        companion.setNeedsSnapshot()
         Task { await self.broker.resolve(id, decision) }
     }
 
@@ -328,8 +336,10 @@ final class AppModel {
                 pendingPermissions.append(request)
             }
             requestAttention()
+            companion.setNeedsSnapshot()
         case .permissionResolved(let id, _):
             pendingPermissions.removeAll { $0.id == id }
+            companion.setNeedsSnapshot()
         }
     }
 
@@ -392,6 +402,7 @@ final class AppModel {
         sessionStates = result
         let waiting = result.values.filter { $0 == .needsInput }.count
         NSApp.dockTile.badgeLabel = waiting > 0 ? "\(waiting)" : nil
+        companion.setNeedsSnapshot()
     }
 
     private func requestAttention() {
@@ -425,6 +436,7 @@ final class AppModel {
     /// without any pane get a Claude session: the "ready to go" promise.
     private func restore() async {
         await startHookServer()
+        companion.start()
         await reload()
         var descriptors = await store.state.panes
         for project in projects where !descriptors.contains(where: { $0.projectId == project.id }) {
@@ -482,6 +494,7 @@ final class AppModel {
             launchSessions[d.id] = launchSession
             mirror.track(sessionId: launchSession, path: nil)
         }
+        companion.setNeedsSnapshot()
     }
 
     private func tearDown(_ id: PaneID) {
@@ -533,5 +546,32 @@ private extension SessionState {
         case .idle: 1
         case .detached: 0
         }
+    }
+}
+
+// MARK: - Companion
+
+extension AppModel {
+    /// Everything the phone shows, in sidebar and tab order.
+    func companionSnapshot(macName: String) -> Snapshot {
+        let projectList = projects.map {
+            ProjectSummary(id: $0.id, name: $0.name, branch: branchLabel(for: $0))
+        }
+        var sessions: [SessionSummary] = []
+        for project in projects {
+            for pane in panes(for: project.id) {
+                guard case .claude = pane.descriptor.kind else { continue }
+                sessions.append(SessionSummary(
+                    id: pane.id, projectId: project.id, sessionId: sessionId(forPane: pane.id),
+                    title: pane.title, state: paneStates[pane.id] ?? .idle,
+                    attention: paneAttention[pane.id], queued: queuedCounts[pane.id] ?? 0))
+            }
+        }
+        let permissions = pendingPermissions.map { request in
+            let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
+            return PermissionRequested(id: request.id, paneId: request.paneId, sessionId: request.sessionId,
+                                       toolName: request.toolName, title: summary.title, detail: summary.detail)
+        }
+        return Snapshot(macName: macName, projects: projectList, sessions: sessions, permissions: permissions)
     }
 }

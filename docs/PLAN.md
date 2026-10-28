@@ -448,6 +448,11 @@ sent together, and the send queue is in memory only, not persisted.*
 - iPhone app: pairing screen, Overview (multi-Mac), session list, session chat
   view reusing phase 3 rendering, compose box, permission Allow/Deny sheet.
 - Exit criterion: phone shows a live session over Tailscale from off-Wi-Fi.
+- Built (see docs/PROTOCOL.md): Tailscale-only plain WebSocket instead of TLS
+  with a pinned cert (WireGuard already encrypts and authenticates the
+  peer); no Bonjour fallback; pairing tokens instead of an Ed25519 identity.
+  Snapshots are full state, resent on change. `SessionSummary` is keyed by
+  pane id so a tab keeps its row across `/clear`.
 
 ### Phase 6: Push, Live Activities, phone-initiated work (2–3 days)
 - `PushSender` (APNs token auth, Keychain-stored key), notification categories

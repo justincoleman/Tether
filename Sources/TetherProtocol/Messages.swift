@@ -23,52 +23,113 @@ public struct Hello: Codable, Hashable, Sendable {
     }
 }
 
-public struct Snapshot: Codable, Hashable, Sendable {
-    public var projects: [Project]
-    public var worktrees: [Worktree]
-    public var sessions: [Session]
+/// A project as the phone lists it.
+public struct ProjectSummary: Codable, Hashable, Sendable, Identifiable {
+    public var id: ProjectID
+    public var name: String
+    /// Branch label as the Mac sidebar shows it, e.g. "main".
+    public var branch: String?
 
-    public init(projects: [Project], worktrees: [Worktree], sessions: [Session]) {
-        self.projects = projects
-        self.worktrees = worktrees
-        self.sessions = sessions
+    public init(id: ProjectID, name: String, branch: String?) {
+        self.id = id
+        self.name = name
+        self.branch = branch
     }
 }
 
-public struct PermissionRequested: Codable, Hashable, Sendable {
-    public var requestId: UUID
+/// One Claude tab on the Mac. Keyed by pane because a tab keeps its place in
+/// the list while `/clear` gives it a new Claude session.
+public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
+    public var id: PaneID
+    public var projectId: ProjectID
+    /// Nil until the tab's Claude session is known.
+    public var sessionId: SessionID?
+    public var title: String
+    public var state: SessionState
+    public var attention: AttentionReason?
+    /// Messages held on the Mac until Claude can take them.
+    public var queued: Int
+
+    public init(id: PaneID, projectId: ProjectID, sessionId: SessionID?, title: String,
+                state: SessionState, attention: AttentionReason?, queued: Int) {
+        self.id = id
+        self.projectId = projectId
+        self.sessionId = sessionId
+        self.title = title
+        self.state = state
+        self.attention = attention
+        self.queued = queued
+    }
+}
+
+public struct PermissionRequested: Codable, Hashable, Sendable, Identifiable {
+    public var id: UUID
+    public var paneId: PaneID?
     public var sessionId: SessionID
     public var toolName: String
-    public var summary: String
-    public var detail: String?
+    /// "Run a command", "Edit a file", ...
+    public var title: String
+    /// The command, path or input, already formatted for display.
+    public var detail: String
 
-    public init(requestId: UUID = UUID(), sessionId: SessionID, toolName: String, summary: String, detail: String? = nil) {
-        self.requestId = requestId
+    public init(id: UUID, paneId: PaneID?, sessionId: SessionID, toolName: String,
+                title: String, detail: String) {
+        self.id = id
+        self.paneId = paneId
         self.sessionId = sessionId
         self.toolName = toolName
-        self.summary = summary
+        self.title = title
         self.detail = detail
     }
 }
 
-/// Mac → phone.
+/// The Mac's whole state for the phone. Small, so it is resent in full on
+/// every change instead of diffed.
+public struct Snapshot: Codable, Hashable, Sendable {
+    public var macName: String
+    public var projects: [ProjectSummary]
+    public var sessions: [SessionSummary]
+    public var permissions: [PermissionRequested]
+
+    public init(macName: String, projects: [ProjectSummary], sessions: [SessionSummary],
+                permissions: [PermissionRequested]) {
+        self.macName = macName
+        self.projects = projects
+        self.sessions = sessions
+        self.permissions = permissions
+    }
+}
+
+/// Mac → phone. See docs/PROTOCOL.md.
 public enum MacMessage: Codable, Sendable {
     case hello(Hello)
+    /// Pairing succeeded. The phone keeps `token` for every later connection.
+    case paired(macId: UUID, macName: String, token: String)
+    case authenticated(macId: UUID, macName: String)
+    /// The Mac closes the connection after this.
+    case authFailed(reason: String)
     case snapshot(Snapshot)
-    case sessionEvent(sessionId: SessionID, event: MirrorEvent)
-    case sessionState(sessionId: SessionID, state: SessionState)
-    case permissionRequested(PermissionRequested)
-    case permissionResolved(requestId: UUID, resolvedBy: String, allowed: Bool)
-    case messageQueued(sessionId: SessionID, text: String)
+    /// Transcript events for a subscribed session. `reset` replaces what the
+    /// phone holds (sent first after subscribing); otherwise append.
+    case transcript(sessionId: SessionID, events: [MirrorEvent], reset: Bool)
+    /// Answer to `sendMessage`: "sent", "queued" or "failed".
+    case sendResult(paneId: PaneID, outcome: String)
     case error(message: String)
 }
 
-/// Phone → Mac.
+/// Phone → Mac. See docs/PROTOCOL.md.
 public enum PhoneMessage: Codable, Sendable {
     case hello(Hello)
-    case sendMessage(sessionId: SessionID, text: String)
+    /// First connection: the one-time code from the Mac's QR.
+    case pair(code: String)
+    /// Every later connection.
+    case authenticate(token: String)
+    /// Stream this session's transcript; nil stops streaming.
+    case subscribe(sessionId: SessionID?)
+    case sendMessage(paneId: PaneID, text: String)
+    case permissionDecision(requestId: UUID, allow: Bool)
+    // Phase 6.
     case startSession(projectId: ProjectID, branch: String?, prompt: String)
-    case permissionDecision(requestId: UUID, allow: Bool, reason: String?)
     case reorderProjects(ids: [ProjectID])
     case registerPush(deviceToken: String, liveActivityPushToStartToken: String?)
 }

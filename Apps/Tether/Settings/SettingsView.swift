@@ -6,10 +6,12 @@ struct SettingsView: View {
         TabView {
             AppearanceSettings()
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
+            PhoneSettings()
+                .tabItem { Label("iPhone", systemImage: "iphone") }
             RemoteHostsSettings()
                 .tabItem { Label("Remote Hosts", systemImage: "network") }
         }
-        .frame(width: 480, height: 320)
+        .frame(width: 560, height: 420)
     }
 }
 

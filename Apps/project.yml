@@ -61,6 +61,10 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSCameraUsageDescription: Tether scans a QR code shown by your Mac to pair.
+        NSLocalNetworkUsageDescription: Tether connects to Tether on your Mac over Tailscale.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.justincoleman.tether.pair
+            CFBundleURLSchemes: [tether]
         NSSupportsLiveActivities: true
         UIBackgroundModes: [remote-notification]
     settings:
