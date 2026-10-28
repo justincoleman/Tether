@@ -3,7 +3,8 @@ import TetherCore
 import TetherProtocol
 
 /// Native chat view of the selected tab's Claude session, built from the
-/// transcript. The phone (phase 5) renders the same TranscriptModel.
+/// transcript. It replaces the terminal in the main card when the top bar's
+/// toggle is on chat. The phone renders the same TranscriptModel.
 struct MirrorView: View {
     @Environment(AppModel.self) private var model
     let paneId: PaneID?
@@ -37,7 +38,10 @@ struct MirrorView: View {
                                 ProgressView().controlSize(.small).id("working")
                             }
                         }
-                        .padding(12)
+                        .padding(16)
+                        // A readable column in a wide window.
+                        .frame(maxWidth: Self.columnWidth)
+                        .frame(maxWidth: .infinity)
                     }
                     .onChange(of: transcript.items.count, initial: true) {
                         if let last = transcript.items.last { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -45,20 +49,23 @@ struct MirrorView: View {
                 }
             } else {
                 ContentUnavailableView(sessionId == nil ? "No Claude session" : "Nothing yet",
-                                       systemImage: "bubble.left.and.bubble.right",
+                                       systemImage: sessionId == nil ? "bubble.left.and.bubble.right" : "sparkle",
                                        description: Text(sessionId == nil
                                            ? "Select a Claude tab to see its conversation."
-                                           : "Messages appear here as Claude works."))
+                                           : "Send Claude its first message below."))
                     .frame(maxHeight: .infinity)
             }
 
             if let paneId, sessionId != nil {
-                Divider()
                 ComposeBar(paneId: paneId, state: state)
+                    .frame(maxWidth: Self.columnWidth)
+                    .frame(maxWidth: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
+
+    static let columnWidth: CGFloat = 820
 }
 
 private struct ComposeBar: View {
@@ -67,6 +74,7 @@ private struct ComposeBar: View {
     let paneId: PaneID
     let state: SessionState
     @State private var text = ""
+    @FocusState private var focused: Bool
 
     private var canSend: Bool {
         state != .detached && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -80,6 +88,7 @@ private struct ComposeBar: View {
                 TextField("Message Claude", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
+                    .focused($focused)
                     .onSubmit(send)
                 Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                     .buttonStyle(.plain)
@@ -109,7 +118,10 @@ private struct ComposeBar: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(10)
+        .padding(12)
+        // Typing goes here once the chat replaces the terminal.
+        .onAppear { focused = true }
+        .onChange(of: paneId) { focused = true }
     }
 
     private func send() {

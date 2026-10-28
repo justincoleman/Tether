@@ -442,7 +442,16 @@ sent together, and the send queue is in memory only, not persisted.*
   surface takes the theme: sidebar | terminal card | inspector, hidden title
   bar, header rows aligned with the traffic lights, resizable columns.
 - Sidebar: letter-tile avatars colored from the ANSI palette, with a status
-  ring; pill tabs; pill Chat/Changes switcher.
+  ring; pill tabs; pill Changes/Files switcher.
+- Layout refresh (0.3.0): the chat moved out of the inspector and replaces the
+  terminal in the main card via a terminal/chat toggle in the top bar (Claude
+  tabs only). The inspector is Changes / Files: a tree from `FileTree`
+  (TetherCore, `git ls-files`, so ignored files stay out) with a read-only
+  viewer over the terminal. The top bar has Claude, History (past sessions
+  from `SessionHistory`, see TRANSCRIPT.md, resumed with `--resume`) and
+  per-project shortcuts (`QuickAction`, stored in state.json, never in the
+  project folder) that run in a `PaneKind.command` tab. Shortcut tabs are not
+  persisted, so a relaunch doesn't start dev servers on its own.
 - Notes: a `theme = light:X,dark:Y` side is picked at launch only; named X11
   colors in the config fall back to Ghostty defaults for the chrome.
 

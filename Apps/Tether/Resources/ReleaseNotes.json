@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.3.0",
+    "date": "2026-10-28",
+    "summary": "Tether 0.3.0 reworks the Mac window around a chat view, a file browser and one-click shortcuts.",
+    "highlights": [
+      {
+        "title": "Terminal or chat.",
+        "body": "A toggle in the top bar swaps a Claude tab's terminal for a chat view of the same conversation, with a message box at the bottom. Shift-Command-M switches back and forth."
+      },
+      {
+        "title": "Changes and Files.",
+        "body": "The right panel is now Changes and Files. Files shows the project as a tree, without anything git ignores, with a filter. Click a file to read it over the terminal."
+      },
+      {
+        "title": "History.",
+        "body": "History in the top bar lists this project's past Claude sessions with their titles, first prompts and branches. Search them, and open one to pick the conversation back up in a new tab."
+      },
+      {
+        "title": "Shortcuts.",
+        "body": "Add commands like npm run dev with + > Edit Shortcuts. Each gets a button in the top bar and runs in its own tab. Click it again to jump back to the running one."
+      }
+    ]
+  },
+  {
     "version": "0.2.0",
     "date": "2026-10-28",
     "summary": "Tether 0.2.0 puts your Claude sessions on your iPhone and gives the Mac app its own look.",

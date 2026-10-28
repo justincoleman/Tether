@@ -7,16 +7,19 @@ public struct ProjectStoreState: Codable, Sendable, Equatable {
     public var worktrees: [Worktree] = []
     public var remoteHosts: [RemoteHost] = []
     public var panes: [PaneDescriptor] = []
+    public var quickActions: [QuickAction] = []
 
     public init(projects: [Project] = [], worktrees: [Worktree] = [],
-                remoteHosts: [RemoteHost] = [], panes: [PaneDescriptor] = []) {
+                remoteHosts: [RemoteHost] = [], panes: [PaneDescriptor] = [],
+                quickActions: [QuickAction] = []) {
         self.projects = projects
         self.worktrees = worktrees
         self.remoteHosts = remoteHosts
         self.panes = panes
+        self.quickActions = quickActions
     }
 
-    enum CodingKeys: String, CodingKey { case projects, worktrees, remoteHosts, panes }
+    enum CodingKeys: String, CodingKey { case projects, worktrees, remoteHosts, panes, quickActions }
 
     /// Missing keys decode as empty so older state files keep loading.
     public init(from decoder: any Decoder) throws {
@@ -25,6 +28,7 @@ public struct ProjectStoreState: Codable, Sendable, Equatable {
         worktrees = try c.decodeIfPresent([Worktree].self, forKey: .worktrees) ?? []
         remoteHosts = try c.decodeIfPresent([RemoteHost].self, forKey: .remoteHosts) ?? []
         panes = try c.decodeIfPresent([PaneDescriptor].self, forKey: .panes) ?? []
+        quickActions = try c.decodeIfPresent([QuickAction].self, forKey: .quickActions) ?? []
     }
 }
 
@@ -66,6 +70,7 @@ public actor ProjectStore {
         state.projects.removeAll { $0.id == id }
         state.worktrees.removeAll { $0.projectId == id }
         state.panes.removeAll { $0.projectId == id }
+        state.quickActions.removeAll { $0.projectId == id }
         try save()
     }
 
@@ -126,6 +131,28 @@ public actor ProjectStore {
     public func removeRemoteHost(_ id: RemoteHostID) throws {
         state.remoteHosts.removeAll { $0.id == id }
         state.panes.removeAll { if case .ssh(let h) = $0.kind { return h == id } else { return false } }
+        try save()
+    }
+
+    // MARK: Quick actions
+
+    public func quickActions(for projectId: ProjectID) -> [QuickAction] {
+        state.quickActions.filter { $0.projectId == projectId }
+    }
+
+    /// Replaces the project's shortcuts, in order. Ones with no command are dropped.
+    public func setQuickActions(_ actions: [QuickAction], for projectId: ProjectID) throws {
+        let kept = actions
+            .filter { !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { action -> QuickAction in
+                var copy = action
+                copy.projectId = projectId
+                copy.name = action.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                copy.command = action.command.trimmingCharacters(in: .whitespacesAndNewlines)
+                return copy
+            }
+        state.quickActions.removeAll { $0.projectId == projectId }
+        state.quickActions += kept
         try save()
     }
 

@@ -47,9 +47,11 @@ final class AppModel {
         }
     }
     var addProjectRequested = false
-    /// Right-hand panel, showing Chat or Changes.
+    /// Right-hand panel, showing Changes or Files.
     var showInspector = false
-    var inspectorTab: InspectorTab = .chat
+    var inspectorTab: InspectorTab = .changes
+    /// Shortcut commands for every project, shown in the top bar.
+    private(set) var quickActions: [QuickAction] = []
 
     let mirror = MirrorStore()
     let releases = ReleaseNotesStore()
@@ -58,6 +60,8 @@ final class AppModel {
 
     /// The diff open over the terminal, if any.
     private(set) var openDiffTarget: OpenDiff?
+    /// A file from the Files panel open over the terminal, if any.
+    private(set) var openFileTarget: OpenFile?
     /// Comments collected on diffs, waiting to be sent to Claude as one message.
     private(set) var reviewComments: [ProjectID: [ReviewComment]] = [:]
 
@@ -119,6 +123,7 @@ final class AppModel {
         projects = await store.orderedProjects()
         remoteHosts = await store.state.remoteHosts
         worktrees = await store.state.worktrees
+        quickActions = await store.state.quickActions
         if selectedProjectId == nil { selectedProjectId = projects.first?.id }
         // Branch worktrees too, or their tabs' Changes panels never load.
         var watched: [String: String] = [:]
@@ -296,6 +301,67 @@ final class AppModel {
         await open(d)
     }
 
+    // MARK: Quick actions
+
+    func quickActions(for projectId: ProjectID) -> [QuickAction] {
+        quickActions.filter { $0.projectId == projectId }
+    }
+
+    func setQuickActions(_ actions: [QuickAction], for projectId: ProjectID) async {
+        try? await store.setQuickActions(actions, for: projectId)
+        quickActions = await store.state.quickActions
+    }
+
+    /// Runs a shortcut in its own tab, in the folder the selected tab works
+    /// in. If that command is already running there, its tab is selected
+    /// instead, so a second click doesn't start a second dev server.
+    func runQuickAction(_ action: QuickAction) async {
+        guard let project = projects.first(where: { $0.id == action.projectId }) else { return }
+        let cwd = (selectedProjectId == project.id ? selectedWorktreePath : nil) ?? project.path
+        let kind = PaneKind.command(cwd: cwd, command: action.command)
+        closeOverlays()
+        selectedProjectId = project.id
+        if let running = panes(for: project.id).first(where: { $0.descriptor.kind == kind && !$0.hasExited }) {
+            selectedPaneId = running.id
+            return
+        }
+        // Not persisted: a relaunch shouldn't start dev servers on its own.
+        await open(PaneDescriptor(projectId: project.id, kind: kind, title: action.label), persist: false)
+    }
+
+    // MARK: History
+
+    /// Claude sessions that ran in the project's folder or its worktrees.
+    func pastSessions(for projectId: ProjectID) async -> [PastSession] {
+        let folders = worktrees.filter { $0.projectId == projectId }.map(\.path)
+        return await Task.detached(priority: .userInitiated) {
+            SessionHistory.list(folders: folders)
+        }.value
+    }
+
+    /// The tab already running a session, if any.
+    func pane(forSession id: SessionID) -> PaneID? {
+        paneOrder.first { sessionId(forPane: $0) == id }
+    }
+
+    /// Selects the session's tab, or resumes it in a new Claude tab in the
+    /// worktree it ran in.
+    func openPastSession(_ session: PastSession, projectId: ProjectID) async {
+        closeOverlays()
+        selectedProjectId = projectId
+        if let paneId = pane(forSession: session.id) {
+            selectedPaneId = paneId
+            return
+        }
+        let candidates = worktrees.filter { $0.projectId == projectId }
+        guard let worktree = candidates.first(where: { $0.path == session.cwd })
+                ?? candidates.first(where: \.isPrimary) else { return }
+        let d = PaneDescriptor(projectId: projectId,
+                               kind: .claude(worktreeId: worktree.id, resumeSessionId: session.id),
+                               title: worktree.isPrimary ? "Claude" : worktree.branch)
+        await open(d)
+    }
+
     func openSSHPane(project: Project, host: RemoteHost) async {
         let d = PaneDescriptor(projectId: project.id, kind: .ssh(hostId: host.id), title: host.name)
         await open(d)
@@ -381,7 +447,7 @@ final class AppModel {
         guard visible.count > 1 else { return }
         let current = visible.firstIndex { $0.id == selectedPaneId } ?? 0
         let next = (current + offset + visible.count) % visible.count
-        closeDiff()
+        closeOverlays()
         selectedPaneId = visible[next].id
     }
 
@@ -498,6 +564,10 @@ final class AppModel {
         changes.focus(selectedWorktreePath)
     }
 
+    func toggleInspector() {
+        showInspector.toggle()
+    }
+
     func toggleInspector(_ tab: InspectorTab) {
         if showInspector && inspectorTab == tab {
             showInspector = false
@@ -509,6 +579,7 @@ final class AppModel {
 
     func openDiff(_ file: ChangedFile) {
         guard let pid = selectedProjectId, let path = selectedWorktreePath else { return }
+        openFileTarget = nil
         openDiffTarget = OpenDiff(projectId: pid, worktreePath: path, file: file)
         // Keystrokes should reach the diff's comment field, not the hidden terminal.
         NSApp.keyWindow?.makeFirstResponder(nil)
@@ -516,6 +587,24 @@ final class AppModel {
 
     func closeDiff() {
         openDiffTarget = nil
+    }
+
+    /// Shows a file from the Files panel over the terminal.
+    func openFile(_ relativePath: String) {
+        guard let pid = selectedProjectId, let path = selectedWorktreePath else { return }
+        openDiffTarget = nil
+        openFileTarget = OpenFile(projectId: pid, worktreePath: path, path: relativePath)
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
+    func closeFile() {
+        openFileTarget = nil
+    }
+
+    /// Back to the terminal: closes a diff or file shown over it.
+    func closeOverlays() {
+        openDiffTarget = nil
+        openFileTarget = nil
     }
 
     func addReviewComment(_ comment: ReviewComment, project: ProjectID) {
@@ -539,7 +628,7 @@ final class AppModel {
         let outcome = sendOrQueue(message, toPane: paneId)
         guard outcome != .failed else { return .noSession }
         reviewComments[project] = nil
-        closeDiff()
+        closeOverlays()
         selectedPaneId = paneId
         return outcome == .sent ? .sent : .queued
     }
@@ -738,8 +827,8 @@ final class AppModel {
         selectFirstPaneIfNeeded()
     }
 
-    private func open(_ d: PaneDescriptor) async {
-        try? await store.addPane(d)
+    private func open(_ d: PaneDescriptor, persist: Bool = true) async {
+        if persist { try? await store.addPane(d) }
         await mount(d)
         selectedPaneId = d.id
     }
@@ -759,7 +848,7 @@ final class AppModel {
                 launchSession = UUID().uuidString.lowercased()
             }
         case .ssh(let hostId): host = await store.remoteHost(hostId)
-        case .shell: break
+        case .shell, .command: break
         }
         let launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host,
                                          token: launchToken, hookSettingsPath: hookSettingsPath,
@@ -812,7 +901,17 @@ final class AppModel {
 }
 
 enum InspectorTab: String {
-    case chat, changes
+    case changes, files
+}
+
+/// A file from the Files panel shown over the terminal area.
+struct OpenFile: Equatable {
+    var projectId: ProjectID
+    var worktreePath: String
+    /// Relative to `worktreePath`.
+    var path: String
+
+    var url: URL { URL(fileURLWithPath: worktreePath).appendingPathComponent(path) }
 }
 
 /// A file's diff opened over the terminal area.

@@ -43,6 +43,11 @@ final class TerminalPane: Identifiable {
         return terminal.sendKey(.enter)
     }
 
+    var isClaude: Bool {
+        if case .claude = descriptor.kind { return true }
+        return false
+    }
+
     func focus() { terminal.requestFocus() }
 
     func setVisible(_ visible: Bool) { terminal.isSurfaceVisible = visible }

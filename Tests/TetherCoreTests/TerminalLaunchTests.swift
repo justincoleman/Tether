@@ -100,6 +100,17 @@ import TetherProtocol
     }
 }
 
+@Suite struct QuickActionLaunchTests {
+    @Test func runsCommandFromEnvironmentThenKeepsAShell() {
+        let pane = PaneDescriptor(projectId: UUID(), kind: .command(cwd: "/tmp/p", command: "npm run dev"), title: "npm run dev")
+        let launch = TerminalLaunch.make(pane: pane, worktree: nil, remoteHost: nil, token: "t", shell: "/bin/zsh")
+        #expect(launch.workingDirectory == "/tmp/p")
+        #expect(launch.environment[TerminalLaunch.runEnvKey] == "npm run dev")
+        #expect(launch.environment[TerminalLaunch.paneEnvKey] == pane.id.uuidString)
+        #expect(launch.command == "/bin/sh -c 'trap : INT; /bin/zsh -ilc \"$TETHER_RUN\"; exec /bin/zsh -l'")
+    }
+}
+
 @Suite struct TranscriptLocatorTests {
     @Test func findsTranscriptInAnyProjectDirectory() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("projects-\(UUID().uuidString)")

@@ -64,3 +64,29 @@ import TetherProtocol
         #expect(kind == .claude(worktreeId: wt.id, resumeSessionId: "sess-1"))
     }
 }
+
+@Suite struct QuickActionStoreTests {
+    private func tempURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("tether-tests-\(UUID().uuidString)/state.json")
+    }
+
+    @Test func setReplacesTrimsAndPersistsPerProject() async throws {
+        let url = tempURL()
+        let store = ProjectStore(fileURL: url)
+        let a = try await store.addProject(name: "a", path: "/a")
+        let b = try await store.addProject(name: "b", path: "/b")
+        try await store.setQuickActions([QuickAction(projectId: a.id, name: "", command: "make test")], for: b.id)
+        try await store.setQuickActions([
+            QuickAction(projectId: a.id, name: " Dev ", command: " npm run dev\n"),
+            QuickAction(projectId: a.id, name: "blank", command: "   "),
+        ], for: a.id)
+        let reloaded = ProjectStore(fileURL: url)
+        let actions = await reloaded.quickActions(for: a.id)
+        #expect(actions.map(\.name) == ["Dev"])
+        #expect(actions.map(\.command) == ["npm run dev"])
+        #expect(await reloaded.quickActions(for: b.id).map(\.label) == ["make test"])
+        try await store.removeProject(b.id)
+        #expect(await store.quickActions(for: b.id).isEmpty)
+    }
+}

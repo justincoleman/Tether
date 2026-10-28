@@ -10,6 +10,8 @@ public struct TerminalLaunch: Hashable, Sendable {
 
     public static let paneEnvKey = "TETHER_PANE_ID"
     public static let tokenEnvKey = "TETHER_TOKEN"
+    /// A quick action's command, read by the wrapper script so it needs no quoting.
+    public static let runEnvKey = "TETHER_RUN"
 
     public init(command: String?, workingDirectory: String?, environment: [String: String]) {
         self.command = command
@@ -59,6 +61,11 @@ public struct TerminalLaunch: Hashable, Sendable {
                 environment: env)
         case .shell(let cwd):
             return TerminalLaunch(command: nil, workingDirectory: cwd, environment: env)
+        case .command(let cwd, let command):
+            var withCommand = env
+            withCommand[runEnvKey] = command
+            return TerminalLaunch(command: quickActionCommand(shell: shell),
+                                  workingDirectory: cwd, environment: withCommand)
         case .ssh:
             guard let remoteHost else {
                 return TerminalLaunch(command: nil, workingDirectory: nil, environment: env)
@@ -76,6 +83,15 @@ public struct TerminalLaunch: Hashable, Sendable {
     static func loginShellCommand(shell: String, _ argv: [String]) -> String {
         let joined = argv.map(shellQuote).joined(separator: " ")
         return "\(shell) -l -c \(shellQuote(joined))"
+    }
+
+    /// Runs `$TETHER_RUN` in an interactive login shell, so PATH set up in
+    /// .zshrc (nvm, rbenv) applies, then stays in a shell in the same folder.
+    /// The outer `sh` traps Ctrl-C so stopping a dev server doesn't close the tab.
+    static func quickActionCommand(shell: String) -> String {
+        let s = shellQuote(shell)
+        let script = "trap : INT; \(s) -ilc \"$\(runEnvKey)\"; exec \(s) -l"
+        return "/bin/sh -c \(shellQuote(script))"
     }
 
     /// Modes the phone may start a tab in. `dontAsk` and `bypassPermissions`
