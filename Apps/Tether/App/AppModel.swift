@@ -35,6 +35,9 @@ final class AppModel {
     private var panes: [PaneID: TerminalPane] = [:]
     private var paneOrder: [PaneID] = []
     private var recordedSessions: [PaneID: SessionID] = [:]
+    /// Polls a working session's transcript for the Esc-interrupt record,
+    /// since Claude Code fires no hook when the user interrupts.
+    private var interruptWatchers: [SessionID: Task<Void, Never>] = [:]
 
     private let store = ProjectStore(fileURL: ProjectStore.defaultFileURL())
     let registry = SessionRegistry()
@@ -141,6 +144,7 @@ final class AppModel {
                 Task { try? await self.store.recordSession(session.id, forPane: paneId) }
             }
             recomputeProjectStates()
+            updateInterruptWatcher(for: session)
             if session.state == .needsInput, previous != .needsInput { requestAttention() }
         case .permissionRequested(let request):
             if !pendingPermissions.contains(where: { $0.id == request.id }) {
@@ -152,12 +156,42 @@ final class AppModel {
         }
     }
 
+    private func updateInterruptWatcher(for session: Session) {
+        guard session.state == .working, let path = session.transcriptPath else {
+            interruptWatchers.removeValue(forKey: session.id)?.cancel()
+            return
+        }
+        guard interruptWatchers[session.id] == nil else { return }
+        let sessionId = session.id
+        let registry = self.registry
+        interruptWatchers[sessionId] = Task { [weak self] in
+            var tail = TranscriptTail(path: path)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                if tail.readNewLines().contains(where: TranscriptSignals.isUserInterrupt),
+                   let updated = await registry.setState(.idle, for: sessionId) {
+                    self?.interruptWatchers[sessionId] = nil
+                    self?.handle(.session(updated))
+                    return
+                }
+            }
+        }
+    }
+
     private func paneFocused(_ id: PaneID) async {
         guard NSApp.isActive, let session = await registry.paneFocused(id) else { return }
         handle(.session(session))
     }
 
+    private func stopInterruptWatcher(forPane id: PaneID) {
+        if let sessionId = recordedSessions[id] {
+            interruptWatchers.removeValue(forKey: sessionId)?.cancel()
+        }
+    }
+
     private func paneDidExit(_ id: PaneID) async {
+        stopInterruptWatcher(forPane: id)
         _ = await broker.cancelAll(paneId: id)
         pendingPermissions.removeAll { $0.paneId == id }
         if let session = await registry.paneExited(id) {
@@ -255,6 +289,7 @@ final class AppModel {
     }
 
     private func tearDown(_ id: PaneID) {
+        stopInterruptWatcher(forPane: id)
         panes[id] = nil
         paneOrder.removeAll { $0 == id }
         paneStates[id] = nil

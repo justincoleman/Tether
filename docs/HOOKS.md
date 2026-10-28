@@ -55,7 +55,8 @@ must answer state hooks fast. It does no I/O before responding.
 | UserPromptSubmit | working |
 | PermissionRequest | needsInput |
 | Notification `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, `elicitation_url_dialog` | needsInput |
-| Notification `idle_prompt` while working | idle (Stop never fires on an Esc interrupt) |
+| Transcript gets a `[Request interrupted by user…]` user record while working | idle (no hook fires on Esc) |
+| Notification `idle_prompt` while working | idle (backup for the above) |
 | PostToolUse | working (a tool ran, so any prompt was answered) |
 | Stop, last message ends in `?` | needsInput (heuristic: Claude asked a question) |
 | Stop, otherwise | done |
@@ -66,6 +67,12 @@ must answer state hooks fast. It does no I/O before responding.
 
 The sidebar shows the most urgent state across a project's tabs:
 needsInput > error > working > done > idle.
+
+Esc detection is the one transition that is not a hook. While a session is
+working, Tether reads lines appended to its `transcript_path` once a second
+(`TranscriptTail`, `TranscriptSignals.isUserInterrupt`). Only `user` records
+count, so Claude quoting the marker does not trigger it. Confirmed on the Mac
+mini that `idle_prompt` alone does not clear the badge after Esc.
 
 When a pane gets a new session id (`/clear`, resume), the old session is
 dropped and the new id is saved so the next launch resumes it.
