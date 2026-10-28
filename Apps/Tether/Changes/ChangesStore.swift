@@ -169,7 +169,9 @@ final class ChangesStore {
     private func fetchDue() {
         let now = Date()
         for path in Array(baseBranches.keys) {
-            let interval: TimeInterval = path == focusedPath ? 120 : 600
+            // Low Power Mode: a third as many network round trips.
+            let scale: TimeInterval = ProcessInfo.processInfo.isLowPowerModeEnabled ? 3 : 1
+            let interval: TimeInterval = (path == focusedPath ? 120 : 600) * scale
             if now.timeIntervalSince(lastFetchAttempt[path] ?? .distantPast) >= interval {
                 fetchNow(path, force: true)
             }

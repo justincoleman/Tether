@@ -85,6 +85,12 @@ final class AppModel {
 
     init() {
         companion.model = self
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
+                     Notification.Name.NSProcessInfoPowerStateDidChange] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updatePolling() }
+            }
+        }
         mirror.onEvents = { [weak self] sessionId, events in
             self?.companion.publish(events, sessionId: sessionId)
             self?.companion.setNeedsSnapshot() // previews
@@ -278,6 +284,64 @@ final class AppModel {
     func openSSHPane(project: Project, host: RemoteHost) async {
         let d = PaneDescriptor(projectId: project.id, kind: .ssh(hostId: host.id), title: host.name)
         await open(d)
+    }
+
+    // MARK: Energy
+
+    /// Transcript reads: quick while you're looking or a phone is connected,
+    /// slow in the background, slower again in Low Power Mode. Hooks, not
+    /// transcripts, drive state and notifications, so those aren't delayed.
+    func updatePolling() {
+        let watched = NSApp.isActive
+        let phone = !companion.connectedDeviceIds.isEmpty
+        var interval: Duration = watched ? .milliseconds(500) : phone ? .seconds(1) : .seconds(3)
+        if ProcessInfo.processInfo.isLowPowerModeEnabled { interval = interval * 2 }
+        mirror.pollInterval = interval
+    }
+
+    // MARK: Keyboard navigation
+
+    /// A tab waiting for "close it anyway?" because Claude is busy in it.
+    var pendingClose: PaneID?
+
+    /// Closes a tab, asking first if Claude is mid-turn or waiting on you.
+    func requestClose(_ id: PaneID) {
+        if let pane = panes[id], case .claude = pane.descriptor.kind,
+           let state = paneStates[id], state == .working || state == .needsInput {
+            pendingClose = id
+        } else {
+            Task { await closePane(id) }
+        }
+    }
+
+    func requestCloseSelectedPane() {
+        if let id = selectedPaneId { requestClose(id) }
+    }
+
+    func selectAdjacentPane(_ offset: Int) {
+        guard let pid = selectedProjectId else { return }
+        let visible = panes(for: pid)
+        guard visible.count > 1 else { return }
+        let current = visible.firstIndex { $0.id == selectedPaneId } ?? 0
+        let next = (current + offset + visible.count) % visible.count
+        closeDiff()
+        selectedPaneId = visible[next].id
+    }
+
+    /// ⌘1…⌘9, in sidebar order.
+    func selectProject(number: Int) {
+        guard projects.indices.contains(number - 1) else { return }
+        selectedProjectId = projects[number - 1].id
+    }
+
+    func newClaudeTabInSelectedProject() {
+        guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
+        Task { await openClaudePane(project: project) }
+    }
+
+    func newShellTabInSelectedProject() {
+        guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
+        Task { await openShellPane(project: project) }
     }
 
     func closePane(_ id: PaneID) async {

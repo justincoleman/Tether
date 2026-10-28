@@ -486,6 +486,16 @@ sent together, and the send queue is in memory only, not persisted.*
 - Crash-safe state: sessions resumed after a Tether crash via `--resume`.
 - Energy: throttle FSEvents and transcript tailing when on battery and
   backgrounded.
+- Status. Built (7a): ⌘1–9 projects, ⌘T/⇧⌘T new Claude/shell tab, ⌘W close tab
+  (asks if Claude is busy), ⇧⌘[ ⇧⌘] switch tabs (Go menu); transcript polling
+  500 ms in front, 1 s with a phone connected, 3 s otherwise, doubled and
+  fetches slowed 3× in Low Power Mode (FSEvents are event-driven, left alone).
+  Already done: sessions resume after a crash (`--resume` with the id the
+  SessionStart hook confirmed); a dead hook port makes Claude fall back to its
+  own prompt. Not doing: persisting the send queue (a restarted tab is a new
+  process, and a stale message typed into it is worse than a dropped one).
+  Deferred (issue #4): split panes, tab drag-reorder, updater and notarized
+  builds, libghostty from source.
 
 ---
 

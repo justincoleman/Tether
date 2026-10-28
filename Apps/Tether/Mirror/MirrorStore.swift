@@ -16,6 +16,8 @@ final class MirrorStore {
     @ObservationIgnored private var logs: [SessionID: [MirrorEvent]] = [:]
     /// New events as they arrive, for the companion server.
     @ObservationIgnored var onEvents: ((SessionID, [MirrorEvent]) -> Void)?
+    /// How often transcripts are read. The app slows it when nobody is looking.
+    @ObservationIgnored var pollInterval: Duration = .milliseconds(500)
 
     /// The most recent events for a session, capped so a resend stays small.
     func events(for sessionId: SessionID, limit: Int = 1500) -> [MirrorEvent] {
@@ -57,7 +59,8 @@ final class MirrorStore {
                     self.logs[id, default: []].append(contentsOf: events)
                     self.onEvents?(id, events)
                 }
-                try? await Task.sleep(for: .milliseconds(500))
+                let wait = self?.pollInterval ?? .seconds(3)
+                try? await Task.sleep(for: wait)
             }
         }
     }

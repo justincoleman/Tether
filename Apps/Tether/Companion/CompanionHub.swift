@@ -160,6 +160,7 @@ final class CompanionHub {
 
     private func updateConnected() {
         connectedDeviceIds = Set(clients.values.compactMap(\.device?.id))
+        model?.updatePolling()
     }
 
     private func received(_ data: Data, from client: CompanionClient) async {

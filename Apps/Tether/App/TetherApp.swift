@@ -29,6 +29,27 @@ struct TetherApp: App {
                 Button("Add Project…") { model.addProjectRequested = true }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }
+            // Replaces File → Close (⌘W) so it closes the tab, not the window.
+            CommandGroup(replacing: .saveItem) {
+                Button("New Claude Tab") { model.newClaudeTabInSelectedProject() }
+                    .keyboardShortcut("t", modifiers: .command)
+                Button("New Shell Tab") { model.newShellTabInSelectedProject() }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                Button("Close Tab") { model.requestCloseSelectedPane() }
+                    .keyboardShortcut("w", modifiers: .command)
+            }
+            CommandMenu("Go") {
+                Button("Next Tab") { model.selectAdjacentPane(1) }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                Button("Previous Tab") { model.selectAdjacentPane(-1) }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+                Divider()
+                ForEach(1...9, id: \.self) { n in
+                    Button("Project \(n)") { model.selectProject(number: n) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(n)")), modifiers: .command)
+                        .disabled(n > model.projects.count)
+                }
+            }
             CommandGroup(replacing: .sidebar) {
                 Button(showSidebar ? "Hide Sidebar" : "Show Sidebar") { showSidebar.toggle() }
                     .keyboardShortcut("s", modifiers: [.command, .control])

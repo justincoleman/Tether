@@ -42,6 +42,16 @@ struct RootView: View {
         .ignoresSafeArea(.container, edges: .top)
         .animation(.snappy(duration: 0.2), value: showSidebar)
         .animation(.snappy(duration: 0.2), value: model.showInspector)
+        .confirmationDialog("Close this tab?", isPresented: Binding(get: { model.pendingClose != nil },
+                                                                    set: { if !$0 { model.pendingClose = nil } }),
+                            titleVisibility: .visible) {
+            Button("Close Tab", role: .destructive) {
+                if let id = model.pendingClose { Task { await model.closePane(id) } }
+                model.pendingClose = nil
+            }
+        } message: {
+            Text("Claude is working or waiting on you in this tab. Closing it stops Claude. The conversation stays in Claude's history.")
+        }
         .fileImporter(isPresented: $model.addProjectRequested,
                       allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result {

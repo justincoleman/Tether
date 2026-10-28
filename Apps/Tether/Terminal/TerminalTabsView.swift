@@ -83,7 +83,7 @@ private struct TabStrip: View {
                             model.closeDiff()
                             model.selectedPaneId = pane.id
                         } close: {
-                            Task { await model.closePane(pane.id) }
+                            model.requestClose(pane.id)
                         }
                     }
                 }
