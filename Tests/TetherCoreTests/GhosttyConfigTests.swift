@@ -27,6 +27,8 @@ import Testing
         #expect(lines.first == "keybind = super+d=new_split:right")
         #expect(lines.contains("keybind = super+d=unbind"))
         #expect(lines.contains("keybind = super+9=unbind"))
+        // ⌘0 is the Overview; Ghostty binds it to reset_font_size.
+        #expect(lines.contains("keybind = super+0=unbind"))
         #expect(GhosttyConfig.reservingTetherKeys(in: "").hasPrefix("keybind = super+t=unbind"))
     }
 

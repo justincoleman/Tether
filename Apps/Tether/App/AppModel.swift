@@ -390,6 +390,7 @@ final class AppModel {
     func focusOtherSplitHalf() {
         guard let id = selectedPaneId, let partner = split(containing: id)?.partner(of: id) else { return }
         closeOverlays()
+        showOverview = false
         selectedPaneId = partner
     }
 
