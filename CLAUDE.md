@@ -24,6 +24,9 @@ structural. Work proceeds in the numbered phases there.
   (`GhosttyTerminal` product, pinned `from: "2.2.0"` in `Apps/project.yml`).
 - Text into a pane: `paste(text:)` then `sendKey(.enter)`. A pasted `\r` is a
   character under bracketed paste, never submit. See `TerminalPane.send(prompt:)`.
+- The embedded libghostty rejects the whole config on any diagnostic. `TerminalHost`
+  inlines `theme` files (`GhosttyConfig`), then drops only rejected lines, and passes
+  an empty `TerminalTheme()` so the wrapper default never overrides user colors.
 - Every pty gets `TETHER_PANE_ID` and `TETHER_TOKEN` in its env
   (`TerminalLaunch`). Hooks echo them back as HTTP headers.
 
