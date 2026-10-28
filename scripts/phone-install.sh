@@ -16,6 +16,14 @@ print(phones[0]["identifier"] if phones else "")
 ')}"
 [ -n "$DEVICE_ID" ] || { echo "No connected iPhone found. Set TETHER_DEVICE_ID." >&2; exit 1; }
 
+# Over SSH the login keychain stays locked, and codesign then fails with
+# errSecInternalComponent. Unlock it up front (asks for the login password).
+KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
+if ! security show-keychain-info "$KEYCHAIN" >/dev/null 2>&1; then
+  echo "Unlocking the login keychain so codesign can use your signing key."
+  security unlock-keychain "$KEYCHAIN"
+fi
+
 # The project is regenerated on every build, so the team comes from the
 # environment rather than Xcode's Signing tab.
 TEAM="${TETHER_TEAM_ID:-}"
