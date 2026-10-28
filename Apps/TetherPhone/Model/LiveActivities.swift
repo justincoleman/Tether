@@ -1,4 +1,4 @@
-import ActivityKit
+@preconcurrency import ActivityKit
 import Foundation
 import TetherProtocol
 
@@ -22,22 +22,31 @@ enum LiveActivities {
         }
     }
 
+    /// Activities are looked up by id inside each task rather than captured,
+    /// so nothing non-Sendable crosses into a task.
     private static func watch(_ activity: Activity<LiveActivityAttributes>, store: PhoneStore) {
         let id = activity.id
         guard let macId = UUID(uuidString: activity.attributes.macId),
               let paneId = UUID(uuidString: activity.attributes.paneId) else { return }
         Task {
-            for await data in activity.pushTokenUpdates {
+            guard let tracked = find(id) else { return }
+            for await data in tracked.pushTokenUpdates {
                 await store.reportActivityToken(hex(data), macId: macId, paneId: paneId)
             }
         }
         Task {
-            guard let same = Activity<LiveActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
-            for await state in same.activityStateUpdates where state == .ended || state == .dismissed {
-                await store.reportActivityToken(nil, macId: macId, paneId: paneId)
-                return
+            guard let tracked = find(id) else { return }
+            for await state in tracked.activityStateUpdates {
+                if state == .ended || state == .dismissed {
+                    await store.reportActivityToken(nil, macId: macId, paneId: paneId)
+                    return
+                }
             }
         }
+    }
+
+    private static func find(_ id: String) -> Activity<LiveActivityAttributes>? {
+        Activity<LiveActivityAttributes>.activities.first { $0.id == id }
     }
 
     /// While connected: match every activity for this Mac to its tab's state.
@@ -50,13 +59,16 @@ enum LiveActivities {
                 content.detail = session.preview ?? content.detail
             }
             let active = session.map { $0.state == .working || $0.state == .needsInput } ?? false
-            let next = ActivityContent(state: content, staleDate: nil)
-            guard next.state != activity.content.state || !active else { continue }
+            guard content != activity.content.state || !active else { continue }
+            let id = activity.id
+            let finalContent = content
             Task {
+                guard let tracked = find(id) else { return }
+                let next = ActivityContent(state: finalContent, staleDate: nil)
                 if active {
-                    await activity.update(next)
+                    await tracked.update(next)
                 } else {
-                    await activity.end(next, dismissalPolicy: .after(Date().addingTimeInterval(15 * 60)))
+                    await tracked.end(next, dismissalPolicy: .after(Date().addingTimeInterval(15 * 60)))
                 }
             }
         }

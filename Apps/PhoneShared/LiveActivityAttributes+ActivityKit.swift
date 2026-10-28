@@ -1,4 +1,4 @@
-import ActivityKit
+@preconcurrency import ActivityKit
 import TetherProtocol
 
 /// The Mac's push-to-start payloads name this type in `attributes-type`, and

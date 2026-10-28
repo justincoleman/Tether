@@ -143,6 +143,9 @@ private struct ProjectRow: View {
     @State private var hovering = false
     @State private var renaming = false
     @State private var newName = ""
+    /// Inline rename, started by double-clicking the name.
+    @State private var editing = false
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         VStack(spacing: 2) {
@@ -158,9 +161,22 @@ private struct ProjectRow: View {
         return HStack(spacing: 10) {
             ProjectAvatar(name: project.name, state: state)
             VStack(alignment: .leading, spacing: 1) {
-                Text(project.name)
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
+                if editing {
+                    TextField("Name", text: $newName)
+                        .textFieldStyle(.plain)
+                        .font(.body.weight(.medium))
+                        .focused($nameFocused)
+                        .onAppear { nameFocused = true }
+                        .onSubmit(commitRename)
+                        .onExitCommand { editing = false }
+                        .onChange(of: nameFocused) { _, focused in
+                            if !focused, editing { commitRename() }
+                        }
+                } else {
+                    Text(project.name)
+                        .font(.body.weight(.medium))
+                        .lineLimit(1)
+                }
                 Text(model.branchLabel(for: project))
                     .font(.caption)
                     .lineLimit(1)
@@ -179,6 +195,9 @@ private struct ProjectRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { model.selectedProjectId = project.id }
+        // Simultaneous, so a single click selects without waiting to see
+        // whether a second click follows.
+        .simultaneousGesture(TapGesture(count: 2).onEnded { beginInlineRename() })
         .onHover { hovering = $0 }
         .contextMenu {
             Button("Rename…") {
@@ -202,6 +221,18 @@ private struct ProjectRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func beginInlineRename() {
+        newName = project.name
+        editing = true
+    }
+
+    private func commitRename() {
+        editing = false
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != project.name else { return }
+        Task { await model.renameProject(project.id, to: name) }
     }
 
     private var rowFill: Color {

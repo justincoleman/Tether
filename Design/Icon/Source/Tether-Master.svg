@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Tether — Connected prompt</title>
+<defs>
+<linearGradient id="background" gradientUnits="userSpaceOnUse" x1="150" y1="40" x2="850" y2="1024"><stop stop-color="#233d60"/><stop offset=".5" stop-color="#0c1d33"/><stop offset="1" stop-color="#050e18"/></linearGradient>
+<linearGradient id="mint" gradientUnits="userSpaceOnUse" x1="330" y1="265" x2="730" y2="730"><stop stop-color="#c4ffed"/><stop offset=".5" stop-color="#51fbd4"/><stop offset="1" stop-color="#12c6b6"/></linearGradient>
+<mask id="mark"><path d="M258 310L420 472L258 634H737" fill="none" stroke="white" stroke-width="88" stroke-linecap="round" stroke-linejoin="round"/><rect x="700" y="559" width="150" height="150" rx="30" fill="white"/></mask>
+</defs><rect width="1024" height="1024" fill="url(#background)"/><rect width="1024" height="1024" fill="url(#mint)" mask="url(#mark)"/></svg>
