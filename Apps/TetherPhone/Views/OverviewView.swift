@@ -15,6 +15,7 @@ struct OverviewView: View {
     @State private var answering: (connection: MacConnection, request: PermissionRequested)?
     @State private var newTask: NewTaskTarget?
     @State private var reordering: MacConnection?
+    @State private var closeRequest: CloseRequest?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -51,6 +52,19 @@ struct OverviewView: View {
                 }
                 .environment(store)
             }
+            // Presented from here, not from the row: a swiped row is being torn
+            // down and takes its dialog with it.
+            .confirmationDialog("Close this thread?", isPresented: Binding(get: { closeRequest != nil },
+                                                                           set: { if !$0 { closeRequest = nil } }),
+                                titleVisibility: .visible, presenting: closeRequest) { request in
+                Button("Close “\(request.session.title)”", role: .destructive) {
+                    request.connection.closeSession(paneId: request.session.id)
+                }
+            } message: { request in
+                Text(request.session.state == .working
+                     ? "Claude is working right now. Closing stops it."
+                     : "The tab closes on \(request.connection.mac.name). The conversation stays in Claude's history.")
+            }
             .sheet(item: $reordering) { connection in
                 ReorderProjectsView(connection: connection)
             }
@@ -78,9 +92,12 @@ struct OverviewView: View {
                 }
             }
             ForEach(store.connections) { connection in
-                MacProjects(connection: connection, showMacName: store.connections.count > 1) { projectId in
+                MacProjects(connection: connection, showMacName: store.connections.count > 1,
+                            startTask: { projectId in
                     newTask = NewTaskTarget(macId: connection.id, projectId: projectId)
-                }
+                }, askToClose: { session in
+                    closeRequest = CloseRequest(connection: connection, session: session)
+                })
             }
         }
         .listStyle(.insetGrouped)
@@ -126,6 +143,12 @@ struct OverviewView: View {
     }
 }
 
+private struct CloseRequest: Identifiable {
+    let connection: MacConnection
+    let session: SessionSummary
+    var id: PaneID { session.id }
+}
+
 private struct WaitingPermission: Identifiable {
     let connection: MacConnection
     let request: PermissionRequested
@@ -143,11 +166,7 @@ private struct MacProjects: View {
     let connection: MacConnection
     let showMacName: Bool
     let startTask: (ProjectID) -> Void
-    @State private var closing: SessionSummary?
-
-    private func closeTitle(_ session: SessionSummary) -> String {
-        "Close “\(session.title)” on \(connection.mac.name)?"
-    }
+    let askToClose: (SessionSummary) -> Void
 
     var body: some View {
         if showMacName || connection.status != .online || connection.snapshot == nil {
@@ -178,19 +197,10 @@ private struct MacProjects: View {
                             ThreadRow(session: session)
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button("Close", systemImage: "xmark.circle", role: .destructive) { closing = session }
-                        }
-                        .confirmationDialog(closeTitle(session),
-                                            isPresented: Binding(get: { closing?.id == session.id },
-                                                                 set: { if !$0 { closing = nil } }),
-                                            titleVisibility: .visible) {
-                            Button("Close Thread", role: .destructive) {
-                                connection.closeSession(paneId: session.id)
-                            }
-                        } message: {
-                            Text(session.state == .working
-                                 ? "Claude is working right now. Closing stops it."
-                                 : "The tab closes on the Mac. The conversation stays in Claude's history.")
+                            // Not role: .destructive, which animates the row away
+                            // before the answer to "are you sure?" is known.
+                            Button("Close", systemImage: "xmark.circle") { askToClose(session) }
+                                .tint(.red)
                         }
                     }
                 } header: {
