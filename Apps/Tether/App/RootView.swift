@@ -265,23 +265,30 @@ private struct WorktreeRow: View {
                 .font(.callout)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            if merged {
-                Button("Merged · Remove") { confirming = true }
-                    .buttonStyle(.plain)
-                    .font(.caption2.weight(.medium))
+                .layoutPriority(1)
+            Spacer(minLength: 4)
+            // Hover offers removal; otherwise a quiet check marks a merged branch.
+            if hovering {
+                Button { confirming = true } label: {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(merged ? theme.green : theme.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .help(merged ? "Merged into the base branch. Remove the worktree and branch."
+                             : "Remove the worktree")
+            } else if merged {
+                Image(systemName: "checkmark.circle")
+                    .font(.caption)
                     .foregroundStyle(theme.green)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(theme.green.opacity(0.15), in: Capsule())
-                    .help("This branch has nothing the base branch doesn't. Remove the worktree and branch.")
+                    .help("Merged into the base branch. Hover to remove.")
             } else if panes.isEmpty {
                 Text("no tab").font(.caption2).foregroundStyle(theme.secondaryText)
             }
-            Spacer(minLength: 4)
             StatusBadge(state: state).scaleEffect(0.8)
         }
         .padding(.leading, 38)
-        .padding(.trailing, 8)
+        .padding(.trailing, 10)
         .padding(.vertical, 4)
         .background(selected ? theme.elevated : hovering ? theme.hover : .clear, in: RoundedRectangle(cornerRadius: 7))
         .contentShape(Rectangle())
