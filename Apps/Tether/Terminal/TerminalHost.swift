@@ -5,10 +5,19 @@ import GhosttyTerminal
 /// fonts, themes and keybinds match their standalone Ghostty.
 @MainActor
 enum TerminalHost {
+    /// Ghostty's own lookup order on macOS: XDG path first, then the
+    /// Application Support path its macOS app writes.
+    static var ghosttyConfigPath: String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let candidates = [
+            home.appendingPathComponent(".config/ghostty/config").path,
+            home.appendingPathComponent("Library/Application Support/com.mitchellh.ghostty/config").path,
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0) }
+    }
+
     static let controller: TerminalController = {
-        let path = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/ghostty/config").path
-        if FileManager.default.fileExists(atPath: path) {
+        if let path = ghosttyConfigPath {
             return TerminalController(configFilePath: path)
         }
         return TerminalController()
