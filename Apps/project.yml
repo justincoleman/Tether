@@ -36,6 +36,8 @@ targets:
       properties:
         CFBundleDisplayName: Tether
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        CFBundleIconName: AppIcon
+        CFBundleIconFile: Tether
         NSHumanReadableCopyright: ""
     entitlements:
       path: Tether/Resources/Tether.entitlements
