@@ -45,7 +45,10 @@ final class Updater {
         Task { await check() }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { Task { await self?.check() } }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                Task { await self.check() }
+            }
         }
     }
 
