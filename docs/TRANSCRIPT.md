@@ -41,7 +41,11 @@ appear in the terminal and are skipped. A text block that is exactly
 
 Context used = `input_tokens + cache_creation_input_tokens +
 cache_read_input_tokens` from the latest record. The window size is not in the
-transcript; Tether assumes 200k, or 1M once usage passes 200k.
+transcript: `message.model` is the API id (`claude-opus-5-5`) with no `[1m]`
+marker. `TranscriptFeed` reads `model` from `~/.claude/settings.json` (where
+`/model` saves the choice) whenever a batch has usage: a value ending in `[1m]`
+means 1M. Otherwise Tether assumes 200k, or 1M once usage passes 200k. Project
+settings, `--model` and `ANTHROPIC_MODEL` are not consulted.
 
 ### user
 
