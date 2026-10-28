@@ -87,8 +87,10 @@ final class AppModel {
     private(set) var paneModes: [PaneID: String] = [:]
     /// Model and cost per tab, from the status line relay.
     private(set) var paneStatus: [PaneID: SessionStatus] = [:]
-    /// Plan limits from the latest status line that reported them.
-    private(set) var usageLimits: UsageLimits?
+    /// Plan limits from the latest status line that reported them, kept
+    /// across restarts (`SavedLimits`).
+    private(set) var usageLimits: UsageLimits? = SavedLimits.decode(
+        UserDefaults.standard.data(forKey: "usageLimits"), now: Date())
 
     private let store = ProjectStore(fileURL: ProjectStore.defaultFileURL())
     let registry = SessionRegistry()
@@ -702,6 +704,7 @@ final class AppModel {
             }
             if let limits = report.limits, limits != usageLimits {
                 usageLimits = limits
+                UserDefaults.standard.set(SavedLimits.encode(limits), forKey: "usageLimits")
                 changed = true
             }
             if changed { companion.setNeedsSnapshot() }
@@ -957,7 +960,7 @@ extension AppModel {
         }
         let permissions = pendingPermissions.map(phoneSummary(of:))
         return Snapshot(macName: macName, projects: projectList, sessions: sessions, permissions: permissions,
-                        limits: usageLimits)
+                        limits: usageLimits.flatMap { SavedLimits.current($0, now: Date()) })
     }
 }
 

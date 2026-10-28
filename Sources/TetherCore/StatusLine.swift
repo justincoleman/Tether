@@ -56,6 +56,32 @@ public struct StatusLineReport: Sendable, Hashable {
     }
 }
 
+/// Plan limits kept across Mac app restarts. Claude Code leaves `rate_limits`
+/// out of the status line until a session's first reply, so a restarted Mac
+/// would otherwise show no limits until someone sends a message.
+public enum SavedLimits {
+    public static func encode(_ limits: UsageLimits) -> Data? {
+        try? WireCodec.encoder().encode(limits)
+    }
+
+    /// The saved limits, without any window whose reset time has passed (its
+    /// percentage no longer means anything). Nil if nothing is left.
+    public static func decode(_ data: Data?, now: Date) -> UsageLimits? {
+        guard let data, let saved = try? WireCodec.decoder().decode(UsageLimits.self, from: data) else { return nil }
+        return current(saved, now: now)
+    }
+
+    public static func current(_ limits: UsageLimits, now: Date) -> UsageLimits? {
+        func live(_ limit: UsageLimit?) -> UsageLimit? {
+            guard let limit else { return nil }
+            if let reset = limit.resetsAt, reset <= now { return nil }
+            return limit
+        }
+        let fiveHour = live(limits.fiveHour), sevenDay = live(limits.sevenDay)
+        return fiveHour == nil && sevenDay == nil ? nil : UsageLimits(fiveHour: fiveHour, sevenDay: sevenDay)
+    }
+}
+
 /// The text typed into a tab to switch its model from the phone. Only alias
 /// and model-id characters pass, so the phone can't type anything else.
 public enum ModelCommand {

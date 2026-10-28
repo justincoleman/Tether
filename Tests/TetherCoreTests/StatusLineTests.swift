@@ -39,6 +39,18 @@ import TetherProtocol
         #expect(usage.reported(window: nil) == usage)
     }
 
+    @Test func savedLimitsRoundTripAndDropExpiredWindows() {
+        let now = Date(timeIntervalSince1970: 1_793_300_000)
+        let limits = UsageLimits(fiveHour: UsageLimit(usedPercent: 45, resetsAt: now.addingTimeInterval(-60)),
+                                 sevenDay: UsageLimit(usedPercent: 32, resetsAt: now.addingTimeInterval(3600)))
+        let data = SavedLimits.encode(limits)
+        #expect(SavedLimits.decode(data, now: now.addingTimeInterval(-120)) == limits)
+        #expect(SavedLimits.decode(data, now: now) == UsageLimits(fiveHour: nil, sevenDay: limits.sevenDay))
+        #expect(SavedLimits.decode(data, now: now.addingTimeInterval(7200)) == nil)
+        #expect(SavedLimits.decode(nil, now: now) == nil)
+        #expect(SavedLimits.decode(Data("junk".utf8), now: now) == nil)
+    }
+
     @Test func apiKeySessionHasNoLimits() throws {
         let json = #"{"session_id":"s1","model":{"id":"claude-sonnet-5-5","display_name":"Sonnet 5.5"},"cost":{"total_cost_usd":0}}"#
         let report = try #require(StatusLineReport(json: Data(json.utf8)))
