@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 10).
+`ProtocolVersion.current` with any shape change (currently 11).
 
 ## Transport
 
@@ -52,6 +52,7 @@ Mac → phone (`MacMessage`):
 | `authFailed(reason)` | Wrong/expired code, revoked token. Connection closes; the phone stops retrying. |
 | `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects in sidebar order, Claude tabs in tab order (`SessionSummary`, keyed by pane id, with `preview`: the latest message on one line from `TranscriptModel.preview`, and `permissionMode` from the last hook that reported one), pending permissions. Also resent when new transcript events change a preview. |
 | `transcript(sessionId, events, reset)` | After `subscribe`: `reset: true` with history, then appends as the Mac's mirror reads new transcript records. Folded with `TranscriptModel`, same as the Mac. |
+| `projectIcons([ProjectIcon])` | Every project icon (128 px PNG found by `ProjectIconFinder`), sent after auth and whenever one changes or the Mac's "show project icons" setting flips. Absent project = letter tile. Not part of `snapshot`, which is resent on every change. |
 | `sendResult(paneId, outcome)` | `sent`, `queued` or `failed` for a `sendMessage`. |
 | `startResult(requestId, paneId?, error?)` | Answer to `startSession`: the new tab's pane id, or a message to show. |
 | `error(message)` | Anything else worth showing in logs. |

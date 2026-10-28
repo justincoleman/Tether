@@ -91,6 +91,17 @@ public struct PermissionRequested: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+/// A project's icon as a small PNG (about 128 px), found in its folder.
+public struct ProjectIcon: Codable, Hashable, Sendable {
+    public var id: ProjectID
+    public var png: Data
+
+    public init(id: ProjectID, png: Data) {
+        self.id = id
+        self.png = png
+    }
+}
+
 /// The Mac's whole state for the phone. Small, so it is resent in full on
 /// every change instead of diffed.
 public struct Snapshot: Codable, Hashable, Sendable {
@@ -117,6 +128,10 @@ public enum MacMessage: Codable, Sendable {
     /// The Mac closes the connection after this.
     case authFailed(reason: String)
     case snapshot(Snapshot)
+    /// Every project icon the Mac has, sent after auth and whenever one
+    /// changes. A project missing from the list has none: show the letter tile.
+    /// Separate from `snapshot`, which is resent on every change.
+    case projectIcons([ProjectIcon])
     /// Transcript events for a subscribed session. `reset` replaces what the
     /// phone holds (sent first after subscribing); otherwise append.
     case transcript(sessionId: SessionID, events: [MirrorEvent], reset: Bool)

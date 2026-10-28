@@ -22,6 +22,8 @@ final class MacConnection: Identifiable {
     private(set) var status: Status = .offline("Not connected")
     private(set) var snapshot: Snapshot?
     private(set) var transcripts: [SessionID: TranscriptModel] = [:]
+    /// Project icons the Mac found in its project folders.
+    private(set) var projectIcons: [ProjectID: UIImage] = [:]
     /// Last answer to a sent message, per tab, e.g. "queued".
     private(set) var sendResults: [PaneID: String] = [:]
 
@@ -197,6 +199,10 @@ final class MacConnection: Identifiable {
         case .authFailed(let reason):
             status = .rejected(reason)
             closeChannel()
+        case .projectIcons(let icons):
+            projectIcons = Dictionary(icons.compactMap { icon in
+                UIImage(data: icon.png).map { (icon.id, $0) }
+            }, uniquingKeysWith: { _, latest in latest })
         case .snapshot(let snapshot):
             self.snapshot = snapshot
             LiveActivities.reconcile(macId: mac.id, snapshot: snapshot)

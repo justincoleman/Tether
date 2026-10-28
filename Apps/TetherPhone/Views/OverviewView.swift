@@ -1,5 +1,6 @@
 import SwiftUI
 import TetherProtocol
+import UIKit
 
 struct SessionRoute: Hashable {
     var macId: UUID
@@ -204,7 +205,8 @@ private struct MacProjects: View {
                         }
                     }
                 } header: {
-                    ProjectHeader(project: project, sessions: sessions) { startTask(project.id) }
+                    ProjectHeader(project: project, sessions: sessions,
+                                  icon: connection.projectIcons[project.id]) { startTask(project.id) }
                 }
             }
         }
@@ -214,11 +216,12 @@ private struct MacProjects: View {
 private struct ProjectHeader: View {
     let project: ProjectSummary
     let sessions: [SessionSummary]
+    var icon: UIImage?
     let startTask: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            ProjectTile(name: project.name)
+            ProjectTile(name: project.name, icon: icon)
             VStack(alignment: .leading, spacing: 0) {
                 Text(project.name)
                     .font(.headline)
@@ -241,6 +244,8 @@ private struct ProjectHeader: View {
 /// Letter tile, colored like the Mac sidebar in its system appearance.
 struct ProjectTile: View {
     let name: String
+    /// The project's own app icon, when the Mac found one.
+    var icon: UIImage?
 
     private static let colors: [Color] = [.red, .orange, .green, .blue, .purple, .teal]
 
@@ -255,11 +260,22 @@ struct ProjectTile: View {
     }
 
     var body: some View {
-        Text(name.first.map { String($0).uppercased() } ?? "?")
-            .font(.system(size: 15, weight: .bold, design: .rounded))
-            .foregroundStyle(.white)
-            .frame(width: 30, height: 30)
-            .background(color, in: RoundedRectangle(cornerRadius: 8))
+        Group {
+            if let icon {
+                Image(uiImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Text(name.first.map { String($0).uppercased() } ?? "?")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(color)
+            }
+        }
+        .frame(width: 30, height: 30)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 

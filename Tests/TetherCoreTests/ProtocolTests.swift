@@ -21,6 +21,16 @@ import TetherProtocol
         #expect(s == snapshot)
     }
 
+    @Test func projectIconsRoundTrip() throws {
+        let id = UUID()
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0xFF])
+        let data = try WireCodec.encoder().encode(MacMessage.projectIcons([ProjectIcon(id: id, png: png)]))
+        guard case .projectIcons(let icons) = try WireCodec.decoder().decode(MacMessage.self, from: data) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(icons == [ProjectIcon(id: id, png: png)])
+    }
+
     @Test func transcriptRoundTrips() throws {
         let at = Date(timeIntervalSince1970: 1_700_000_000)
         let original = MacMessage.transcript(sessionId: "s1", events: [

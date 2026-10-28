@@ -140,7 +140,7 @@ struct ReorderProjectsView: View {
             List {
                 ForEach(projects) { project in
                     HStack {
-                        ProjectTile(name: project.name)
+                        ProjectTile(name: project.name, icon: connection.projectIcons[project.id])
                         Text(project.name)
                         Spacer()
                         Button {

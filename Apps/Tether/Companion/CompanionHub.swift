@@ -218,6 +218,17 @@ final class CompanionHub {
         if let snapshot = model?.companionSnapshot(macName: macName) {
             client.send(.snapshot(snapshot))
         }
+        if let icons = model?.companionProjectIcons(), !icons.isEmpty {
+            client.send(.projectIcons(icons))
+        }
+    }
+
+    /// The icon set changed (or the setting did): resend it to every phone.
+    func sendProjectIcons() {
+        guard let icons = model?.companionProjectIcons() else { return }
+        for client in clients.values where client.device != nil {
+            client.send(.projectIcons(icons))
+        }
     }
 
     private func handleAuthenticated(_ message: PhoneMessage, from client: CompanionClient) {

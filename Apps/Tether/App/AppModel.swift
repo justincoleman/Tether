@@ -14,6 +14,8 @@ final class AppModel {
     /// Icons found in project folders (see `ProjectIconFinder`), by project.
     private(set) var projectIcons: [ProjectID: NSImage] = [:]
     @ObservationIgnored private var iconStamps: [ProjectID: String] = [:]
+    /// The same icons as PNG data, for the phone.
+    @ObservationIgnored private var iconData: [ProjectID: Data] = [:]
     @ObservationIgnored private var lastIconScan = Date.distantPast
     /// Every worktree, primary ones included. Branch worktrees nest under
     /// their project in the sidebar.
@@ -307,11 +309,16 @@ final class AppModel {
         lastIconScan = Date()
         let jobs = projects.map { (id: $0.id, path: $0.path, stamp: iconStamps[$0.id]) }
         let live = Set(jobs.map(\.id))
+        var removed = false
         for id in projectIcons.keys where !live.contains(id) {
             projectIcons[id] = nil
             iconStamps[id] = nil
+            iconData[id] = nil
+            removed = true
         }
+        let removedAny = removed
         Task {
+            var changed = removedAny
             for job in jobs {
                 let result = await Task.detached(priority: .utility) {
                     ProjectIconLoader.load(projectPath: job.path, knownStamp: job.stamp)
@@ -319,8 +326,17 @@ final class AppModel {
                 guard !result.unchanged else { continue }
                 iconStamps[job.id] = result.stamp
                 projectIcons[job.id] = result.png.flatMap { NSImage(data: $0) }
+                iconData[job.id] = result.png
+                changed = true
             }
+            if changed { companion.sendProjectIcons() }
         }
+    }
+
+    /// Icons for the phone; empty when "Show each project's app icon" is off.
+    func companionProjectIcons() -> [ProjectIcon] {
+        guard UserDefaults.standard.object(forKey: "useProjectIcons") as? Bool ?? true else { return [] }
+        return projects.compactMap { project in iconData[project.id].map { ProjectIcon(id: project.id, png: $0) } }
     }
 
     // MARK: Energy

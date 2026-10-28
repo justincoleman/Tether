@@ -17,6 +17,7 @@ struct SettingsView: View {
 
 /// Whether the window follows the Ghostty theme or the system appearance.
 struct AppearanceSettings: View {
+    @Environment(AppModel.self) private var model
     @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
     @AppStorage("useProjectIcons") private var useProjectIcons = true
 
@@ -32,7 +33,8 @@ struct AppearanceSettings: View {
                  + "The terminal itself always uses your Ghostty config.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Toggle("Show each project's app icon in the sidebar", isOn: $useProjectIcons)
+            Toggle("Show each project's app icon in the sidebar and on the iPhone", isOn: $useProjectIcons)
+                .onChange(of: useProjectIcons) { model.companion.sendProjectIcons() }
             Text("Looks for .tether/icon.png, then an Xcode AppIcon, then a favicon or logo in the project folder.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
