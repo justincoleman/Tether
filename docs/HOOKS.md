@@ -76,13 +76,16 @@ prints nothing.
 | `model.id`, `model.display_name` | `SessionStatus.modelId`, `modelName` |
 | `cost.total_cost_usd` | `SessionStatus.costUSD` |
 | `context_window.context_window_size`, else 1M when `model.id` ends in `[1m]` | `SessionStatus.contextWindow`, which overrides the transcript's guessed window in both context meters |
-| `rate_limits.five_hour` / `seven_day` `.used_percentage`, `.resets_at` (epoch seconds; ISO 8601 also accepted) | `UsageLimits` (absent for API-key sessions) |
+| `rate_limits.five_hour` / `seven_day` `.used_percentage`, `.resets_at` (epoch seconds; ISO 8601 also accepted) | `UsageLimits` (absent for API-key sessions, and until a session's first reply) |
 
 The router emits `.status(paneId:)` without touching `SessionRegistry`: the
 status line never changes session state. `AppModel` keeps the status per tab
-and the latest limits, and sends them to phones in the snapshot. The fixture in
-`StatusLineTests` follows the documented shape and the user's script, not a
-captured payload.
+and the latest limits, and sends them to phones in the snapshot. Because a
+relaunched tab reports no `rate_limits` until its first reply, the latest limits
+are saved in UserDefaults (`SavedLimits`) and restored at launch; a window whose
+`resets_at` has passed is dropped, both on restore and when building a snapshot.
+The fixture in `StatusLineTests` matches the shape of a payload captured from
+Claude Code 2.1.308 (all four `rate_limits` values are JSON numbers).
 
 ## Switching the model
 
