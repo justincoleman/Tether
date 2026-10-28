@@ -493,9 +493,11 @@ doing most of the typing with you reviewing.
 
 ## 6. Open questions to settle during phase 1
 
-1. Does the `GhosttyTerminal` wrapper's exec backend expose stdin write
-   distinct from paste, and does Claude Code accept a bracketed paste followed
-   by `\r` as submit? (Spike first.)
+1. Answered in phase 1 by reading the wrapper source: `TerminalSurfaceOptions`
+   takes `command`, `workingDirectory`, `envVars` and `waitAfterCommand`, and
+   input has two paths, `paste(text:)` for text and `sendKey(.enter)` for
+   submit. Still to confirm on a real Mac: that Claude Code submits on that
+   Enter after a bracketed paste.
 2. Does the installed Claude Code version's `PermissionRequest` hook output
    support "allow for session" (`updatedPermissions`)? If not, Tether's prompt
    offers allow-once only and says so.

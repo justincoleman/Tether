@@ -19,5 +19,8 @@ struct TetherApp: App {
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }
         }
+        Settings {
+            SettingsView().environment(model)
+        }
     }
 }

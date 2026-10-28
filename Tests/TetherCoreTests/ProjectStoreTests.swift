@@ -28,3 +28,29 @@ import TetherProtocol
         #expect(await store.orderedProjects().map(\.name) == ["b", "a"])
     }
 }
+
+@Suite struct ProjectStorePaneTests {
+    private func tempURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("tether-tests-\(UUID().uuidString)/state.json")
+    }
+
+    @Test func oldStateFileWithoutNewKeysStillLoads() async throws {
+        let url = tempURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{\"projects\":[],\"worktrees\":[]}".utf8).write(to: url)
+        let store = ProjectStore(fileURL: url)
+        #expect(await store.state.remoteHosts.isEmpty)
+    }
+
+    @Test func recordSessionUpdatesClaudePane() async throws {
+        let store = ProjectStore(fileURL: tempURL())
+        let p = try await store.addProject(name: "p", path: "/p")
+        let wt = await store.primaryWorktree(for: p.id)!
+        let pane = PaneDescriptor(projectId: p.id, kind: .claude(worktreeId: wt.id, resumeSessionId: nil), title: "Claude")
+        try await store.addPane(pane)
+        try await store.recordSession("sess-1", forPane: pane.id)
+        let kind = await store.panes(for: p.id).first?.kind
+        #expect(kind == .claude(worktreeId: wt.id, resumeSessionId: "sess-1"))
+    }
+}

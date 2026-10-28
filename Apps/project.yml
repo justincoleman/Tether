@@ -16,6 +16,9 @@ settings:
 packages:
   TetherPackage:
     path: ..
+  libghostty-spm:
+    url: https://github.com/Lakr233/libghostty-spm.git
+    from: "2.2.0"
 targets:
   Tether:
     type: application
@@ -26,6 +29,8 @@ targets:
         product: TetherCore
       - package: TetherPackage
         product: TetherProtocol
+      - package: libghostty-spm
+        product: GhosttyTerminal
     info:
       path: Tether/Resources/Info.plist
       properties:

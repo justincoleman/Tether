@@ -12,7 +12,7 @@ struct RootView: View {
         } detail: {
             if let id = model.selectedProjectId,
                let project = model.projects.first(where: { $0.id == id }) {
-                ProjectDetailPlaceholder(project: project)
+                TerminalTabsView(project: project)
             } else {
                 ContentUnavailableView("No project selected",
                                        systemImage: "folder",
@@ -63,19 +63,6 @@ struct SidebarView: View {
             }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 240)
-    }
-}
-
-/// Phase 0 placeholder. Phase 1 replaces this with the libghostty terminal tabs.
-struct ProjectDetailPlaceholder: View {
-    let project: Project
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Text(project.name).font(.title2)
-            Text(project.path).font(.caption.monospaced()).foregroundStyle(.secondary)
-            Text("Terminal lands in phase 1.").foregroundStyle(.tertiary)
-        }
     }
 }
 
