@@ -32,6 +32,12 @@ structural. Work proceeds in the numbered phases there.
   to `~/.claude/settings.json`.
 - Logic belongs in `TetherCore` with tests; `Apps/Tether/Hooks/` only moves bytes.
 
+## Transcript mirror
+- `docs/TRANSCRIPT.md` records the transcript shapes Tether relies on. Update
+  it with any parser change, and add a fixture to `TranscriptParserTests`.
+- `TranscriptModel` lives in `TetherProtocol` so the phone groups steps the
+  same way as the Mac.
+
 ## Rules
 - Swift 6 language mode, strict concurrency. Keep `TetherCore` free of
   AppKit/UIKit/SwiftUI so it keeps testing on Linux CI.

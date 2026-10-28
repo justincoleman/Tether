@@ -7,6 +7,8 @@ public enum MirrorEvent: Codable, Hashable, Sendable {
     case toolUse(id: String, name: String, summary: String, at: Date)
     case toolResult(id: String, toolUseId: String, summary: String, isError: Bool, at: Date)
     case usage(ContextUsage, at: Date)
+    /// A muted system line, e.g. "Interrupted".
+    case notice(id: String, text: String, at: Date)
 }
 
 public struct Hello: Codable, Hashable, Sendable {

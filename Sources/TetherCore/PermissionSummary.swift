@@ -28,6 +28,14 @@ public struct PermissionSummary: Sendable, Equatable {
             return .init(title: "Fetch a URL", detail: field("url") ?? "")
         case "WebSearch":
             return .init(title: "Search the web", detail: field("query") ?? "")
+        case "Grep":
+            return .init(title: "Search files", detail: field("pattern") ?? "")
+        case "Glob":
+            return .init(title: "Find files", detail: field("pattern") ?? "")
+        case "Task", "Agent":
+            return .init(title: "Run a subagent", detail: field("description") ?? "")
+        case "TodoWrite":
+            return .init(title: "Update the task list", detail: "")
         default:
             let json = input?.compactString() ?? ""
             return .init(title: "Use \(toolName)", detail: String(json.prefix(500)))

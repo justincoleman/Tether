@@ -13,6 +13,19 @@ struct RootView: View {
             if let id = model.selectedProjectId,
                let project = model.projects.first(where: { $0.id == id }) {
                 TerminalTabsView(project: project)
+                    .inspector(isPresented: $model.showMirror) {
+                        MirrorView(paneId: model.selectedPaneId)
+                            .inspectorColumnWidth(min: 300, ideal: 420, max: 720)
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button { model.showMirror.toggle() } label: {
+                                Label("Chat", systemImage: "bubble.left.and.text.bubble.right")
+                            }
+                            .help("Show the conversation as chat (⇧⌘M)")
+                            .keyboardShortcut("m", modifiers: [.command, .shift])
+                        }
+                    }
             } else {
                 ContentUnavailableView("No project selected",
                                        systemImage: "folder",

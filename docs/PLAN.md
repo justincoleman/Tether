@@ -186,6 +186,7 @@ phone chat view and the Mac's native mirror view render. Hooks give us edges
 (start/stop/needs input) with low latency; the transcript gives us content.
 Neither needs the TUI to be scraped.
 
+Observed record shapes and the parsing rules are in `docs/TRANSCRIPT.md`.
 The JSONL format is not a public contract. Parser must be tolerant: unknown
 record types are skipped, never fatal, and the parser has fixture tests against
 real transcripts captured from the installed CLI version. Tether shows the

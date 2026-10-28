@@ -1,0 +1,65 @@
+# Claude Code transcripts in Tether
+
+The chat mirror reads each session's transcript, `transcript_path` from the
+hooks (`~/.claude/projects/<encoded cwd>/<session id>.jsonl`). The format is
+not a public contract. This file records what Tether relies on, as observed in
+Claude Code 2.1.308. Code: `Sources/TetherCore/TranscriptParser.swift`,
+`Sources/TetherProtocol/TranscriptModel.swift`.
+
+## Records Tether reads
+
+One JSON object per line. Only `type` `user` and `assistant` are read; every
+other type is skipped (`attachment`, `system`, `mode`, `last-prompt`,
+`queue-operation`, `cost-state`, `tools-used`, `custom-title`, `agent-name`,
+`atis-latch`, and anything new).
+
+Skipped regardless of type:
+- `isSidechain: true`: subagent turns.
+- `isMeta: true`: context Claude Code injected, such as image paths and
+  reminders, not text anyone typed.
+- Records without a `uuid`.
+
+### assistant
+
+Claude Code writes **one record per content block**, all sharing
+`message.id`. Each record also carries `message.usage`.
+
+| Block | Becomes |
+| --- | --- |
+| `text` | assistant message |
+| `tool_use` (`id`, `name`, `input`) | tool step, summarised like the permission prompt |
+| `thinking`, anything else | skipped |
+
+Context used = `input_tokens + cache_creation_input_tokens +
+cache_read_input_tokens` from the latest record. The window size is not in the
+transcript; Tether assumes 200k, or 1M once usage passes 200k.
+
+### user
+
+`message.content` is a string or a list of blocks.
+
+| Content | Becomes |
+| --- | --- |
+| Plain text | your message |
+| Text starting `[Request interrupted by user` | "Interrupted" notice |
+| `<command-name>/x</command-name>…<command-args>y</command-args>` | your message `/x y` |
+| Other text starting with `<` (`<local-command-stdout>`, caveats, reminders) | skipped |
+| `image` block | `[image]` appended to your message |
+| `tool_result` (`tool_use_id`, `content` string or list, `is_error`) | result on the matching step: first non-empty line, 300 chars |
+
+## Display grouping
+
+`TranscriptModel` folds events into rows. Consecutive tool calls become one
+collapsed "N steps · used X, ran Y" row (ran = `Bash`). Text between tool calls
+starts a new group. Applying the same event twice is a no-op, so re-reading a
+file is safe.
+
+## When the format changes
+
+Unknown records and blocks are skipped, never fatal. If the mirror goes quiet
+after a Claude Code update, compare a fresh transcript against this file:
+
+```bash
+F=$(ls -t ~/.claude/projects/*/*.jsonl | head -1)
+python3 -c "import json,sys,collections; c=collections.Counter(json.loads(l).get('type') for l in open(sys.argv[1])); print(c)" "$F"
+```

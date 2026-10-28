@@ -30,6 +30,10 @@ final class AppModel {
         }
     }
     var addProjectRequested = false
+    /// Right-hand chat mirror panel.
+    var showMirror = false
+
+    let mirror = MirrorStore()
 
     /// Live panes keyed by id. Descriptors persist in the store; this does not.
     private var panes: [PaneID: TerminalPane] = [:]
@@ -124,6 +128,19 @@ final class AppModel {
         try? await store.removePane(id)
     }
 
+    // MARK: Mirror
+
+    func sessionId(forPane paneId: PaneID) -> SessionID? {
+        recordedSessions[paneId]
+    }
+
+    /// Types a prompt into a Claude tab and submits it. Returns false if the
+    /// tab is gone or its terminal is not ready.
+    @discardableResult
+    func sendPrompt(_ text: String, toPane paneId: PaneID) -> Bool {
+        panes[paneId]?.send(prompt: text) ?? false
+    }
+
     // MARK: Permissions
 
     func resolvePermission(_ id: UUID, _ decision: PermissionDecision) {
@@ -140,9 +157,14 @@ final class AppModel {
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
             if recordedSessions[paneId] != session.id {
+                if let old = recordedSessions[paneId] {
+                    mirror.stop(old)
+                    interruptWatchers.removeValue(forKey: old)?.cancel()
+                }
                 recordedSessions[paneId] = session.id
                 Task { try? await self.store.recordSession(session.id, forPane: paneId) }
             }
+            mirror.track(session)
             recomputeProjectStates()
             updateInterruptWatcher(for: session)
             if session.state == .needsInput, previous != .needsInput { requestAttention() }
@@ -188,6 +210,10 @@ final class AppModel {
         if let sessionId = recordedSessions[id] {
             interruptWatchers.removeValue(forKey: sessionId)?.cancel()
         }
+    }
+
+    private func stopMirror(forPane id: PaneID) {
+        if let sessionId = recordedSessions[id] { mirror.stop(sessionId) }
     }
 
     private func paneDidExit(_ id: PaneID) async {
@@ -290,6 +316,7 @@ final class AppModel {
 
     private func tearDown(_ id: PaneID) {
         stopInterruptWatcher(forPane: id)
+        stopMirror(forPane: id)
         panes[id] = nil
         paneOrder.removeAll { $0 == id }
         paneStates[id] = nil
