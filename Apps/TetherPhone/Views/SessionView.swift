@@ -113,7 +113,8 @@ struct SessionView: View {
         // items into one glass capsule, which squeezed this against the menu.
         .safeAreaInset(edge: .top, spacing: 0) {
             if transcript?.usage != nil || session?.status?.costUSD != nil {
-                PhoneContextMeter(usage: transcript?.usage, costUSD: session?.status?.costUSD)
+                PhoneContextMeter(usage: transcript?.usage?.reported(window: session?.status?.contextWindow),
+                                  costUSD: session?.status?.costUSD)
             }
         }
         .task(id: sessionId) { connection.subscribe(sessionId) }

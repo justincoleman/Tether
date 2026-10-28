@@ -20,10 +20,23 @@ import TetherProtocol
     @Test func readsModelCostAndLimits() throws {
         let report = try #require(StatusLineReport(json: Data(Self.full.utf8)))
         #expect(report.sessionId == "s1")
-        #expect(report.status == SessionStatus(modelId: "claude-opus-5-5", modelName: "Opus 5.5", costUSD: 1.2345))
+        #expect(report.status == SessionStatus(modelId: "claude-opus-5-5", modelName: "Opus 5.5", costUSD: 1.2345,
+                                               contextWindow: 200_000))
         #expect(report.limits?.fiveHour == UsageLimit(usedPercent: 42.5,
                                                       resetsAt: Date(timeIntervalSince1970: 1_793_200_000)))
         #expect(report.limits?.sevenDay?.usedPercent == 12)
+    }
+
+    @Test func contextWindowFromSizeOrModelId() throws {
+        let sized = #"{"session_id":"s1","model":{"id":"claude-opus-5-5"},"context_window":{"context_window_size":1000000}}"#
+        #expect(try #require(StatusLineReport(json: Data(sized.utf8))).status.contextWindow == 1_000_000)
+        let suffixed = #"{"session_id":"s1","model":{"id":"claude-opus-5-5[1m]"}}"#
+        #expect(try #require(StatusLineReport(json: Data(suffixed.utf8))).status.contextWindow == 1_000_000)
+        let plain = #"{"session_id":"s1","model":{"id":"claude-opus-5-5"}}"#
+        #expect(try #require(StatusLineReport(json: Data(plain.utf8))).status.contextWindow == nil)
+        let usage = ContextUsage(inputTokens: 148_000, contextWindow: 200_000)
+        #expect(usage.reported(window: 1_000_000).contextWindow == 1_000_000)
+        #expect(usage.reported(window: nil) == usage)
     }
 
     @Test func apiKeySessionHasNoLimits() throws {
