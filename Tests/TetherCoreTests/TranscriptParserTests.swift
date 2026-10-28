@@ -67,6 +67,31 @@ enum Fixture {
         #expect(u?.contextWindow == 1_000_000)
     }
 
+    @Test func configuredMillionModelSetsWindowBelow200k() {
+        let settings = Data(#"{"model":"opus[1m]","permissions":{"allow":[]}}"#.utf8)
+        let model = ContextWindow.configuredModel(settings: settings)
+        #expect(model == "opus[1m]")
+        #expect(ContextWindow.size(used: 148_000, configuredModel: model) == 1_000_000)
+        #expect(ContextWindow.size(used: 148_000, configuredModel: "claude-opus-5-5[1M]") == 1_000_000)
+        #expect(ContextWindow.size(used: 148_000, configuredModel: "opus") == 200_000)
+        #expect(ContextWindow.size(used: 148_000, configuredModel: nil) == 200_000)
+        #expect(ContextWindow.configuredModel(settings: Data("{}".utf8)) == nil)
+        #expect(ContextWindow.configuredModel(settings: nil) == nil)
+    }
+
+    @Test func feedAppliesConfiguredWindow() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let transcript = dir.appendingPathComponent("t.jsonl")
+        let settings = dir.appendingPathComponent("settings.json")
+        try (Fixture.thinkingAndText + "\n").write(to: transcript, atomically: true, encoding: .utf8)
+        try #"{"model":"opus[1m]"}"#.write(to: settings, atomically: true, encoding: .utf8)
+        let events = await TranscriptFeed(path: transcript.path, settingsFile: settings).poll()
+        guard case .usage(let u, _)? = events.last else { Issue.record("shape"); return }
+        #expect(u == ContextUsage(inputTokens: 174_000, contextWindow: 1_000_000))
+    }
+
     @Test func toolUseIsSummarised() {
         guard case .toolUse(let id, let name, let summary, _)? = parse(Fixture.toolUse).first else { Issue.record("shape"); return }
         #expect(id == "toolu_1")

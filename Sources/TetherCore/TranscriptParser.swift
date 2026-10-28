@@ -60,9 +60,7 @@ public enum TranscriptParser {
         }
         let total = n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens")
         guard total > 0 else { return nil }
-        // The transcript does not record the window size. Past 200k the session
-        // must be on a 1M-context model.
-        return ContextUsage(inputTokens: total, contextWindow: total > 200_000 ? 1_000_000 : 200_000)
+        return ContextUsage(inputTokens: total, contextWindow: ContextWindow.size(used: total, configuredModel: nil))
     }
 
     // MARK: User
@@ -156,13 +154,48 @@ public enum TranscriptParser {
 /// The first poll returns the whole history.
 public actor TranscriptFeed {
     private var tail: TranscriptTail
+    private let settingsFile: URL
 
-    public init(path: String) {
+    public init(path: String, settingsFile: URL = ContextWindow.defaultSettingsFile) {
         tail = TranscriptTail(path: path, fromStart: true)
+        self.settingsFile = settingsFile
     }
 
     public func poll() -> [MirrorEvent] {
-        tail.readNewLines().flatMap(TranscriptParser.events(fromLine:))
+        let events = tail.readNewLines().flatMap(TranscriptParser.events(fromLine:))
+        guard events.contains(where: { if case .usage = $0 { true } else { false } }) else { return events }
+        // Read on each batch with usage, so a /model switch shows on the next reply.
+        let model = ContextWindow.configuredModel(settings: try? Data(contentsOf: settingsFile))
+        return events.map { event in
+            guard case .usage(var u, let at) = event else { return event }
+            u.contextWindow = ContextWindow.size(used: u.inputTokens, configuredModel: model)
+            return .usage(u, at: at)
+        }
+    }
+}
+
+/// The context window a session runs with. The transcript records the API
+/// model id ("claude-opus-5-5") but not whether the 1M variant is in use, so
+/// this reads the `model` setting Claude Code saves ("opus[1m]") instead.
+public enum ContextWindow {
+    public static let standard = 200_000
+    public static let large = 1_000_000
+
+    public static var defaultSettingsFile: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
+    }
+
+    /// 1M when the configured model asks for it, or once usage passes 200k
+    /// (only a 1M session can get there).
+    public static func size(used: Int, configuredModel: String?) -> Int {
+        if let m = configuredModel?.lowercased(), m.hasSuffix("[1m]") { return large }
+        return used > standard ? large : standard
+    }
+
+    /// The `model` value from a Claude Code settings file, if any.
+    public static func configuredModel(settings: Data?) -> String? {
+        guard let settings, let json = try? JSONDecoder().decode(JSONValue.self, from: settings) else { return nil }
+        return json["model"]?.stringValue
     }
 }
 
