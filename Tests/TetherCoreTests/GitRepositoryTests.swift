@@ -6,7 +6,7 @@ import TetherProtocol
 private let gitAvailable = FileManager.default.isExecutableFile(atPath: "/usr/bin/git")
 
 /// A bare "remote" plus a clone with one commit on main, built with real git.
-private struct Fixture {
+private struct TempGitRepo {
     let root: URL
     let work: String
     let remote: String
@@ -19,7 +19,7 @@ private struct Fixture {
         "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
     ]
 
-    static func make() async throws -> Fixture {
+    static func make() async throws -> TempGitRepo {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tether-git-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let runner = GitRunner(environment: environment)
@@ -27,7 +27,7 @@ private struct Fixture {
         let work = root.appendingPathComponent("work").path
         _ = try await runner.run(["init", "-q", "--bare", "-b", "main", remote], in: root.path)
         _ = try await runner.run(["clone", "-q", remote, work], in: root.path)
-        let fixture = Fixture(root: root, work: work, remote: remote, runner: runner)
+        let fixture = TempGitRepo(root: root, work: work, remote: remote, runner: runner)
         try fixture.write("a.txt", "one\ntwo\nthree\n")
         try fixture.write("keep.txt", "keep\n")
         try await fixture.git("checkout", "-q", "-B", "main")
@@ -54,7 +54,7 @@ private struct Fixture {
 
 @Suite(.enabled(if: gitAvailable)) struct GitRepositoryTests {
     @Test func cleanCheckoutOfMainHasNothingToShow() async throws {
-        let f = try await Fixture.make()
+        let f = try await TempGitRepo.make()
         defer { f.cleanup() }
         let snapshot = try await f.repository.snapshot(baseBranch: "main")
         #expect(snapshot.branch == "main")
@@ -65,7 +65,7 @@ private struct Fixture {
     }
 
     @Test func featureBranchShowsCommittedAndUncommittedChanges() async throws {
-        let f = try await Fixture.make()
+        let f = try await TempGitRepo.make()
         defer { f.cleanup() }
         try await f.git("checkout", "-q", "-b", "feat/x")
         try f.write("a.txt", "one\nTWO\nthree\nfour\n")
@@ -92,7 +92,7 @@ private struct Fixture {
     }
 
     @Test func renamesAreDetected() async throws {
-        let f = try await Fixture.make()
+        let f = try await TempGitRepo.make()
         defer { f.cleanup() }
         try await f.git("checkout", "-q", "-b", "mv")
         try await f.git("mv", "keep.txt", "moved.txt")
@@ -103,7 +103,7 @@ private struct Fixture {
     }
 
     @Test func fetchedCommitsOnTheBaseCountAsBehind() async throws {
-        let f = try await Fixture.make()
+        let f = try await TempGitRepo.make()
         defer { f.cleanup() }
         // Someone else pushes to main.
         let other = f.root.appendingPathComponent("other").path
@@ -122,7 +122,7 @@ private struct Fixture {
     }
 
     @Test func fileDiffForTrackedAndUntrackedFiles() async throws {
-        let f = try await Fixture.make()
+        let f = try await TempGitRepo.make()
         defer { f.cleanup() }
         try await f.git("checkout", "-q", "-b", "d")
         try f.write("a.txt", "one\nTWO\nthree\nfour\n")
@@ -146,7 +146,7 @@ private struct Fixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tether-git-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let runner = GitRunner(environment: Fixture.environment)
+        let runner = GitRunner(environment: TempGitRepo.environment)
         _ = try await runner.run(["init", "-q", "-b", "main"], in: root.path)
         try Data("1\n".utf8).write(to: root.appendingPathComponent("f.txt"))
         _ = try await runner.run(["add", "-A"], in: root.path)
@@ -165,7 +165,7 @@ private struct Fixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tether-git-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let runner = GitRunner(environment: Fixture.environment)
+        let runner = GitRunner(environment: TempGitRepo.environment)
         _ = try await runner.run(["init", "-q", "-b", "main"], in: root.path)
         try Data("hi\n".utf8).write(to: root.appendingPathComponent("f.txt"))
 
@@ -180,7 +180,7 @@ private struct Fixture {
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         // Keep git from finding a repository in a parent of the temp folder.
-        let runner = GitRunner(environment: Fixture.environment.merging(
+        let runner = GitRunner(environment: TempGitRepo.environment.merging(
             ["GIT_CEILING_DIRECTORIES": root.deletingLastPathComponent().path]) { _, new in new })
         do {
             _ = try await GitRepository(path: root.path, runner: runner).snapshot(baseBranch: "main")
