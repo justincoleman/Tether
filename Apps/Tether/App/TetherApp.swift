@@ -37,6 +37,7 @@ struct TetherApp: App {
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("What's New in Tether") { openWindow(id: "whats-new") }
+                Button("Check for Updates…") { UpdatePrompt.checkFromMenu(model.updater) }
             }
             CommandGroup(replacing: .newItem) {
                 Button("Add Project…") { model.addProjectRequested = true }
@@ -50,12 +51,28 @@ struct TetherApp: App {
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                 Button("Close Tab") { model.requestCloseSelectedPane() }
                     .keyboardShortcut("w", modifiers: .command)
+                Divider()
+                // ⇧⌘D is Changes, so Split Down has no shortcut of its own.
+                Button("Split Right") { Task { await model.splitSelectedPane(.horizontal) } }
+                    .keyboardShortcut("d", modifiers: .command)
+                    .disabled(model.selectedPaneId == nil)
+                Button("Split Down") { Task { await model.splitSelectedPane(.vertical) } }
+                    .disabled(model.selectedPaneId == nil)
+                Button("Unsplit") { model.unsplitSelectedPane() }
+                    .disabled(model.split(containing: model.selectedPaneId) == nil)
             }
             CommandMenu("Go") {
                 Button("Next Tab") { model.selectAdjacentPane(1) }
                     .keyboardShortcut("]", modifiers: [.command, .shift])
                 Button("Previous Tab") { model.selectAdjacentPane(-1) }
                     .keyboardShortcut("[", modifiers: [.command, .shift])
+                // Both go to the other half: a split has two.
+                Button("Next Split") { model.focusOtherSplitHalf() }
+                    .keyboardShortcut("]", modifiers: .command)
+                    .disabled(model.split(containing: model.selectedPaneId) == nil)
+                Button("Previous Split") { model.focusOtherSplitHalf() }
+                    .keyboardShortcut("[", modifiers: .command)
+                    .disabled(model.split(containing: model.selectedPaneId) == nil)
                 Divider()
                 ForEach(1...9, id: \.self) { n in
                     Button("Project \(n)") { model.selectProject(number: n) }

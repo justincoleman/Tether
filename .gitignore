@@ -7,3 +7,6 @@ DerivedData/
 build/
 .DS_Store
 Apps/*/GhosttyKit.xcframework
+Vendor/
+.ghostty-source
+Apps/project.source.yml

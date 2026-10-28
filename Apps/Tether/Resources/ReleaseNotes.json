@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.4.0",
+    "date": "2026-10-28",
+    "summary": "Tether 0.4.0 shows two tabs side by side, lets you drag tabs into order, and can update itself from a release.",
+    "highlights": [
+      {
+        "title": "Split panes.",
+        "body": "Command-D opens a shell beside the current tab, in the same folder. File > Split Down stacks it instead. Right-click any tab and choose Show Beside Current Tab to pair two you already have. Drag the divider to resize, double-click it to even it out, and use Command-[ and Command-] to move between the halves."
+      },
+      {
+        "title": "Drag tabs.",
+        "body": "Drag a tab onto another to move it there. The order is kept when Tether restarts."
+      },
+      {
+        "title": "Updates.",
+        "body": "A signed release build checks GitHub for new releases and installs them with Tether > Check for Updates. Builds you make with make dev still update with git pull."
+      }
+    ]
+  },
+  {
     "version": "0.3.0",
     "date": "2026-10-28",
     "summary": "Tether 0.3.0 reworks the Mac window around a chat view, a file browser and one-click shortcuts.",

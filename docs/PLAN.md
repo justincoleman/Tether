@@ -508,8 +508,19 @@ sent together, and the send queue is in memory only, not persisted.*
   SessionStart hook confirmed); a dead hook port makes Claude fall back to its
   own prompt. Not doing: persisting the send queue (a restarted tab is a new
   process, and a stale message typed into it is worse than a dropped one).
-  Deferred (issue #4): split panes, tab drag-reorder, updater and notarized
-  builds, libghostty from source.
+  Built (7b): split panes (`PaneSplit`, two tabs per split, persisted; ⌘D
+  beside, File → Split Down stacked, ⌘[ ⌘] between halves; panes keep
+  their surfaces and only change frames); tab drag-reorder, persisted; the
+  embedded terminal unbinds the shortcuts Tether's menus own so Ghostty's
+  defaults (super+d = new_split) can't swallow them. Updater and notarized
+  builds: `scripts/release.sh` (`make release`) and an in-app check of the
+  private repo's GitHub releases with a token or `gh auth token`, installing
+  only a download signed by the running app's team (docs/RELEASING.md); a
+  `make dev` build doesn't update itself. libghostty from source:
+  `scripts/ghosttykit.sh` builds libghostty-spm's XCFramework in `Vendor/`
+  and `make project` points the package there while `.ghostty-source`
+  exists. Not done: dropping the SPM dependency, which waits until the
+  source build has been used for a while. Splits are two panes, not a tree.
 
 ---
 

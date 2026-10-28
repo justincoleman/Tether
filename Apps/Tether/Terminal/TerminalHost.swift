@@ -48,8 +48,10 @@ enum TerminalHost {
         // over the user's colors, and keeps Ghostty's own defaults (which
         // `palette` assumes) when there is no config.
         guard var prepared = Self.prepared else {
-            return TerminalController(configSource: .none, theme: TerminalTheme())
+            return TerminalController(configSource: .generated(GhosttyConfig.reservingTetherKeys(in: "")),
+                                      theme: TerminalTheme())
         }
+        prepared.contents = GhosttyConfig.reservingTetherKeys(in: prepared.contents)
         let controller = TerminalController(
             configSource: .generated(prepared.contents), theme: TerminalTheme())
         var warnings = prepared.warnings
