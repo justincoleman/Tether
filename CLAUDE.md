@@ -18,6 +18,9 @@ structural. Work proceeds in the numbered phases there.
 - `make dev` runs the tests, builds the Mac app and launches it (replacing a
   running copy). `make run` skips the tests; `make run-log` runs the binary in
   the terminal to show its log output; `make stop` quits it.
+- `make release` builds, notarizes and publishes a signed release
+  (`docs/RELEASING.md`); `scripts/ghosttykit.sh` switches libghostty to a
+  source build in `Vendor/` (`--off` switches back).
 
 ## Terminal
 - The Mac app embeds libghostty through the `libghostty-spm` package
@@ -27,6 +30,12 @@ structural. Work proceeds in the numbered phases there.
 - The embedded libghostty rejects the whole config on any diagnostic. `TerminalHost`
   inlines `theme` files (`GhosttyConfig`), then drops only rejected lines, and passes
   an empty `TerminalTheme()` so the wrapper default never overrides user colors.
+- `GhosttyConfig.tetherKeys` are unbound in the embedded terminal, since a
+  focused surface takes a Ghostty binding before the menu bar. Add any new
+  menu shortcut there.
+- Splits: `PaneSplit` (TetherCore) pairs two tabs. `TerminalCard` lays every
+  pane out in one stack and only changes frames; never move a surface to
+  another container.
 - Every pty gets `TETHER_PANE_ID` and `TETHER_TOKEN` in its env
   (`TerminalLaunch`). Hooks echo them back as HTTP headers.
 

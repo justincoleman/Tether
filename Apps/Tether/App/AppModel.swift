@@ -60,6 +60,7 @@ final class AppModel {
     let releases = ReleaseNotesStore()
     let changes = ChangesStore()
     let companion = CompanionHub()
+    let updater = Updater()
 
     /// The diff open over the terminal, if any.
     private(set) var openDiffTarget: OpenDiff?
@@ -913,6 +914,7 @@ final class AppModel {
         companion.start()
         await reload()
         splits = await store.state.splits
+        updater.startAutomaticChecks()
         var descriptors = await store.state.panes
         for project in projects where !descriptors.contains(where: { $0.projectId == project.id }) {
             if let wt = await store.primaryWorktree(for: project.id) {

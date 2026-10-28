@@ -37,6 +37,7 @@ struct TetherApp: App {
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("What's New in Tether") { openWindow(id: "whats-new") }
+                Button("Check for Updates…") { UpdatePrompt.checkFromMenu(model.updater) }
             }
             CommandGroup(replacing: .newItem) {
                 Button("Add Project…") { model.addProjectRequested = true }
