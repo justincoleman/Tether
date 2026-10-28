@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 8).
+`ProtocolVersion.current` with any shape change (currently 9).
 
 ## Transport
 
@@ -67,6 +67,41 @@ Phone → Mac (`PhoneMessage`):
 | `startSession(requestId, projectId, branch?, prompt, permissionMode?)` | `AppModel.startSession`: a new Claude tab, launched as `claude "<prompt>"`, with `--permission-mode` when given (only `default`, `acceptEdits`, `plan`, `auto`; anything else is ignored and the user's default applies). With `branch`, first a worktree on a new branch from `origin/<base>` (else `<base>`, else `HEAD`) under `~/Library/Application Support/Tether/Worktrees/<repo>/<branch-slug>` (`WorktreeCreator`). The Mac doesn't switch its own selected tab. The phone waits up to 90 s. |
 | `reorderProjects(ids)` | Saves the sidebar order; the next snapshot carries it. |
 | `renameProject(id, name)` | Display name only (`ProjectStore.renameProject`); the folder isn't touched. Blank names are ignored. |
-| `registerPush` | Phase 6b; the Mac replies `error` for now. |
+| `registerPush(PushRegistration)` | APNs device token, ActivityKit push-to-start token, bundle id, sandbox flag. Sent after every auth and when a token changes; stored on the paired device in `companion.json`. |
+| `registerActivity(paneId, token?)` | The update token of that tab's Live Activity, or nil when it ended. |
 
 Messages from one phone are handled strictly in order (`CompanionClient.inbox`).
+
+## Push (APNs, no server)
+
+Each Mac pushes straight to Apple with the user's own APNs key
+(Settings → iPhone → Notifications: Team ID, Key ID, `.p8` in the Keychain).
+`PushSender` signs an ES256 JWT (`APNsJWT`, cached 50 min) with CryptoKit and
+POSTs over HTTP/2 to `api.sandbox.push.apple.com` for development builds or
+`api.push.apple.com`, per the phone's `sandbox` flag. A 410 / `BadDeviceToken`
+drops that token.
+
+What is sent is decided by `PushPlanner` (TetherCore, tested) and shaped by
+`PushPayload`:
+
+| Event | Push |
+|---|---|
+| PermissionRequest | Alert, category `TETHER_PERMISSION` (Allow needs Face ID, Deny doesn't), time-sensitive. `macId`, `paneId`, `requestId` in the payload. |
+| needsInput / question | Alert, category `TETHER_REPLY` (text reply), time-sensitive, collapse id `q-<pane>`. |
+| needsInput / dialog | Alert: answer on the Mac. |
+| working → done | Alert with the last message, category `TETHER_REPLY`, collapse id `s-<pane>`. |
+| → error | Alert, collapse id `s-<pane>`. |
+| idle/done → working | Live Activity `start` to the push-to-start token (`attributes-type: LiveActivityAttributes`). |
+| working ↔ needsInput, new transcript output | Live Activity `update`, priority 5, at most every 10 s per tab, stale after 30 min. |
+| leaves working/needsInput | Live Activity `end`, dismissed after 15 min. |
+
+`LiveActivityAttributes` and `LiveActivityContent` live in TetherProtocol; the
+phone conforms the former to `ActivityAttributes` (`Apps/PhoneShared`), so the
+JSON keys are the Swift field names. Content has no `Date` fields because
+ActivityKit decodes it with a default `JSONDecoder`.
+
+The phone reports each activity's update token with `registerActivity`. When a
+notification action or a token update arrives while the app is suspended,
+iOS launches it in the background; `PhoneStore.perform(on:)` connects to the
+Mac, sends, waits 1.5 s and disconnects. While the app is open it also updates
+and ends activities itself from each snapshot (`LiveActivities.reconcile`).

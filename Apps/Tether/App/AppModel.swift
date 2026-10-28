@@ -88,6 +88,7 @@ final class AppModel {
         mirror.onEvents = { [weak self] sessionId, events in
             self?.companion.publish(events, sessionId: sessionId)
             self?.companion.setNeedsSnapshot() // previews
+            self?.activityContentChanged(sessionId: sessionId)
         }
         Task { await restore() }
     }
@@ -451,6 +452,7 @@ final class AppModel {
             }
             mirror.track(sessionId: session.id, path: session.transcriptPath)
             recomputeProjectStates()
+            notifyPhones(paneId: paneId, previous: previous, state: session.state, attention: session.attention)
             updateInterruptWatcher(for: session)
             if session.state == .needsInput, previous != .needsInput { requestAttention() }
             flushQueue(paneId)
@@ -462,6 +464,7 @@ final class AppModel {
         case .permissionRequested(let request):
             if !pendingPermissions.contains(where: { $0.id == request.id }) {
                 pendingPermissions.append(request)
+                companion.permissionRequested(phoneSummary(of: request), projectName: projectName(forPane: request.paneId))
             }
             requestAttention()
             companion.setNeedsSnapshot()
@@ -514,8 +517,10 @@ final class AppModel {
         _ = await broker.cancelAll(paneId: id)
         pendingPermissions.removeAll { $0.paneId == id }
         if let session = await registry.paneExited(id) {
+            let previous = paneStates[id]
             paneStates[id] = session.state
             recomputeProjectStates()
+            notifyPhones(paneId: id, previous: previous, state: session.state, attention: nil)
         }
     }
 
@@ -700,11 +705,40 @@ extension AppModel {
                     permissionMode: paneModes[pane.id]))
             }
         }
-        let permissions = pendingPermissions.map { request in
-            let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
-            return PermissionRequested(id: request.id, paneId: request.paneId, sessionId: request.sessionId,
-                                       toolName: request.toolName, title: summary.title, detail: summary.detail)
-        }
+        let permissions = pendingPermissions.map(phoneSummary(of:))
         return Snapshot(macName: macName, projects: projectList, sessions: sessions, permissions: permissions)
+    }
+}
+
+// MARK: - Push
+
+extension AppModel {
+    func phoneSummary(of request: PendingPermission) -> PermissionRequested {
+        let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
+        return PermissionRequested(id: request.id, paneId: request.paneId, sessionId: request.sessionId,
+                                   toolName: request.toolName, title: summary.title, detail: summary.detail)
+    }
+
+    func projectName(forPane paneId: PaneID?) -> String {
+        guard let paneId, let pane = panes[paneId] else { return "Tether" }
+        return projects.first { $0.id == pane.descriptor.projectId }?.name ?? "Tether"
+    }
+
+    /// Hands a tab's state change to the companion for alerts and Live Activities.
+    fileprivate func notifyPhones(paneId: PaneID, previous: SessionState?, state: SessionState,
+                                  attention: AttentionReason?) {
+        guard let pane = panes[paneId] else { return }
+        let transcript = mirror.model(for: sessionId(forPane: paneId))
+        companion.sessionChanged(paneId: paneId, projectName: projectName(forPane: paneId), title: pane.title,
+                                 previous: previous, state: state, attention: attention,
+                                 preview: transcript?.preview(), steps: transcript?.stepsInCurrentTurn ?? 0)
+    }
+
+    fileprivate func activityContentChanged(sessionId: SessionID) {
+        guard let paneId = paneOrder.first(where: { self.sessionId(forPane: $0) == sessionId }),
+              let state = paneStates[paneId], state == .working || state == .needsInput,
+              let transcript = mirror.model(for: sessionId) else { return }
+        companion.activityContentChanged(paneId: paneId, state: state, preview: transcript.preview(),
+                                         steps: transcript.stepsInCurrentTurn)
     }
 }

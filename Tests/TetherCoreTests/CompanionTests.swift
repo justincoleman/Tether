@@ -43,6 +43,26 @@ final class TestClock: @unchecked Sendable {
         #expect(await auth.pair(code: code, deviceName: "x") == nil)
     }
 
+    @Test func pushRegistrationPersistsAndOldFilesStillLoad() async throws {
+        let url = tempFile()
+        // A companion.json written before push existed.
+        let old = #"{"macId":"11111111-2222-3333-4444-555555555555","devices":[{"id":"AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE","name":"Phone","token":"t","pairedAt":"2026-10-01T00:00:00Z"}]}"#
+        try Data(old.utf8).write(to: url)
+        let auth = CompanionAuth(fileURL: url)
+        let device = try #require(await auth.authenticate(token: "t"))
+        #expect(device.push == nil)
+        let reg = PushRegistration(deviceToken: "abcd", pushToStartToken: "ef01", bundleId: "com.x", sandbox: true)
+        await auth.setPush(reg, for: device.id)
+        await auth.setActivityToken("tok", pane: "p1", for: device.id)
+        let reloaded = CompanionAuth(fileURL: url)
+        #expect(await reloaded.devices.first?.push == reg)
+        #expect(await reloaded.devices.first?.activityTokens == ["p1": "tok"])
+        await reloaded.dropDeviceToken("abcd")
+        #expect(await reloaded.devices.first?.push == nil)
+        await reloaded.setActivityToken(nil, pane: "p1", for: device.id)
+        #expect(await reloaded.devices.first?.activityTokens == nil)
+    }
+
     @Test func persistsDevicesAndRevokes() async {
         let url = tempFile()
         let auth = CompanionAuth(fileURL: url)

@@ -37,6 +37,16 @@ final class MacConnection: Identifiable {
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var subscribed: SessionID?
     @ObservationIgnored private var wanted = false
+    /// Sent after each authentication and whenever it changes.
+    @ObservationIgnored var pushRegistration: PushRegistration? {
+        didSet {
+            if status == .online, let pushRegistration, pushRegistration != oldValue {
+                channel?.send(PhoneMessage.registerPush(pushRegistration))
+            }
+        }
+    }
+    /// Live Activity tokens waiting for the connection.
+    @ObservationIgnored private var pendingActivityTokens: [PaneID: String?] = [:]
     @ObservationIgnored private var pendingStarts: [UUID: CheckedContinuation<StartOutcome, Never>] = [:]
 
     enum StartOutcome {
@@ -131,6 +141,14 @@ final class MacConnection: Identifiable {
         }
     }
 
+    func reportActivity(paneId: PaneID, token: String?) {
+        if status == .online, let channel {
+            channel.send(PhoneMessage.registerActivity(paneId: paneId, token: token))
+        } else {
+            pendingActivityTokens[paneId] = token
+        }
+    }
+
     func renameProject(_ id: ProjectID, to name: String) {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
@@ -175,6 +193,7 @@ final class MacConnection: Identifiable {
             closeChannel()
         case .snapshot(let snapshot):
             self.snapshot = snapshot
+            LiveActivities.reconcile(macId: mac.id, snapshot: snapshot)
             // A queued message has gone out once the Mac's queue for that tab is empty.
             for session in snapshot.sessions where session.queued == 0 && sendResults[session.id] == "queued" {
                 sendResults[session.id] = nil
@@ -195,6 +214,11 @@ final class MacConnection: Identifiable {
     private func didConnect() {
         status = .online
         attempt = 0
+        if let pushRegistration { channel?.send(PhoneMessage.registerPush(pushRegistration)) }
+        for (paneId, token) in pendingActivityTokens {
+            channel?.send(PhoneMessage.registerActivity(paneId: paneId, token: token))
+        }
+        pendingActivityTokens = [:]
         if let subscribed { channel?.send(PhoneMessage.subscribe(sessionId: subscribed)) }
         pinger?.cancel()
         pinger = Task { [weak self] in

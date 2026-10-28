@@ -39,6 +39,12 @@ struct OverviewView: View {
                 }
             }
             .toolbar { toolbar }
+            .onChange(of: store.openRoute, initial: true) { _, route in
+                // From a notification tap or a Live Activity.
+                guard let route else { return }
+                store.openRoute = nil
+                path = NavigationPath([route])
+            }
             .sheet(item: $newTask) { target in
                 NewTaskView(initialMacId: target.macId, initialProjectId: target.projectId) { route in
                     path.append(route)

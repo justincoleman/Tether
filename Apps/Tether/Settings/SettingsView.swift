@@ -11,7 +11,7 @@ struct SettingsView: View {
             RemoteHostsSettings()
                 .tabItem { Label("Remote Hosts", systemImage: "network") }
         }
-        .frame(width: 560, height: 420)
+        .frame(width: 620, height: 600)
     }
 }
 

@@ -2,6 +2,7 @@ import AppKit
 import CoreImage.CIFilterBuiltins
 import SwiftUI
 import TetherCore
+import UniformTypeIdentifiers
 
 /// Settings → iPhone: pair a phone with a QR code, see and revoke paired phones.
 struct PhoneSettings: View {
@@ -18,6 +19,8 @@ struct PhoneSettings: View {
                     .disabled(hub.tailnetAddress == nil || hub.problem != nil)
             }
             Divider()
+            NotificationSettings(hub: hub)
+            Divider()
             Text("Paired iPhones").font(.headline)
             if hub.devices.isEmpty {
                 Text("None yet.").foregroundStyle(.secondary)
@@ -33,6 +36,9 @@ struct PhoneSettings: View {
                                  ?? "Never connected")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Text(device.push == nil ? "Notifications off" : "Notifications on")
+                                .font(.caption)
+                                .foregroundStyle(device.push == nil ? Color.orange : Color.secondary)
                         }
                         Spacer()
                         Button("Remove", role: .destructive) { hub.revoke(device.id) }
@@ -101,5 +107,57 @@ private struct PairingCard: View {
         let image = NSImage(size: rep.size)
         image.addRepresentation(rep)
         return image
+    }
+}
+
+/// APNs credentials: Team ID, Key ID and the .p8 key from the Apple
+/// Developer portal (Keys → Apple Push Notifications service).
+private struct NotificationSettings: View {
+    let hub: CompanionHub
+    @State private var importing = false
+    @State private var importError: String?
+
+    var body: some View {
+        @Bindable var push = hub.pushSettings
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Notifications").font(.headline)
+            Text("Lock-screen alerts and Live Activities go straight from this Mac to Apple's push service with your own key. Create one at developer.apple.com → Keys → Apple Push Notifications service.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                TextField("Team ID", text: $push.teamId).frame(width: 140)
+                TextField("Key ID", text: $push.keyId).frame(width: 140)
+                Button(push.hasKey ? "Replace .p8 Key…" : "Import .p8 Key…") { importing = true }
+                if push.hasKey {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).help("Key saved in the Keychain")
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            HStack {
+                Button("Send Test Notification") { hub.sendTest() }
+                    .disabled(!push.isComplete || !hub.devices.contains { $0.push != nil })
+                if let problem = hub.pushProblem {
+                    Text(problem).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                } else if let importError {
+                    Text(importError).font(.caption).foregroundStyle(.orange)
+                }
+            }
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.data, .text]) { result in
+            guard case .success(let url) = result else { return }
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let pem = try? String(contentsOf: url, encoding: .utf8) else {
+                importError = "Couldn't read that file."
+                return
+            }
+            importError = push.importKey(pem: pem)
+            // AuthKey_<KEYID>.p8: fill in the Key ID if it's empty.
+            let name = url.deletingPathExtension().lastPathComponent
+            if push.keyId.isEmpty, name.hasPrefix("AuthKey_") {
+                push.keyId = String(name.dropFirst("AuthKey_".count))
+            }
+        }
     }
 }

@@ -86,6 +86,19 @@ public struct TranscriptModel: Sendable, Equatable {
 }
 
 extension TranscriptModel {
+    /// Tool steps since the last user message: the current turn's progress.
+    public var stepsInCurrentTurn: Int {
+        var count = 0
+        for item in items.reversed() {
+            switch item {
+            case .user: return count
+            case .steps(_, let steps): count += steps.count
+            case .assistant, .notice: continue
+            }
+        }
+        return count
+    }
+
     /// The latest user or assistant message on one line, at most `limit`
     /// characters, markdown markers and extra whitespace removed.
     public func preview(limit: Int = 140) -> String? {

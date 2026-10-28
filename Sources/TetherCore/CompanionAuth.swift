@@ -1,4 +1,5 @@
 import Foundation
+import TetherProtocol
 
 /// A phone allowed to connect. The token is its long-lived bearer secret.
 public struct PairedDevice: Codable, Hashable, Sendable, Identifiable {
@@ -7,6 +8,10 @@ public struct PairedDevice: Codable, Hashable, Sendable, Identifiable {
     public var token: String
     public var pairedAt: Date
     public var lastSeen: Date?
+    /// Where to push; nil until the phone allows notifications.
+    public var push: PushRegistration?
+    /// Live Activity update tokens by pane id string.
+    public var activityTokens: [String: String]?
 }
 
 /// Pairing codes and the paired-device list for the companion server.
@@ -84,6 +89,32 @@ public actor CompanionAuth {
         state.devices[i].lastSeen = now()
         save()
         return state.devices[i]
+    }
+
+    public func setPush(_ registration: PushRegistration?, for id: UUID) {
+        guard let i = state.devices.firstIndex(where: { $0.id == id }) else { return }
+        guard state.devices[i].push != registration else { return }
+        state.devices[i].push = registration
+        save()
+    }
+
+    public func setActivityToken(_ token: String?, pane: String, for id: UUID) {
+        guard let i = state.devices.firstIndex(where: { $0.id == id }) else { return }
+        var tokens = state.devices[i].activityTokens ?? [:]
+        guard tokens[pane] != token else { return }
+        tokens[pane] = token
+        state.devices[i].activityTokens = tokens.isEmpty ? nil : tokens
+        save()
+    }
+
+    /// APNs said the device token is no longer valid (app deleted, re-signed).
+    public func dropDeviceToken(_ token: String) {
+        var changed = false
+        for i in state.devices.indices where state.devices[i].push?.deviceToken == token {
+            state.devices[i].push = nil
+            changed = true
+        }
+        if changed { save() }
     }
 
     public func revoke(_ id: UUID) {

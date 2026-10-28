@@ -471,8 +471,12 @@ sent together, and the send queue is in memory only, not persisted.*
   Removing closes the tabs, runs `git worktree remove` (refusing a dirty
   worktree unless confirmed) and `git branch -d`, keeping an unmerged branch.
   Every worktree is watched for the Changes panel, not just the main folder.
-  6b: APNs and Live Activities. Needs a paid developer account, an APNs
-  `.p8` key and the Push capability on the phone's App ID.
+  6b (built): APNs alerts with Allow/Deny/Reply actions handled in the
+  background, and Live Activities started by push-to-start, updated and ended
+  by the Mac (docs/PROTOCOL.md, Push). No Notification Service Extension: the
+  payload is formatted on the Mac, and travels via Apple's push service in
+  the clear apart from TLS, so it contains the command or message shown.
+  Needs a paid developer account and an APNs `.p8` key.
 
 ### Phase 7: Hardening and ownership (ongoing)
 - Build libghostty from source (`scripts/ghosttykit.sh`), swap in behind a

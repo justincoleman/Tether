@@ -74,6 +74,9 @@ structural. Work proceeds in the numbered phases there.
   Update it with any change to `TetherProtocol` messages or `CompanionHub`.
 - Phones connect only over Tailscale (`Tailnet.isAllowedPeer`); never widen
   that without adding TLS.
+- Push rules (`PushPlanner`) and payloads (`PushPayload`, `APNsJWT`) live in
+  `TetherCore/APNs.swift` with tests. `LiveActivityAttributes`/`Content` field
+  names are JSON keys pushed to installed phones: don't rename them.
 - Pairing and token logic live in `TetherCore/CompanionAuth.swift` with tests;
   `Apps/Tether/Companion/` and `Apps/Shared/WebSocketChannel.swift` only move bytes.
 

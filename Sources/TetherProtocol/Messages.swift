@@ -147,8 +147,10 @@ public enum PhoneMessage: Codable, Sendable {
     case reorderProjects(ids: [ProjectID])
     /// Display name only; the folder is untouched.
     case renameProject(id: ProjectID, name: String)
-    // Phase 6b.
-    case registerPush(deviceToken: String, liveActivityPushToStartToken: String?)
+    /// Push tokens for this phone; sent after auth and when they change.
+    case registerPush(PushRegistration)
+    /// The update token of the Live Activity for a tab, or nil when it ended.
+    case registerActivity(paneId: PaneID, token: String?)
 }
 
 /// Shared encoder/decoder configuration so both sides agree on date format.

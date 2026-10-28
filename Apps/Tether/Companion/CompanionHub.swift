@@ -43,12 +43,23 @@ final class CompanionHub {
 
     let macName = Host.current().localizedName ?? "Mac"
     let port = CompanionServer.defaultPort
+    let pushSettings = PushSettings()
+    /// The last APNs failure, shown in Settings; nil after a success.
+    private(set) var pushProblem: String?
 
     @ObservationIgnored weak var model: AppModel?
     @ObservationIgnored private let server = CompanionServer()
     @ObservationIgnored private let auth = CompanionAuth(
         fileURL: ProjectStore.defaultFileURL().deletingLastPathComponent().appendingPathComponent("companion.json"))
     @ObservationIgnored private var clients: [ObjectIdentifier: CompanionClient] = [:]
+    @ObservationIgnored private let sender = PushSender()
+    @ObservationIgnored private var macId: UUID?
+    /// When each tab's current working stretch began, for the activity timer.
+    @ObservationIgnored private var workingSince: [PaneID: Date] = [:]
+    /// Live Activity updates are sent at most every `activityInterval`.
+    @ObservationIgnored private var lastActivityPush: [PaneID: Date] = [:]
+    @ObservationIgnored private var pendingActivity: [PaneID: LiveActivityContent] = [:]
+    @ObservationIgnored private let activityInterval: TimeInterval = 10
     @ObservationIgnored private var snapshotScheduled = false
     @ObservationIgnored private var lastSnapshot: Snapshot?
 
@@ -65,7 +76,10 @@ final class CompanionHub {
             problem = "Phone connections are off: \(error.localizedDescription)"
         }
         refreshAddress()
-        Task { self.devices = await self.auth.devices }
+        Task {
+            self.devices = await self.auth.devices
+            self.macId = await self.auth.macId
+        }
     }
 
     func refreshAddress() {
@@ -236,10 +250,140 @@ final class CompanionHub {
             Task { await model.reorderProjects(ids) }
         case .renameProject(let id, let name):
             Task { await model.renameProject(id, to: name) }
-        case .registerPush:
-            client.send(.error(message: "This Mac doesn't support that yet."))
+        case .registerPush(let registration):
+            guard let device = client.device else { return }
+            Task {
+                await auth.setPush(registration, for: device.id)
+                devices = await auth.devices
+            }
+        case .registerActivity(let paneId, let token):
+            guard let device = client.device else { return }
+            Task {
+                await auth.setActivityToken(token, pane: paneId.uuidString, for: device.id)
+                devices = await auth.devices
+            }
         case .hello, .pair, .authenticate:
             break
+        }
+    }
+
+    // MARK: Push
+
+    /// A tab changed state: alerts and Live Activity changes for every phone.
+    func sessionChanged(paneId: PaneID, projectName: String, title: String, previous: SessionState?,
+                        state: SessionState, attention: AttentionReason?, preview: String?, steps: Int) {
+        let active: Set<SessionState> = [.working, .needsInput]
+        if state == .working, !(previous.map(active.contains) ?? false) { workingSince[paneId] = Date() }
+        guard let macId else { return }
+        let change = PushPlanner.Change(
+            macId: macId, paneId: paneId, projectName: projectName, title: title, previous: previous,
+            state: state, attention: attention, preview: preview, steps: steps,
+            startedAt: workingSince[paneId] ?? Date())
+        if !active.contains(state) { workingSince[paneId] = nil }
+        deliver(PushPlanner.intents(for: change))
+    }
+
+    func permissionRequested(_ request: PermissionRequested, projectName: String) {
+        deliver([.permission(request, projectName: projectName)])
+    }
+
+    /// New transcript output while working: refresh the Live Activity, throttled.
+    func activityContentChanged(paneId: PaneID, state: SessionState, preview: String?, steps: Int) {
+        guard let since = workingSince[paneId] else { return }
+        let content = LiveActivityContent(state: state.rawValue, detail: preview ?? "", steps: steps,
+                                          startedAt: since.timeIntervalSince1970)
+        deliver([.activityUpdate(paneId: paneId, content)])
+    }
+
+    /// Settings → Send Test Notification.
+    func sendTest() {
+        guard let macId else { return }
+        let request = PermissionRequested(id: UUID(), paneId: nil, sessionId: "test", toolName: "Test",
+                                          title: "Send a test notification", detail: "Notifications from \(macName) work.")
+        Task { await send(.permission(request, projectName: "Tether"), macId: macId) }
+    }
+
+    private func deliver(_ intents: [PushIntent]) {
+        guard let macId, !intents.isEmpty, pushSettings.isComplete else { return }
+        for intent in intents {
+            if case .activityUpdate(let paneId, let content) = intent {
+                throttleActivity(paneId: paneId, content: content, macId: macId)
+            } else {
+                if case .activityEnd(let paneId, _) = intent {
+                    pendingActivity[paneId] = nil
+                    lastActivityPush[paneId] = nil
+                }
+                Task { await send(intent, macId: macId) }
+            }
+        }
+    }
+
+    private func throttleActivity(paneId: PaneID, content: LiveActivityContent, macId: UUID) {
+        let wait = (lastActivityPush[paneId].map { activityInterval - Date().timeIntervalSince($0) }) ?? 0
+        if wait <= 0 {
+            lastActivityPush[paneId] = Date()
+            Task { await send(.activityUpdate(paneId: paneId, content), macId: macId) }
+            return
+        }
+        let alreadyScheduled = pendingActivity[paneId] != nil
+        pendingActivity[paneId] = content
+        guard !alreadyScheduled else { return }
+        Task {
+            try? await Task.sleep(for: .seconds(wait))
+            guard let latest = pendingActivity.removeValue(forKey: paneId) else { return }
+            lastActivityPush[paneId] = Date()
+            await send(.activityUpdate(paneId: paneId, latest), macId: macId)
+        }
+    }
+
+    private func send(_ intent: PushIntent, macId: UUID) async {
+        guard let credentials = pushSettings.credentials() else { return }
+        let request = PushPayload.request(for: intent, macId: macId)
+        for device in await auth.devices {
+            guard let push = device.push else { continue }
+            let token: String?
+            switch intent {
+            case .activityStart(let attributes, let content):
+                // A tab whose activity is still alive gets an update instead.
+                if let existing = device.activityTokens?[attributes.paneId] {
+                    let update = PushPayload.request(for: .activityUpdate(paneId: UUID(), content), macId: macId)
+                    await post(update, token: existing, device: device, push: push, credentials: credentials)
+                    continue
+                }
+                token = push.pushToStartToken
+            case .activityUpdate(let paneId, _), .activityEnd(let paneId, _):
+                token = device.activityTokens?[paneId.uuidString]
+                if case .activityEnd = intent, token != nil {
+                    await auth.setActivityToken(nil, pane: paneId.uuidString, for: device.id)
+                }
+            default:
+                token = push.deviceToken
+            }
+            guard let token else { continue }
+            await post(request, token: token, device: device, push: push, credentials: credentials)
+        }
+    }
+
+    private func post(_ request: APNsRequest, token: String, device: PairedDevice, push: PushRegistration,
+                         credentials: PushSender.Credentials) async {
+        let result = await sender.send(request, token: token, bundleId: push.bundleId, sandbox: push.sandbox,
+                                       credentials: credentials)
+        switch result {
+        case .sent:
+            pushProblem = nil
+        case .unregistered:
+            if token == push.deviceToken {
+                await auth.dropDeviceToken(token)
+            } else {
+                // A dead activity token: that activity is gone.
+                for (pane, t) in device.activityTokens ?? [:] where t == token {
+                    await auth.setActivityToken(nil, pane: pane, for: device.id)
+                }
+            }
+            devices = await auth.devices
+        case .failed(let reason):
+            pushProblem = "Push to \(device.name) failed: \(reason)"
+            print("APNs: \(pushProblem ?? "")")
         }
     }
 }

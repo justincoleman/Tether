@@ -4,6 +4,7 @@ import TetherProtocol
 /// One Claude tab: its conversation, a compose box, and any permission it
 /// is waiting on.
 struct SessionView: View {
+    @Environment(PhoneStore.self) private var store
     let connection: MacConnection
     let paneId: PaneID
     @State private var text = ""
@@ -103,7 +104,11 @@ struct SessionView: View {
             try? await Task.sleep(for: .seconds(5))
             waitedForTab = true
         }
-        .onDisappear { connection.subscribe(nil) }
+        .onAppear { store.visiblePaneId = paneId }
+        .onDisappear {
+            connection.subscribe(nil)
+            if store.visiblePaneId == paneId { store.visiblePaneId = nil }
+        }
         .sheet(item: $answering) { request in
             PermissionSheet(connection: connection, request: request)
                 .presentationDetents([.medium, .large])

@@ -50,10 +50,16 @@ targets:
   TetherPhone:
     type: application
     platform: iOS
-    sources: [TetherPhone, Shared]
+    sources: [TetherPhone, Shared, PhoneShared]
     dependencies:
       - package: TetherPackage
         product: TetherProtocol
+      - target: TetherWidgets
+    entitlements:
+      path: TetherPhone/Resources/TetherPhone.entitlements
+      properties:
+        aps-environment: development
+        com.apple.developer.usernotifications.time-sensitive: true
     info:
       path: TetherPhone/Resources/Info.plist
       properties:
@@ -70,6 +76,23 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.justincoleman.tether.phone
+        TARGETED_DEVICE_FAMILY: "1"
+  TetherWidgets:
+    type: app-extension
+    platform: iOS
+    sources: [TetherWidgets, PhoneShared]
+    dependencies:
+      - package: TetherPackage
+        product: TetherProtocol
+    info:
+      path: TetherWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Tether
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.justincoleman.tether.phone.widgets
         TARGETED_DEVICE_FAMILY: "1"
 schemes:
   Tether:

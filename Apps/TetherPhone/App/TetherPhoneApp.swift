@@ -3,11 +3,12 @@ import TetherProtocol
 
 @main
 struct TetherPhoneApp: App {
-    @State private var store = PhoneStore()
+    @UIApplicationDelegateAdaptor(PhoneAppDelegate.self) private var delegate
     @State private var showPairing = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
+        let store = delegate.store
         WindowGroup {
             OverviewView(showPairing: $showPairing)
                 .environment(store)
@@ -16,6 +17,7 @@ struct TetherPhoneApp: App {
                 }
                 // The Camera app opens tether://pair links from the Mac's QR.
                 .onOpenURL { url in
+                    if store.open(url) { return }
                     guard let link = PairingLink(url: url) else { return }
                     store.pair(link)
                     showPairing = true
