@@ -136,7 +136,8 @@ final class CompanionHub {
                 await self.received(data, from: client)
             }
         }
-        channel.onClose = { [weak self] _ in
+        channel.onClose = { [weak self] error in
+            print("Companion: \(peer) closed\(error.map { ": \($0)" } ?? "")")
             guard let self else { return }
             self.clients[key] = nil
             self.updateConnected()
@@ -149,11 +150,13 @@ final class CompanionHub {
 
     private func received(_ data: Data, from client: CompanionClient) async {
         guard let message = try? WireCodec.decoder().decode(PhoneMessage.self, from: data) else {
+            print("Companion: unreadable message from \(client.peer)")
             client.send(.error(message: "The Mac couldn't read that message. Update Tether on both devices."))
             return
         }
         switch message {
         case .hello(let hello):
+            print("Companion: hello from \(hello.deviceName), protocol \(hello.protocolVersion)")
             client.hello = hello
             client.send(.hello(Hello(appVersion: appVersion, deviceName: macName)))
             if hello.protocolVersion != ProtocolVersion.current {
@@ -162,6 +165,7 @@ final class CompanionHub {
             }
         case .pair(let code):
             guard let result = await auth.pair(code: code, deviceName: client.hello?.deviceName ?? "iPhone") else {
+                print("Companion: pairing code rejected")
                 client.send(.authFailed(reason: "That pairing code is wrong or expired. Show a new QR code on the Mac."))
                 client.channel.close()
                 return
@@ -174,6 +178,7 @@ final class CompanionHub {
             didAuthenticate(client)
         case .authenticate(let token):
             guard let device = await auth.authenticate(token: token) else {
+                print("Companion: unknown token")
                 client.send(.authFailed(reason: "This iPhone is no longer paired with \(macName). Pair again."))
                 client.channel.close()
                 return

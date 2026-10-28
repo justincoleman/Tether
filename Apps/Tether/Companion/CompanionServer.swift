@@ -23,6 +23,7 @@ final class CompanionServer {
         }
         listener.stateUpdateHandler = { [weak self] state in
             MainActor.assumeIsolated {
+                print("Companion: listener \(state)")
                 switch state {
                 case .ready: self?.onStateChange?(nil)
                 case .failed(let error): self?.onStateChange?("Phone connections are off: \(error.localizedDescription)")
@@ -41,9 +42,11 @@ final class CompanionServer {
 
     private func accept(_ connection: NWConnection) {
         guard let peer = Self.address(of: connection.endpoint), Tailnet.isAllowedPeer(peer) else {
+            print("Companion: refused \(connection.endpoint): not a Tailscale or loopback address")
             connection.cancel()
             return
         }
+        print("Companion: connection from \(peer)")
         let channel = WebSocketChannel(connection: connection)
         onConnection?(channel, peer)
         channel.start()
