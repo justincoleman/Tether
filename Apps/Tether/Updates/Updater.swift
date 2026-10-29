@@ -30,7 +30,6 @@ final class Updater {
 
     @ObservationIgnored private var timer: Timer?
     private static let log = Logger(subsystem: "app.tether", category: "updates")
-    private static let tokenService = "app.tether.github-token"
 
     var canInstall: Bool { teamId != nil }
 
@@ -61,14 +60,13 @@ final class Updater {
         if status == .checking || status == .installing { return }
         status = .checking
         do {
-            let token = await Self.token()
+            // The releases repo is public: no login, no token.
             let (data, response) = try await URLSession.shared.data(
-                for: UpdateCheck.request(UpdateCheck.releasesURL(), token: token))
+                for: UpdateCheck.request(UpdateCheck.releasesURL(), token: nil))
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard code == 200 else {
-                // A private repo answers 404, not 401, without a token; a bad token answers 401.
-                throw UpdateError(code == 404 || code == 401
-                    ? "GitHub didn't let Tether read the releases (\(code)). If you saved a token in Settings → Updates, remove it or replace it."
+                throw UpdateError(code == 403
+                    ? "GitHub is limiting requests from this network. Try again in an hour."
                     : "GitHub answered \(code).")
             }
             let releases = try UpdateCheck.decodeReleases(data)
@@ -122,9 +120,8 @@ final class Updater {
     }
 
     private func download(_ asset: GitHubRelease.Asset, to dir: URL) async throws -> URL {
-        let token = await Self.token()
-        let request = UpdateCheck.request(asset.url, token: token, accept: "application/octet-stream")
-        let (temp, response) = try await URLSession.shared.download(for: request, delegate: RedirectGuard())
+        let request = UpdateCheck.request(asset.url, token: nil, accept: "application/octet-stream")
+        let (temp, response) = try await URLSession.shared.download(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw UpdateError("The download failed (\((response as? HTTPURLResponse)?.statusCode ?? 0)).")
         }
@@ -174,71 +171,9 @@ final class Updater {
             throw UpdateError("The download isn't signed by your team (\(status)). Not installing it.")
         }
     }
-
-    // MARK: Token
-
-    /// A token from Settings, else the GitHub CLI's.
-    static func token() async -> String? {
-        if let saved = savedToken() { return saved }
-        return await Task.detached { ghToken() }.value
-    }
-
-    static func savedToken() -> String? {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                    kSecAttrService as String: tokenService,
-                                    kSecReturnData as String: true]
-        var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data, let token = String(data: data, encoding: .utf8),
-              !token.isEmpty else { return nil }
-        return token
-    }
-
-    /// Saves the token, or deletes it when `token` is empty.
-    static func saveToken(_ token: String) {
-        let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                   kSecAttrService as String: tokenService]
-        SecItemDelete(base as CFDictionary)
-        let clean = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return }
-        var add = base
-        add[kSecValueData as String] = Data(clean.utf8)
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(add as CFDictionary, nil)
-    }
-
-    private nonisolated static func ghToken() -> String? {
-        let candidates = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh"]
-        guard let gh = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return nil }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: gh)
-        p.arguments = ["auth", "token"]
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = Pipe()
-        guard (try? p.run()) != nil else { return nil }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else { return nil }
-        let token = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : token
-    }
 }
 
 struct UpdateError: Error, CustomStringConvertible {
     var description: String
     init(_ description: String) { self.description = description }
-}
-
-/// Drops the GitHub token when an asset download is redirected to storage.
-private final class RedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
-    func urlSession(_ session: URLSession, task: URLSessionTask,
-                    willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest) async -> URLRequest? {
-        var next = request
-        if !UpdateCheck.keepsAuthorization(from: task.originalRequest?.url, to: request.url) {
-            next.setValue(nil, forHTTPHeaderField: "Authorization")
-        }
-        return next
-    }
 }

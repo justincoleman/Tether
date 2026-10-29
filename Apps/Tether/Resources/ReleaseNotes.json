@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.10.1",
+    "date": "2026-10-29",
+    "summary": "Tether 0.10.1 fixes the version number and simplifies Settings → Updates.",
+    "highlights": [
+      {
+        "title": "Updates settings.",
+        "body": "Settings → Updates now shows the real version, and the GitHub token field is gone: Tether reads the public releases page without signing in."
+      }
+    ]
+  },
+  {
     "version": "0.10.0",
     "date": "2026-10-29",
     "summary": "Tether 0.10.0 lets one Mac follow and answer the Claude tabs on another.",
