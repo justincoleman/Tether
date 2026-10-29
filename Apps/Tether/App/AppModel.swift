@@ -996,11 +996,11 @@ final class AppModel {
     }
 
     /// Passes the answer to Claude's own dialog. Tether never trusts a folder
-    /// itself: Return takes "Yes, I trust this folder", Esc declines.
+    /// itself: Down and Return take "Yes, I trust this folder", Esc declines.
     private func answerTrust(_ request: PendingPermission, _ decision: PermissionDecision) {
         guard let paneId = request.paneId, let pane = panes[paneId] else { return }
         switch decision {
-        case .allow, .allowAlways, .allowWithInput: pane.confirm()
+        case .allow, .allowAlways, .allowWithInput: pane.trustFolder()
         case .deny: pane.interrupt()
         case .askInTerminal: trustLeftToTerminal.insert(paneId)
         }

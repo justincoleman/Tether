@@ -47,9 +47,10 @@ final class TerminalPane: Identifiable {
     @discardableResult
     func cycleMode() -> Bool { terminal.sendKey(.tab, modifiers: .shift) }
 
-    /// Return, which takes the highlighted answer of a dialog.
+    /// "Yes, I trust this folder" in Claude's trust dialog. It is the second
+    /// option, below the highlighted "No, exit", so a bare Return would quit.
     @discardableResult
-    func confirm() -> Bool { terminal.sendKey(.enter) }
+    func trustFolder() -> Bool { terminal.sendKey(.arrowDown) && terminal.sendKey(.enter) }
 
     /// Esc, which stops Claude's current turn like pressing it in the terminal.
     @discardableResult

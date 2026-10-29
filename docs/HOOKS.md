@@ -228,7 +228,10 @@ the folder or any parent) says the folder is unknown, it adds a `PendingPermissi
 `TrustFolder`. The Mac card, the phone and paired Macs show it like a permission. The phone push
 goes out only at the 7 s check, so a slow start doesn't buzz the phone.
 
-- Trust sends Return to the tab, Don't Trust sends Esc, Ask in Terminal dismisses the card.
+- Trust sends Down then Return to the tab, Don't Trust sends Esc, Ask in Terminal dismisses the card.
+  The dialog (captured 2026-10-29) lists "No, exit" first and highlighted, then "Yes, I trust this
+  folder", with no numbers: a bare Return quits Claude. If a Claude Code update reorders it, this
+  is the line to change.
   Tether never writes the config or trusts a folder itself.
 - The first hook or status line report for the tab removes the card (Claude only runs either once
   it is past the question, so it was answered in the terminal).

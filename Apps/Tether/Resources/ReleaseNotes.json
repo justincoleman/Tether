@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.20.8",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.8 fixes Trust Folder, which quit Claude instead of trusting the folder.",
+    "highlights": [
+      {
+        "title": "Trust Folder trusts the folder.",
+        "body": "Claude's trust question now lists \"No, exit\" first, so the Trust button on the Mac and iPhone picked No and Claude quit. It now picks \"Yes, I trust this folder\"."
+      }
+    ]
+  },
+  {
     "version": "0.20.7",
     "date": "2026-10-29",
     "summary": "Tether 0.20.7 refines the iPhone's new look: better contrast, nicer questions, and every sheet in your colors.",
