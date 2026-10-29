@@ -50,6 +50,8 @@ final class MacConnection: Identifiable {
     /// Live Activity tokens waiting for the connection.
     @ObservationIgnored private var pendingActivityTokens: [PaneID: String?] = [:]
     @ObservationIgnored private var pendingStarts: [UUID: CheckedContinuation<StartOutcome, Never>] = [:]
+    /// Waiting `requestChanges` / `requestDiff` answers; nil on timeout or disconnect.
+    @ObservationIgnored private var pendingReplies: [UUID: CheckedContinuation<MacMessage?, Never>] = [:]
 
     enum StartOutcome {
         case started(PaneID)
@@ -141,6 +143,51 @@ final class MacConnection: Identifiable {
         }
     }
 
+    /// A photo for Claude, with optional text. The answer arrives in `sendResults`.
+    func sendImage(_ jpeg: Data, text: String, to paneId: PaneID) {
+        sendResults[paneId] = nil
+        channel?.send(PhoneMessage.sendImage(paneId: paneId, image: jpeg, text: text))
+    }
+
+    /// The tab's Changes list, as the Mac's panel shows it.
+    func changes(for paneId: PaneID) async -> Result<ChangesSnapshot, ReplyError> {
+        switch await request({ PhoneMessage.requestChanges(requestId: $0, paneId: paneId) }) {
+        case .changes(_, let snapshot?, _)?: return .success(snapshot)
+        case .changes(_, nil, let error)?: return .failure(ReplyError(message: error ?? "No changes."))
+        default: return .failure(ReplyError(message: "\(mac.name) didn't answer."))
+        }
+    }
+
+    func diff(of file: ChangedFile, in paneId: PaneID) async -> Result<FileDiff, ReplyError> {
+        switch await request({ PhoneMessage.requestDiff(requestId: $0, paneId: paneId, file: file) }) {
+        case .fileDiff(_, let diff?, _)?: return .success(diff)
+        case .fileDiff(_, nil, let error)?: return .failure(ReplyError(message: error ?? "No diff."))
+        default: return .failure(ReplyError(message: "\(mac.name) didn't answer."))
+        }
+    }
+
+    struct ReplyError: Error {
+        var message: String
+    }
+
+    private func request(_ make: (UUID) -> PhoneMessage) async -> MacMessage? {
+        guard status == .online, let channel else { return nil }
+        let requestId = UUID()
+        let message = make(requestId)
+        return await withCheckedContinuation { continuation in
+            pendingReplies[requestId] = continuation
+            channel.send(message)
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(20))
+                self?.finishReply(requestId, nil)
+            }
+        }
+    }
+
+    private func finishReply(_ requestId: UUID, _ message: MacMessage?) {
+        pendingReplies.removeValue(forKey: requestId)?.resume(returning: message)
+    }
+
     func reorderProjects(_ ids: [ProjectID]) {
         channel?.send(PhoneMessage.reorderProjects(ids: ids))
         // Show the new order now; the next snapshot confirms it.
@@ -225,6 +272,8 @@ final class MacConnection: Identifiable {
             sendResults[paneId] = outcome
         case .startResult(let requestId, let paneId, let error):
             finishStart(requestId, paneId.map(StartOutcome.started) ?? .failed(error ?? "The Mac couldn't start it."))
+        case .changes(let requestId, _, _), .fileDiff(let requestId, _, _):
+            finishReply(requestId, message)
         case .error(let message):
             print("Mac says: \(message)")
         }
@@ -261,6 +310,7 @@ final class MacConnection: Identifiable {
         channel = nil
         pinger?.cancel()
         for id in Array(pendingStarts.keys) { finishStart(id, .failed("Lost the connection to \(mac.name).")) }
+        for id in Array(pendingReplies.keys) { finishReply(id, nil) }
         switch status {
         case .rejected, .updateNeeded: return
         default: break

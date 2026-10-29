@@ -283,6 +283,29 @@ final class CompanionHub {
                 await auth.setActivityToken(token, pane: paneId.uuidString, for: device.id)
                 devices = await auth.devices
             }
+        case .requestChanges(let requestId, let paneId):
+            switch model.changesForPhone(paneId: paneId) {
+            case .success(let snapshot):
+                client.send(.changes(requestId: requestId, snapshot: snapshot, error: nil))
+            case .failure(let error):
+                client.send(.changes(requestId: requestId, snapshot: nil, error: error.message))
+            }
+        case .requestDiff(let requestId, let paneId, let file):
+            Task {
+                switch await model.diffForPhone(paneId: paneId, file: file) {
+                case .success(let diff):
+                    client.send(.fileDiff(requestId: requestId, diff: diff, error: nil))
+                case .failure(let error):
+                    client.send(.fileDiff(requestId: requestId, diff: nil, error: error.message))
+                }
+            }
+        case .sendImage(let paneId, let image, let text):
+            let outcome: String = switch model.sendImage(image, text: text, toPane: paneId) {
+            case .sent: "sent"
+            case .queued: "queued"
+            case .failed: "failed"
+            }
+            client.send(.sendResult(paneId: paneId, outcome: outcome))
         case .hello, .pair, .authenticate:
             break
         }

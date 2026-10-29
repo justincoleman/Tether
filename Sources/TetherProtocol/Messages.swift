@@ -145,6 +145,10 @@ public enum MacMessage: Codable, Sendable {
     case sendResult(paneId: PaneID, outcome: String)
     /// Answer to `startSession`: the new tab, or why it couldn't start.
     case startResult(requestId: UUID, paneId: PaneID?, error: String?)
+    /// Answer to `requestChanges`: the tab's worktree against its base branch.
+    case changes(requestId: UUID, snapshot: ChangesSnapshot?, error: String?)
+    /// Answer to `requestDiff`.
+    case fileDiff(requestId: UUID, diff: FileDiff?, error: String?)
     case error(message: String)
 }
 
@@ -177,6 +181,13 @@ public enum PhoneMessage: Codable, Sendable {
     case registerPush(PushRegistration)
     /// The update token of the Live Activity for a tab, or nil when it ended.
     case registerActivity(paneId: PaneID, token: String?)
+    /// The Changes list for a tab's worktree; answered with `changes`.
+    case requestChanges(requestId: UUID, paneId: PaneID)
+    /// One file's diff from that list; answered with `fileDiff`.
+    case requestDiff(requestId: UUID, paneId: PaneID, file: ChangedFile)
+    /// A photo plus optional text for Claude. The Mac saves the image and
+    /// sends the text with its path, like `sendMessage`; answered with `sendResult`.
+    case sendImage(paneId: PaneID, image: Data, text: String)
 }
 
 /// Shared encoder/decoder configuration so both sides agree on date format.

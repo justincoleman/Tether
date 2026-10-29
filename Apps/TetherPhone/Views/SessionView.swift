@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import TetherProtocol
 
@@ -12,6 +13,10 @@ struct SessionView: View {
     @State private var confirmClose = false
     @State private var askingModel = false
     @State private var customModel = ""
+    @State private var showingChanges = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var photo: PhotoReply?
+    @State private var loadingPhoto = false
     @Environment(\.dismiss) private var dismiss
     /// A tab started from the phone shows up in the next snapshot, a moment later.
     @State private var waitedForTab = false
@@ -101,6 +106,8 @@ struct SessionView: View {
             if session != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button("Changes", systemImage: "plusminus") { showingChanges = true }
+                            .disabled(connection.status != .online)
                         modelMenu
                         Button("Close Thread", systemImage: "xmark.circle", role: .destructive) { confirmClose = true }
                     } label: {
@@ -138,6 +145,10 @@ struct SessionView: View {
                  ? "Claude is working right now. Closing stops it."
                  : "The tab closes on the Mac. The conversation stays in Claude's history.")
         }
+        .sheet(isPresented: $showingChanges) {
+            ChangesSheet(connection: connection, paneId: paneId)
+        }
+        .onChange(of: photoItem) { loadPhoto() }
         .sheet(item: $answering) { request in
             PermissionSheet(connection: connection, request: request)
                 .presentationDetents([.medium, .large])
@@ -179,15 +190,49 @@ struct SessionView: View {
             if let note = composeNote {
                 Text(note).font(.caption).foregroundStyle(.secondary)
             }
+            if let photo {
+                ZStack(alignment: .topTrailing) {
+                    Image(uiImage: photo.thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    Button {
+                        self.photo = nil
+                        photoItem = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .black.opacity(0.6))
+                    }
+                    .offset(x: 6, y: -6)
+                    .accessibilityLabel("Remove photo")
+                }
+                .padding(.top, 6)
+            } else if loadingPhoto {
+                ProgressView().frame(width: 64, height: 64)
+            }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message Claude", text: $text, axis: .vertical)
+                PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                    Image(systemName: "photo.badge.plus").font(.title2)
+                }
+                .disabled(connection.status != .online || session?.state == .detached)
+                .padding(.bottom, 6)
+                .accessibilityLabel("Attach a photo")
+                TextField(photo == nil ? "Message Claude" : "Add a note (optional)", text: $text, axis: .vertical)
                     .lineLimit(1...6)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 18))
                 Button {
-                    connection.send(text, to: paneId)
+                    if let photo {
+                        connection.sendImage(photo.jpeg, text: text, to: paneId)
+                    } else {
+                        connection.send(text, to: paneId)
+                    }
                     text = ""
+                    photo = nil
+                    photoItem = nil
                 } label: {
                     Image(systemName: "arrow.up.circle.fill").font(.title)
                 }
@@ -199,7 +244,22 @@ struct SessionView: View {
 
     private var canSend: Bool {
         connection.status == .online && session?.state != .detached
-            && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (photo != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    private func loadPhoto() {
+        guard let item = photoItem else { return }
+        loadingPhoto = true
+        photo = nil
+        Task {
+            let data = try? await item.loadTransferable(type: Data.self)
+            let reply = await Task.detached { data.flatMap(PhotoReply.init(data:)) }.value
+            // Another pick replaced this one while it loaded.
+            guard photoItem == item else { return }
+            loadingPhoto = false
+            photo = reply
+            if reply == nil { photoItem = nil }
+        }
     }
 
     private var composeNote: String? {
@@ -214,6 +274,31 @@ struct SessionView: View {
             return "Claude is waiting on a prompt only the Mac can answer."
         }
         return nil
+    }
+}
+
+/// A picked photo, shrunk for the trip to the Mac: Claude reads images up
+/// to about 2000 px on the long side, so anything bigger only costs time.
+private struct PhotoReply: Sendable {
+    let jpeg: Data
+    let thumbnail: UIImage
+
+    static let maxSide: CGFloat = 2048
+
+    init?(data: Data) {
+        guard let image = UIImage(data: data) else { return nil }
+        let size = image.size
+        let scale = min(1, Self.maxSide / max(size.width, size.height, 1))
+        let target = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        // Drawing also applies the EXIF orientation, so the Mac gets it upright.
+        let resized = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        guard let jpeg = resized.jpegData(compressionQuality: 0.8) else { return nil }
+        self.jpeg = jpeg
+        self.thumbnail = resized.preparingThumbnail(of: CGSize(width: 128, height: 128 * target.height / max(target.width, 1))) ?? resized
     }
 }
 

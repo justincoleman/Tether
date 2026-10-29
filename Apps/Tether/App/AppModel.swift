@@ -1154,6 +1154,58 @@ extension AppModel {
     }
 }
 
+// MARK: - Phone: changes, diffs, images
+
+/// Why the phone's request couldn't be answered, shown as is.
+struct PhoneRequestError: Error {
+    var message: String
+}
+
+extension AppModel {
+    /// The folder a tab's Changes panel shows.
+    private func changesPath(forPane paneId: PaneID) -> String? {
+        if let path = worktreePath(forPane: paneId) { return path }
+        guard let pane = claudeTabs.first(where: { $0.pane.id == paneId }) else { return nil }
+        return pane.project.path
+    }
+
+    func changesForPhone(paneId: PaneID) -> Result<ChangesSnapshot, PhoneRequestError> {
+        guard let path = changesPath(forPane: paneId) else {
+            return .failure(PhoneRequestError(message: "That tab is no longer open."))
+        }
+        if let snapshot = changes.snapshots[path] { return .success(snapshot) }
+        let message = changes.errors[path] ?? "The Mac hasn't read this folder's changes yet. Try again in a moment."
+        return .failure(PhoneRequestError(message: message))
+    }
+
+    func diffForPhone(paneId: PaneID, file: ChangedFile) async -> Result<FileDiff, PhoneRequestError> {
+        guard let path = changesPath(forPane: paneId) else {
+            return .failure(PhoneRequestError(message: "That tab is no longer open."))
+        }
+        // Only files the Mac itself lists, so the phone can't ask for arbitrary paths.
+        guard changes.snapshots[path]?.files.contains(where: { $0.path == file.path }) == true else {
+            return .failure(PhoneRequestError(message: "\(file.path) is no longer in the changes."))
+        }
+        do {
+            return .success(try await changes.loadDiff(path: path, file: file))
+        } catch {
+            return .failure(PhoneRequestError(message: ChangesStore.describe(error)))
+        }
+    }
+
+    /// Saves a photo from the phone and sends Claude its path with the text.
+    func sendImage(_ data: Data, text: String, toPane paneId: PaneID) -> SendOutcome {
+        guard claudeTabs.contains(where: { $0.pane.id == paneId }) else { return .failed }
+        do {
+            let path = try ImageUpload.save(data, in: ImageUpload.defaultDirectory())
+            return sendOrQueue(ImageUpload.prompt(text: text, imagePath: path), toPane: paneId)
+        } catch {
+            print("Image from phone refused: \(error)")
+            return .failed
+        }
+    }
+}
+
 // MARK: - Push
 
 extension AppModel {
