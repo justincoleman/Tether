@@ -62,6 +62,7 @@ Mac → phone (`MacMessage`):
 | `projectIcons([ProjectIcon])` | Every project icon (128 px PNG found by `ProjectIconFinder`), sent after auth and whenever one changes or the Mac's "show project icons" setting flips. Absent project = letter tile. Not part of `snapshot`, which is resent on every change. |
 | `sendResult(paneId, outcome)` | `sent`, `queued` or `failed` for a `sendMessage`. |
 | `startResult(requestId, paneId?, error?)` | Answer to `startSession`: the new tab's pane id, or a message to show. |
+| `history(requestId, sessions?, error?)` | Answer to `requestHistory`: the project's past Claude sessions (`PastSessionInfo`), newest first. |
 | `changes(requestId, snapshot?, error?)` | Answer to `requestChanges`: the tab's `ChangesSnapshot`, the same file list and commits as the Mac's Changes panel, against the same base branch. |
 | `fileDiff(requestId, diff?, error?)` | Answer to `requestDiff`: that file's `FileDiff`, truncated like the Mac's viewer. |
 | `error(message)` | Anything else worth showing in logs. |
@@ -79,6 +80,8 @@ Phone → Mac (`PhoneMessage`):
 | `renameProject(id, name)` | Display name only (`ProjectStore.renameProject`); the folder isn't touched. Blank names are ignored. |
 | `closeSession(paneId)` | `AppModel.closePane`: closes the tab like its x button, ending a running turn. A branch worktree stays on disk; remove it from the Mac sidebar. |
 | `setModel(paneId, model)` | `AppModel.setModel`: types `/model <model>` via `sendOrQueue` (alias or model id; anything else answers `failed`). Answered with `sendResult`. The new model shows once the status line redraws. |
+| `requestHistory(requestId, projectId)` | The project's past sessions, as the Mac's History popover lists them. Answered with `history`. |
+| `resumeSession(requestId, projectId, sessionId)` | Opens a past session in a Claude tab, or finds the tab already running it. Answered with `startResult`. |
 | `requestChanges(requestId, paneId)` | The Changes snapshot for the tab's worktree (or project folder). Answered with `changes`; the phone gives up after 20 s. |
 | `requestDiff(requestId, paneId, file)` | One file's diff. The Mac serves only a path that its current snapshot for that tab lists, so the phone can't read arbitrary files. Answered with `fileDiff`. |
 | `sendImage(paneId, image, text)` | A JPEG or PNG (base64 in JSON, at most 12 MB; the phone sends JPEG, at most 2048 px on the long side). The Mac checks the magic bytes, saves it as `~/Library/Application Support/Tether/Uploads/iphone-<time>-<id>.<ext>` (`ImageUpload`), and sends `text` plus `Image from my iPhone: <path>` through `sendOrQueue`, so Claude reads the file. Answered with `sendResult`. Only Claude tabs. |

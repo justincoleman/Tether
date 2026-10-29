@@ -34,8 +34,13 @@ struct RootView: View {
                 .padding(.trailing, inspectorShown ? 0 : 8)
             if inspectorShown {
                 ColumnResizer(width: $inspectorWidth, range: 300...720, sign: -1)
-                InspectorView()
-                    .frame(width: inspectorWidth)
+                if let connection = model.remote.selectedConnection, let paneId = model.remote.selectedPaneId {
+                    RemoteInspectorView(connection: connection, paneId: paneId)
+                        .frame(width: inspectorWidth)
+                } else {
+                    InspectorView()
+                        .frame(width: inspectorWidth)
+                }
             }
         }
         .background(theme.window)
@@ -66,7 +71,10 @@ struct RootView: View {
     /// Changes and Files follow the selected tab, so the Overview hides them
     /// without turning the setting off.
     private var inspectorShown: Bool {
-        model.showInspector && !model.showOverview && model.remote.selectedMacId == nil
+        guard model.showInspector else { return false }
+        // A paired Mac's panel needs one of its tabs open.
+        if model.remote.selectedMacId != nil { return model.remote.selectedPaneId != nil }
+        return !model.showOverview
     }
 
     @ViewBuilder

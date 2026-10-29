@@ -205,8 +205,12 @@ struct RemoteSessionView: View {
                 compose
             }
         }
-        .task(id: sessionId) { connection.subscribe(sessionId) }
-        .onDisappear { connection.subscribe(nil) }
+        // Also on each state change, so a subscription that went missing
+        // heals itself: the Mac answers with the whole transcript again.
+        .task(id: "\(sessionId ?? "")-\(String(describing: session?.state))") {
+            connection.subscribe(sessionId)
+        }
+        .onDisappear { if let sessionId { connection.unsubscribe(sessionId) } }
     }
 
     private var header: some View {

@@ -109,6 +109,27 @@ import TetherProtocol
         #expect(askedFile == file)
     }
 
+    @Test func historyRoundTrips() throws {
+        let request = UUID()
+        let info = PastSessionInfo(id: "abc", title: nil, firstPrompt: "fix the login bug", branch: "main",
+                                   lastActivity: Date(timeIntervalSince1970: 1_700_000_000))
+        let data = try WireCodec.encoder().encode(MacMessage.history(requestId: request, sessions: [info], error: nil))
+        guard case .history(request, let sessions?, nil) = try WireCodec.decoder().decode(MacMessage.self, from: data) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(sessions == [info])
+        #expect(info.displayTitle == "fix the login bug")
+        #expect(info.matches("login fix"))
+        #expect(!info.matches("logout"))
+
+        let ask = PhoneMessage.resumeSession(requestId: request, projectId: UUID(), sessionId: "abc")
+        guard case .resumeSession(_, _, let id) = try WireCodec.decoder().decode(
+            PhoneMessage.self, from: try WireCodec.encoder().encode(ask)) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(id == "abc")
+    }
+
     @Test func imagesTravelAsBase64() throws {
         let image = Data([0xFF, 0xD8, 0xFF, 0x00, 0x01])
         let data = try WireCodec.encoder().encode(PhoneMessage.sendImage(paneId: UUID(), image: image, text: "this"))

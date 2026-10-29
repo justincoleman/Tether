@@ -509,6 +509,28 @@ final class AppModel {
         await open(d)
     }
 
+    /// Like `openPastSession`, for a paired Mac or phone: returns the tab
+    /// running the session, opening one when none is.
+    func resumePastSession(_ sessionId: SessionID, projectId: ProjectID, select: Bool) async throws -> PaneID {
+        if let paneId = pane(forSession: sessionId) { return paneId }
+        let past = await pastSessions(for: projectId).first { $0.id == sessionId }
+        let candidates = worktrees.filter { $0.projectId == projectId }
+        guard let worktree = candidates.first(where: { $0.path == past?.cwd })
+                ?? candidates.first(where: \.isPrimary) else {
+            throw StartError(description: "That project has no folder on record.")
+        }
+        let d = PaneDescriptor(projectId: projectId,
+                               kind: .claude(worktreeId: worktree.id, resumeSessionId: sessionId),
+                               title: worktree.isPrimary ? "Claude" : worktree.branch)
+        try? await store.addPane(d)
+        await mount(d)
+        if select {
+            selectedProjectId = projectId
+            selectedPaneId = d.id
+        }
+        return d.id
+    }
+
     func openSSHPane(project: Project, host: RemoteHost) async {
         let d = PaneDescriptor(projectId: project.id, kind: .ssh(hostId: host.id), title: host.name)
         await open(d)

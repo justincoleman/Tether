@@ -39,7 +39,10 @@ struct HistoryPopover: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(shown) { session in
-                            HistoryRow(session: session, isOpen: model.pane(forSession: session.id) != nil) {
+                            HistoryRow(title: session.title, firstPrompt: session.firstPrompt,
+                                       displayTitle: session.displayTitle, branch: session.branch,
+                                       lastActivity: session.lastActivity,
+                                       isOpen: model.pane(forSession: session.id) != nil) {
                                 resume(session)
                             }
                         }
@@ -62,9 +65,13 @@ struct HistoryPopover: View {
     }
 }
 
-private struct HistoryRow: View {
+struct HistoryRow: View {
     @Environment(\.theme) private var theme
-    let session: PastSession
+    let title: String?
+    let firstPrompt: String?
+    let displayTitle: String
+    let branch: String?
+    let lastActivity: Date
     let isOpen: Bool
     let action: () -> Void
     @State private var hovering = false
@@ -73,20 +80,20 @@ private struct HistoryRow: View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(session.displayTitle)
+                    Text(displayTitle)
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     // The prompt under a generated title says what was asked.
-                    if session.title != nil, let prompt = session.firstPrompt {
+                    if title != nil, let prompt = firstPrompt {
                         Text(prompt)
                             .font(.callout)
                             .foregroundStyle(theme.secondaryText)
                             .lineLimit(1)
                     }
                     HStack(spacing: 10) {
-                        Text(RelativeTime.string(session.lastActivity))
-                        if let branch = session.branch {
+                        Text(RelativeTime.string(lastActivity))
+                        if let branch = branch {
                             Label(branch, systemImage: "arrow.triangle.branch")
                                 .lineLimit(1)
                         }
@@ -113,6 +120,6 @@ private struct HistoryRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(session.firstPrompt ?? session.displayTitle)
+        .help(firstPrompt ?? displayTitle)
     }
 }

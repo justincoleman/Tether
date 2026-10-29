@@ -105,6 +105,35 @@ public struct ProjectIcon: Codable, Hashable, Sendable {
     }
 }
 
+/// A past Claude session on the Mac, for the History list.
+public struct PastSessionInfo: Codable, Hashable, Sendable, Identifiable {
+    public var id: SessionID
+    /// `/rename` title, else Claude Code's generated title.
+    public var title: String?
+    /// The first thing typed in the session.
+    public var firstPrompt: String?
+    public var branch: String?
+    public var lastActivity: Date
+
+    public init(id: SessionID, title: String?, firstPrompt: String?, branch: String?, lastActivity: Date) {
+        self.id = id
+        self.title = title
+        self.firstPrompt = firstPrompt
+        self.branch = branch
+        self.lastActivity = lastActivity
+    }
+
+    public var displayTitle: String { title ?? firstPrompt ?? id }
+
+    /// Every word of `query` appears in the title or the first prompt.
+    public func matches(_ query: String) -> Bool {
+        let words = query.lowercased().split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty else { return true }
+        let haystack = [title, firstPrompt].compactMap { $0 }.joined(separator: "\n").lowercased()
+        return words.allSatisfy { haystack.contains($0) }
+    }
+}
+
 /// The Mac's whole state for the phone. Small, so it is resent in full on
 /// every change instead of diffed.
 public struct Snapshot: Codable, Hashable, Sendable {
@@ -149,6 +178,8 @@ public enum MacMessage: Codable, Sendable {
     case changes(requestId: UUID, snapshot: ChangesSnapshot?, error: String?)
     /// Answer to `requestDiff`.
     case fileDiff(requestId: UUID, diff: FileDiff?, error: String?)
+    /// Answer to `requestHistory`: past sessions in the project, newest first.
+    case history(requestId: UUID, sessions: [PastSessionInfo]?, error: String?)
     case error(message: String)
 }
 
@@ -185,6 +216,11 @@ public enum PhoneMessage: Codable, Sendable {
     case requestChanges(requestId: UUID, paneId: PaneID)
     /// One file's diff from that list; answered with `fileDiff`.
     case requestDiff(requestId: UUID, paneId: PaneID, file: ChangedFile)
+    /// The project's past Claude sessions; answered with `history`.
+    case requestHistory(requestId: UUID, projectId: ProjectID)
+    /// Opens a past session in a Claude tab (or finds the tab already running
+    /// it); answered with `startResult`.
+    case resumeSession(requestId: UUID, projectId: ProjectID, sessionId: SessionID)
     /// A photo plus optional text for Claude. The Mac saves the image and
     /// sends the text with its path, like `sendMessage`; answered with `sendResult`.
     case sendImage(paneId: PaneID, image: Data, text: String)
