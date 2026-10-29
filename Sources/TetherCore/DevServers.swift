@@ -156,13 +156,15 @@ public enum PreviewTarget {
         chosen ?? servers.first?.url
     }
 
-    /// Turns what someone typed into an address: `5173`, `localhost:3000`,
-    /// `example.com/path` or a full URL.
+    /// Turns what someone typed into an address: `5173`, `5173/admin`,
+    /// `localhost:3000`, `example.com/path` or a full URL.
     public static func parse(_ text: String) -> URL? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains(" ") else { return nil }
-        if let port = Int(trimmed), (1...65535).contains(port) {
-            return URL(string: "http://localhost:\(port)/")
+        let head = trimmed.prefix { $0 != "/" }
+        if let port = Int(head), (1...65535).contains(port) {
+            let path = trimmed.dropFirst(head.count)
+            return URL(string: "http://localhost:\(port)" + (path.isEmpty ? "/" : path))
         }
         let withScheme = trimmed.contains("://") ? trimmed : "http://\(trimmed)"
         guard let url = URL(string: withScheme), let scheme = url.scheme?.lowercased(),

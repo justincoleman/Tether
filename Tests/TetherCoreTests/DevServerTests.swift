@@ -116,6 +116,7 @@ import Testing
 
     @Test func parsesTypedAddresses() {
         #expect(PreviewTarget.parse("5173")?.absoluteString == "http://localhost:5173/")
+        #expect(PreviewTarget.parse("8000/README.md")?.absoluteString == "http://localhost:8000/README.md")
         #expect(PreviewTarget.parse(" localhost:3000/admin ")?.absoluteString == "http://localhost:3000/admin")
         #expect(PreviewTarget.parse("https://example.com")?.absoluteString == "https://example.com")
         #expect(PreviewTarget.parse("") == nil)
