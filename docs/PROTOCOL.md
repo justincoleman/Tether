@@ -62,6 +62,9 @@ Mac → phone (`MacMessage`):
 | `projectIcons([ProjectIcon])` | Every project icon (128 px PNG found by `ProjectIconFinder`), sent after auth and whenever one changes or the Mac's "show project icons" setting flips. Absent project = letter tile. Not part of `snapshot`, which is resent on every change. |
 | `sendResult(paneId, outcome)` | `sent`, `queued` or `failed` for a `sendMessage`. |
 | `startResult(requestId, paneId?, error?)` | Answer to `startSession`: the new tab's pane id, or a message to show. |
+| `fileList(requestId, paths?, error?)` | Answer to `requestFileList`: the worktree's relative paths, as the Files panel lists them (`git ls-files` plus untracked, ignored files left out). |
+| `fileContent(requestId, file?, error?)` | Answer to `requestFile`: a `RemoteFile`, text (start of the file), image bytes, binary or unreadable. Only paths from the Mac's own file list are served. |
+| `devServers(requestId, servers?, error?)` | Answer to `requestDevServers`: listening dev servers found in the tab's folder (`DevServerInfo`: port, command). The paired Mac loads `http://<host>:<port>/`, which works only when the server listens beyond localhost. |
 | `history(requestId, sessions?, error?)` | Answer to `requestHistory`: the project's past Claude sessions (`PastSessionInfo`), newest first. |
 | `changes(requestId, snapshot?, error?)` | Answer to `requestChanges`: the tab's `ChangesSnapshot`, the same file list and commits as the Mac's Changes panel, against the same base branch. |
 | `fileDiff(requestId, diff?, error?)` | Answer to `requestDiff`: that file's `FileDiff`, truncated like the Mac's viewer. |
@@ -80,6 +83,9 @@ Phone → Mac (`PhoneMessage`):
 | `renameProject(id, name)` | Display name only (`ProjectStore.renameProject`); the folder isn't touched. Blank names are ignored. |
 | `closeSession(paneId)` | `AppModel.closePane`: closes the tab like its x button, ending a running turn. A branch worktree stays on disk; remove it from the Mac sidebar. |
 | `setModel(paneId, model)` | `AppModel.setModel`: types `/model <model>` via `sendOrQueue` (alias or model id; anything else answers `failed`). Answered with `sendResult`. The new model shows once the status line redraws. |
+| `requestFileList(requestId, paneId)` | The tab's worktree files. Answered with `fileList`. |
+| `requestFile(requestId, paneId, path)` | One file from that list. Answered with `fileContent`. |
+| `requestDevServers(requestId, paneId)` | Dev servers running in the tab's folder. Answered with `devServers`. |
 | `requestHistory(requestId, projectId)` | The project's past sessions, as the Mac's History popover lists them. Answered with `history`. |
 | `resumeSession(requestId, projectId, sessionId)` | Opens a past session in a Claude tab, or finds the tab already running it. Answered with `startResult`. |
 | `requestChanges(requestId, paneId)` | The Changes snapshot for the tab's worktree (or project folder). Answered with `changes`; the phone gives up after 20 s. |

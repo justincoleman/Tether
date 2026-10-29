@@ -134,6 +134,48 @@ public struct PastSessionInfo: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+/// One file from a tab's worktree, read on the Mac for a paired Mac's Files panel.
+public struct RemoteFile: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable {
+        case text, image, binary, unreadable
+    }
+
+    /// Relative to the worktree root.
+    public var path: String
+    public var kind: Kind
+    /// `text`: the start of the file, as the Mac's viewer shows it.
+    public var text: String?
+    /// `image`: the file's bytes.
+    public var image: Data?
+    /// Only the start of the file is included.
+    public var truncated: Bool
+    /// `unreadable`: why.
+    public var note: String?
+
+    public init(path: String, kind: Kind, text: String? = nil, image: Data? = nil,
+                truncated: Bool = false, note: String? = nil) {
+        self.path = path
+        self.kind = kind
+        self.text = text
+        self.image = image
+        self.truncated = truncated
+        self.note = note
+    }
+}
+
+/// A dev server the Mac found running in a tab's folder, for the Preview panel.
+public struct DevServerInfo: Codable, Hashable, Sendable, Identifiable {
+    public var port: Int
+    public var command: String
+
+    public var id: Int { port }
+
+    public init(port: Int, command: String) {
+        self.port = port
+        self.command = command
+    }
+}
+
 /// The Mac's whole state for the phone. Small, so it is resent in full on
 /// every change instead of diffed.
 public struct Snapshot: Codable, Hashable, Sendable {
@@ -178,6 +220,12 @@ public enum MacMessage: Codable, Sendable {
     case changes(requestId: UUID, snapshot: ChangesSnapshot?, error: String?)
     /// Answer to `requestDiff`.
     case fileDiff(requestId: UUID, diff: FileDiff?, error: String?)
+    /// Answer to `requestFileList`: relative paths, as the Mac's Files panel lists them.
+    case fileList(requestId: UUID, paths: [String]?, error: String?)
+    /// Answer to `requestFile`.
+    case fileContent(requestId: UUID, file: RemoteFile?, error: String?)
+    /// Answer to `requestDevServers`.
+    case devServers(requestId: UUID, servers: [DevServerInfo]?, error: String?)
     /// Answer to `requestHistory`: past sessions in the project, newest first.
     case history(requestId: UUID, sessions: [PastSessionInfo]?, error: String?)
     case error(message: String)
@@ -216,6 +264,12 @@ public enum PhoneMessage: Codable, Sendable {
     case requestChanges(requestId: UUID, paneId: PaneID)
     /// One file's diff from that list; answered with `fileDiff`.
     case requestDiff(requestId: UUID, paneId: PaneID, file: ChangedFile)
+    /// The files in a tab's worktree; answered with `fileList`.
+    case requestFileList(requestId: UUID, paneId: PaneID)
+    /// One file from that list; answered with `fileContent`.
+    case requestFile(requestId: UUID, paneId: PaneID, path: String)
+    /// Dev servers running in a tab's folder; answered with `devServers`.
+    case requestDevServers(requestId: UUID, paneId: PaneID)
     /// The project's past Claude sessions; answered with `history`.
     case requestHistory(requestId: UUID, projectId: ProjectID)
     /// Opens a past session in a Claude tab (or finds the tab already running

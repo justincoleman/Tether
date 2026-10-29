@@ -21,6 +21,8 @@ final class RemoteStore {
     var selectedPaneId: PaneID?
     /// The project whose tabs the header shows; follows the selected tab.
     var selectedProjectId: ProjectID?
+    /// Notices in the sidebar's bottom card that were closed, until relaunch.
+    var dismissedNotices: Set<String> = []
     /// Views that need the connections up; they drop when the last one leaves.
     @ObservationIgnored private var holds = 0
 

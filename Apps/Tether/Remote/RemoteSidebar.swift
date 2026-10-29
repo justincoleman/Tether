@@ -95,13 +95,12 @@ struct RemoteProjectList: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 6)
-            if let message = statusMessage(projectCount: projects.count) {
-                Text(message)
+            if connection.status == .online, projects.isEmpty {
+                Text("No projects open on \(connection.mac.name).")
                     .font(.callout)
                     .foregroundStyle(theme.secondaryText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 4)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             List {
                 ForEach(projects) { project in
@@ -122,19 +121,74 @@ struct RemoteProjectList: View {
             NewRemoteTabSheet(connection: connection, projectId: newTabProjectId)
         }
     }
+}
 
-    private func statusMessage(projectCount: Int) -> String? {
+/// Something wrong with the selected Mac, as a quiet card at the bottom of
+/// the sidebar. The chip's dot already says it's not connected; this says
+/// why and can be closed.
+struct MacNoticeCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    let connection: MacConnection
+
+    private struct Notice {
+        var key: String
+        var icon: String
+        var title: String
+        var detail: String
+    }
+
+    private var notice: Notice? {
+        let name = connection.mac.name
+        let id = connection.id.uuidString
         switch connection.status {
-        case .online:
-            return projectCount == 0 ? "No projects open on \(connection.mac.name)." : nil
-        case .connecting:
-            return "Connecting to \(connection.mac.name)…"
+        case .online, .connecting:
+            return nil
+        case .updateNeeded(let version):
+            return Notice(key: "\(id)-update-\(version)", icon: "arrow.down.circle",
+                          title: "\(name) needs an update",
+                          detail: "Update Tether on both Macs so they match.")
         case .offline(let reason):
-            return "Can't reach \(connection.mac.name): \(reason). Is Tether open there and Tailscale on?"
-        case .updateNeeded:
-            return "Update Tether on both Macs to the same version."
+            return Notice(key: "\(id)-offline", icon: "wifi.slash",
+                          title: "Can't reach \(name)",
+                          detail: "\(reason). Is Tether open there and Tailscale on?")
         case .rejected(let reason):
-            return "\(reason) Pair again in Settings → Macs."
+            return Notice(key: "\(id)-rejected", icon: "exclamationmark.triangle",
+                          title: "\(name) turned us away",
+                          detail: "\(reason) Pair again in Settings → Macs.")
+        }
+    }
+
+    var body: some View {
+        if let notice, !model.remote.dismissedNotices.contains(notice.key) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: notice.icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(theme.claude)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(notice.title).font(.callout.weight(.semibold))
+                    Text(notice.detail)
+                        .font(.caption)
+                        .foregroundStyle(theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    model.remote.dismissedNotices.insert(notice.key)
+                } label: {
+                    Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.secondaryText)
+                .help("Hide")
+            }
+            .padding(10)
+            .background(theme.elevated, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.border))
+            .padding(.horizontal, 10)
+            .padding(.bottom, 10)
+            .transition(.opacity)
         }
     }
 }
@@ -280,8 +334,6 @@ struct RemoteDetailView: View {
                 }
             }
             Spacer(minLength: 8)
-            ViewModeToggle(showChat: .constant(true), chatAvailable: true, terminalAvailable: false)
-                .padding(.trailing, 4)
             ToolbarPill(title: "Claude", systemImage: "sparkles", iconColor: theme.claude,
                         help: "New Claude tab on \(connection.mac.name)") { startClaude() }
                 .disabled(!canStart)
