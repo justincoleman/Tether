@@ -7,6 +7,10 @@
       {
         "title": "A quieter notice for another Mac.",
         "body": "When a paired Mac needs an update or can't be reached, a small card at the bottom of the sidebar says why, instead of text above its projects. Close it with the x."
+      },
+      {
+        "title": "No terminal button on another Mac.",
+        "body": "A paired Mac's tabs are chat only, so the greyed-out terminal toggle is gone."
       }
     ]
   },

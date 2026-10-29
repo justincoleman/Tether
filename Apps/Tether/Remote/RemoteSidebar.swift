@@ -334,8 +334,6 @@ struct RemoteDetailView: View {
                 }
             }
             Spacer(minLength: 8)
-            ViewModeToggle(showChat: .constant(true), chatAvailable: true, terminalAvailable: false)
-                .padding(.trailing, 4)
             ToolbarPill(title: "Claude", systemImage: "sparkles", iconColor: theme.claude,
                         help: "New Claude tab on \(connection.mac.name)") { startClaude() }
                 .disabled(!canStart)
