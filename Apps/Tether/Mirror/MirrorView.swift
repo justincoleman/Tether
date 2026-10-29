@@ -351,9 +351,9 @@ private struct ComposeBar: View {
     /// Takes images from a paste: a screenshot or copied picture, or image files copied in Finder.
     private func attach(_ providers: [NSItemProvider]) {
         for provider in providers {
-            if provider.canLoadObject(ofClass: NSImage.self) {
-                _ = provider.loadObject(ofClass: NSImage.self) { image, _ in
-                    guard let png = image.flatMap(Self.pngData) else { return }
+            if let type = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true }) {
+                _ = provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
+                    guard let data, let png = NSImage(data: data).flatMap(Self.pngData) else { return }
                     Task { @MainActor in add(png) }
                 }
             } else if provider.canLoadObject(ofClass: URL.self) {
