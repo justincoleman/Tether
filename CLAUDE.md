@@ -47,7 +47,9 @@ structural. Work proceeds in the numbered phases there.
 - The iPhone app's equivalent is `@Environment(\.phoneTheme)` (`PhoneTheme` in
   `Apps/TetherPhone/Model/MacColors.swift`), set by `.macColors(_:)` from the Mac's
   terminal colors. Shared phone pieces (status badge, mode chip, Needs-you card,
-  pill buttons) live in `Apps/TetherPhone/Views/PhoneChrome.swift`.
+  pill buttons) live in `Apps/TetherPhone/Views/PhoneChrome.swift`. A view that needs
+  the colors in its own body uses `PhoneTheme.resolved(_:)`. In a List, give a card its
+  look with `.listRowBackground`; a border drawn inside the row gets clipped.
 
 ## Releases and What's New
 - Bumping `MARKETING_VERSION` in `Apps/project.yml` requires a new entry at the

@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.20.5",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.5 refines the iPhone's new look: better contrast, nicer questions, and every sheet in your colors.",
+    "highlights": [
+      {
+        "title": "Questions you can tap.",
+        "body": "When Claude asks a question, the iPhone shows each option as a numbered card, matching the numbers in the terminal, with a field for an answer of your own."
+      },
+      {
+        "title": "Easier to read.",
+        "body": "Secondary text on the iPhone has more contrast, nothing is clipped at the edges anymore, and the standard iOS look no longer draws dark lines between tabs."
+      },
+      {
+        "title": "Every screen matches.",
+        "body": "New Task, Edit Projects, Changes and Pair a Mac now follow your Mac's colors like the rest of the iPhone app. This needs the new iPhone build."
+      }
+    ]
+  },
+  {
     "version": "0.20.4",
     "date": "2026-10-29",
     "summary": "Tether 0.20.4 gives the iPhone app a proper design, in your Mac's colors.",

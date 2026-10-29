@@ -10,6 +10,9 @@ struct PairView: View {
     @State private var pasted = ""
     @State private var invalid = false
 
+    private var macTheme: MacTheme? { store.connections.lazy.compactMap { $0.snapshot?.theme }.first }
+    private var theme: PhoneTheme { .resolved(macTheme) }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
@@ -22,6 +25,7 @@ struct PairView: View {
                 Spacer(minLength: 0)
             }
             .padding()
+            .macColors(macTheme)
             .navigationTitle("Pair a Mac")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -50,22 +54,24 @@ struct PairView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
             Text("Point the camera at the QR code in Tether → Settings → iPhone on your Mac.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
         } else {
             Text("Scan the QR code on your Mac with the Camera app, or paste its link below.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
         }
     }
 
     private var pasteField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 4) {
                 TextField("tether://pair?…", text: $pasted)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+                    .font(.callout.monospaced())
+                    .padding(.leading, 14)
+                    .padding(.vertical, 11)
                 Button("Pair") {
                     guard let url = URL(string: pasted.trimmingCharacters(in: .whitespacesAndNewlines)),
                           let link = PairingLink(url: url) else {
@@ -76,7 +82,12 @@ struct PairView: View {
                     store.pair(link)
                 }
                 .disabled(pasted.isEmpty)
+                .buttonStyle(PillButtonStyle(prominent: true))
+                .fixedSize()
+                .padding(4)
             }
+            .background(theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(theme.border.opacity(0.7)))
             if invalid {
                 Text("That isn't a Tether pairing link.").font(.caption).foregroundStyle(.red)
             }
