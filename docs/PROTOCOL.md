@@ -129,3 +129,10 @@ notification action or a token update arrives while the app is suspended,
 iOS launches it in the background; `PhoneStore.perform(on:)` connects to the
 Mac, sends, waits 1.5 s and disconnects. While the app is open it also updates
 and ends activities itself from each snapshot (`LiveActivities.reconcile`).
+
+
+## Protocol 17
+
+`MirrorEvent.toolDetail(toolUseId:file:removed:added:at:)` carries the file a tool touched and, for
+edits, the changed lines. `toolResult.summary` now holds the last six lines of the output rather than
+the first. Phones on an older build cannot decode `toolDetail`; rebuild both apps together.

@@ -411,10 +411,11 @@ private struct PhoneSteps: View {
                         }
                         Text(step.summary).font(.caption.monospaced()).lineLimit(3)
                         if let result = step.result, !result.isEmpty {
-                            Text(result)
+                            let isCommand = step.name == "Bash"
+                            Text(isCommand ? result : (step.resultFirstLine ?? result))
                                 .font(.caption2.monospaced())
-                                .foregroundStyle(step.isError ? Color.red : Color.secondary)
-                                .lineLimit(3)
+                                .foregroundStyle(step.isError && !step.isStopped ? Color.red : Color.secondary)
+                                .lineLimit(isCommand ? 6 : 2)
                         }
                     }
                 }

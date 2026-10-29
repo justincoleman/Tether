@@ -42,6 +42,9 @@ public enum TranscriptParser {
                     let s = PermissionSummary.describe(toolName: name, input: block["input"])
                     events.append(.toolUse(id: id, name: name,
                                            summary: s.detail.isEmpty ? s.title : s.detail, at: at))
+                    if let detail = toolDetail(id: id, name: name, input: block["input"], at: at) {
+                        events.append(detail)
+                    }
                 default:
                     continue // thinking, redacted_thinking, server tool blocks
                 }
@@ -86,7 +89,7 @@ public enum TranscriptParser {
                 case "tool_result":
                     guard let toolUseId = block["tool_use_id"]?.stringValue else { continue }
                     events.append(.toolResult(id: "\(uuid)#\(i)", toolUseId: toolUseId,
-                                              summary: resultSummary(block["content"]),
+                                              summary: resultTail(block["content"]),
                                               isError: block["is_error"] == .bool(true), at: at))
                 default:
                     continue
@@ -119,7 +122,9 @@ public enum TranscriptParser {
         return .userText(id: id, text: text, at: at)
     }
 
-    static func resultSummary(_ content: JSONValue?) -> String {
+    /// The last few non-empty lines of a tool result, so a command shows how it
+    /// ended. Views that want one line take the first of these.
+    static func resultTail(_ content: JSONValue?, lines: Int = 6) -> String {
         var text = ""
         switch content {
         case .string(let s)?: text = s
@@ -128,10 +133,71 @@ public enum TranscriptParser {
                 .joined(separator: "\n")
         default: break
         }
-        let firstLine = text.split(whereSeparator: \.isNewline)
+        let kept = text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-            .first { !$0.isEmpty } ?? ""
-        return String(firstLine.prefix(300))
+            .filter { !$0.isEmpty }
+            .suffix(lines)
+            .map { String($0.prefix(300)) }
+        return kept.joined(separator: "\n")
+    }
+
+    // MARK: Tool detail
+
+    /// The file and changed lines of Read, Edit, MultiEdit, Write and NotebookEdit.
+    static func toolDetail(id: String, name: String, input: JSONValue?, at: Date) -> MirrorEvent? {
+        func str(_ key: String) -> String? { input?[key]?.stringValue }
+        let file = str("file_path") ?? str("notebook_path")
+        var removed: [String] = []
+        var added: [String] = []
+        switch name {
+        case "Read":
+            break
+        case "Edit":
+            (removed, added) = changedLines(old: str("old_string"), new: str("new_string"))
+        case "MultiEdit":
+            if case .array(let edits)? = input?["edits"] {
+                for edit in edits {
+                    let (r, a) = changedLines(old: edit["old_string"]?.stringValue, new: edit["new_string"]?.stringValue)
+                    removed += r
+                    added += a
+                }
+                removed = capped(removed)
+                added = capped(added)
+            }
+        case "Write":
+            added = capped(lines(str("content")))
+        case "NotebookEdit":
+            added = capped(lines(str("new_source")))
+        default:
+            return nil
+        }
+        guard file != nil else { return nil }
+        return .toolDetail(toolUseId: id, file: file, removed: removed, added: added, at: at)
+    }
+
+    /// The lines that differ between an edit's old and new text: the common
+    /// leading and trailing lines are dropped.
+    static func changedLines(old: String?, new: String?) -> (removed: [String], added: [String]) {
+        var a = lines(old)
+        var b = lines(new)
+        var head = 0
+        while head < a.count, head < b.count, a[head] == b[head] { head += 1 }
+        a.removeFirst(head)
+        b.removeFirst(head)
+        var tail = 0
+        while tail < a.count, tail < b.count, a[a.count - 1 - tail] == b[b.count - 1 - tail] { tail += 1 }
+        a.removeLast(tail)
+        b.removeLast(tail)
+        return (capped(a), capped(b))
+    }
+
+    private static func lines(_ text: String?) -> [String] {
+        guard let text, !text.isEmpty else { return [] }
+        return text.split(separator: "\n", omittingEmptySubsequences: false).map { String($0.prefix(200)) }
+    }
+
+    private static func capped(_ lines: [String], limit: Int = 24) -> [String] {
+        lines.count > limit ? Array(lines.prefix(limit)) + ["… \(lines.count - limit) more lines"] : lines
     }
 
     // MARK: Helpers

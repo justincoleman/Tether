@@ -6,6 +6,8 @@ public enum MirrorEvent: Codable, Hashable, Sendable {
     case assistantText(id: String, text: String, at: Date)
     case toolUse(id: String, name: String, summary: String, at: Date)
     case toolResult(id: String, toolUseId: String, summary: String, isError: Bool, at: Date)
+    /// What a tool call touched: its file and, for edits, the lines taken out and put in.
+    case toolDetail(toolUseId: String, file: String?, removed: [String], added: [String], at: Date)
     case usage(ContextUsage, at: Date)
     /// A muted system line, e.g. "Interrupted".
     case notice(id: String, text: String, at: Date)

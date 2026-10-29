@@ -76,6 +76,11 @@ final class AppModel {
     private(set) var openDiffTarget: OpenDiff?
     /// A file from the Files panel open over the terminal, if any.
     private(set) var openFileTarget: OpenFile?
+    /// Whether new Claude tabs open as a chat rather than a terminal.
+    private(set) var chatByDefault: Bool = UserDefaults.standard.object(forKey: "chatByDefault") as? Bool
+        ?? UserDefaults.standard.bool(forKey: "showChat")
+    /// Tabs whose view differs from what the default would give them.
+    private var chatOverrides: [PaneID: Bool] = [:]
     /// Comments collected on diffs, waiting to be sent to Claude as one message.
     private(set) var reviewComments: [ProjectID: [ReviewComment]] = [:]
 
@@ -784,6 +789,18 @@ final class AppModel {
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
+    /// Shows a file Claude touched, given as an absolute path. Files outside
+    /// the tab's folder are not opened.
+    func openFile(absolutePath: String) {
+        if let relative = relativePath(ofAbsolute: absolutePath) { openFile(relative) }
+    }
+
+    func relativePath(ofAbsolute path: String) -> String? {
+        guard let root = selectedWorktreePath else { return nil }
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        return path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : nil
+    }
+
     func closeFile() {
         openFileTarget = nil
     }
@@ -832,7 +849,44 @@ final class AppModel {
         return panes(for: project).first(where: isClaude)?.id
     }
 
+    // MARK: Chat or terminal
+
+    /// Whether this tab shows its chat instead of its terminal.
+    func showsChat(_ paneId: PaneID) -> Bool {
+        guard panes[paneId]?.isClaude == true else { return false }
+        return chatOverrides[paneId] ?? chatByDefault
+    }
+
+    func setChat(_ chat: Bool, forPane paneId: PaneID) {
+        chatOverrides[paneId] = chat
+    }
+
+    /// Switches the selected Claude tab between its terminal and its chat.
+    func toggleChat() {
+        guard let id = selectedPaneId, panes[id]?.isClaude == true else { return }
+        setChat(!showsChat(id), forPane: id)
+    }
+
+    /// Changes what new Claude tabs open in. Tabs already open keep their view.
+    func setChatByDefault(_ chat: Bool) {
+        guard chat != chatByDefault else { return }
+        for (id, pane) in panes where pane.isClaude && chatOverrides[id] == nil {
+            chatOverrides[id] = chatByDefault
+        }
+        chatByDefault = chat
+        UserDefaults.standard.set(chat, forKey: "chatByDefault")
+    }
+
+    /// Esc, as if pressed in the terminal: stops Claude's current turn.
+    func interrupt(pane paneId: PaneID) {
+        panes[paneId]?.interrupt()
+    }
+
     // MARK: Permissions
+
+    func pendingPermission(forPane paneId: PaneID) -> PendingPermission? {
+        pendingPermissions.first { $0.paneId == paneId }
+    }
 
     func resolvePermission(_ id: UUID, _ decision: PermissionDecision) {
         pendingPermissions.removeAll { $0.id == id }

@@ -43,6 +43,10 @@ final class TerminalPane: Identifiable {
         return terminal.sendKey(.enter)
     }
 
+    /// Esc, which stops Claude's current turn like pressing it in the terminal.
+    @discardableResult
+    func interrupt() -> Bool { terminal.sendKey(.escape) }
+
     var isClaude: Bool {
         if case .claude = descriptor.kind { return true }
         return false

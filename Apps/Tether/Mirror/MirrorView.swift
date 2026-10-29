@@ -37,9 +37,6 @@ struct MirrorView: View {
                             ForEach(transcript.items) { item in
                                 TranscriptItemView(item: item).id(item.id)
                             }
-                            if state == .working {
-                                ProgressView().controlSize(.small).id("working")
-                            }
                         }
                         .padding(16)
                         // A readable column in a wide window.
@@ -60,9 +57,18 @@ struct MirrorView: View {
             }
 
             if let paneId, sessionId != nil {
-                ComposeBar(paneId: paneId, state: state)
-                    .frame(maxWidth: Self.columnWidth)
-                    .frame(maxWidth: .infinity)
+                VStack(spacing: 0) {
+                    ChatFooter(paneId: paneId, state: state, transcript: transcript)
+                    // Cards sit right above the message box, where the eye already is.
+                    if let request = model.pendingPermission(forPane: paneId) {
+                        PermissionPromptView(request: request)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    ComposeBar(paneId: paneId, state: state)
+                }
+                .animation(.snappy, value: model.pendingPermissions.map(\.id))
+                .frame(maxWidth: Self.columnWidth)
+                .frame(maxWidth: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -84,15 +90,31 @@ private struct ComposeBar: View {
     }
 
     private var queued: Int { model.queuedCounts[paneId] ?? 0 }
+    private var permission: PendingPermission? { model.pendingPermission(forPane: paneId) }
+    /// Return and Escape answer the permission only while nothing is typed.
+    private var answersPermission: Bool {
+        permission != nil && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message Claude", text: $text, axis: .vertical)
+                TextField(answersPermission ? "Return allows, Esc denies" : "Message Claude", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
                     .focused($focused)
-                    .onSubmit(send)
+                    .onSubmit {
+                        if answersPermission, let permission {
+                            model.resolvePermission(permission.id, .allow)
+                        } else {
+                            send()
+                        }
+                    }
+                    .onExitCommand {
+                        if answersPermission, let permission {
+                            model.resolvePermission(permission.id, .deny(message: nil))
+                        }
+                    }
                 Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                     .buttonStyle(.plain)
                     .foregroundStyle(canSend ? theme.accent : theme.secondaryText)
@@ -182,26 +204,7 @@ private struct StepsView: View {
         DisclosureGroup(isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(steps) { step in
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: Self.icon(step.name))
-                            .frame(width: 16)
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(step.name).font(.caption.weight(.semibold))
-                            Text(step.summary)
-                                .font(.caption.monospaced())
-                                .lineLimit(2)
-                                .textSelection(.enabled)
-                            if let result = step.result, !result.isEmpty {
-                                Text(result)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(step.isError ? theme.red : theme.secondaryText)
-                                    .lineLimit(2)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                        if step.isRunning { ProgressView().controlSize(.mini) }
-                    }
+                    StepRow(step: step)
                 }
             }
             .padding(.top, 6)
@@ -209,7 +212,7 @@ private struct StepsView: View {
             HStack(spacing: 6) {
                 Image(systemName: "hammer").font(.caption)
                 Text(label).font(.callout)
-                if steps.contains(where: \.isError) {
+                if steps.contains(where: { $0.isError && !$0.isStopped }) {
                     Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(theme.red)
                 }
             }
@@ -229,6 +232,146 @@ private struct StepsView: View {
         case "Task", "Agent": "person.2"
         case "TodoWrite": "checklist"
         default: "wrench.and.screwdriver"
+        }
+    }
+}
+
+/// One tool call: a file opens on click, an edit shows the lines it changed,
+/// and a command shows how it ended and the last lines it printed.
+private struct StepRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    let step: ToolStep
+
+    private var isCommand: Bool { step.name == "Bash" }
+    /// A file tool's result ("File updated…", the file's text) is noise unless it went wrong.
+    private var quietResult: Bool { step.file != nil && !step.isError }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: StepsView.icon(step.name))
+                .frame(width: 16)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(step.name).font(.caption.weight(.semibold))
+                    if isCommand, step.result != nil { outcome }
+                }
+                summary
+                if !step.removed.isEmpty || !step.added.isEmpty { changedLines }
+                if let result = step.result, !result.isEmpty, !quietResult {
+                    Text(isCommand ? result : (step.resultFirstLine ?? result))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(step.isError && !step.isStopped ? theme.red : theme.secondaryText)
+                        .lineLimit(isCommand ? 6 : 2)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer(minLength: 0)
+            if step.isRunning { ProgressView().controlSize(.mini) }
+        }
+    }
+
+    @ViewBuilder private var summary: some View {
+        if let file = step.file, let relative = model.relativePath(ofAbsolute: file) {
+            Button { model.openFile(relative) } label: {
+                Text(relative)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(theme.accent)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .buttonStyle(.plain)
+            .help("Open \(relative)")
+        } else {
+            Text(step.summary)
+                .font(.caption.monospaced())
+                .lineLimit(2)
+                .textSelection(.enabled)
+        }
+    }
+
+    @ViewBuilder private var outcome: some View {
+        if step.isStopped {
+            Label("Stopped", systemImage: "stop.circle").font(.caption).foregroundStyle(theme.secondaryText)
+        } else if step.isError {
+            Label("Failed", systemImage: "xmark.circle.fill").font(.caption).foregroundStyle(theme.red)
+        } else {
+            Label("Worked", systemImage: "checkmark.circle").font(.caption).foregroundStyle(theme.green)
+        }
+    }
+
+    private var changedLines: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(step.removed.enumerated()), id: \.offset) { _, line in
+                Text("- " + line).foregroundStyle(theme.red)
+            }
+            ForEach(Array(step.added.enumerated()), id: \.offset) { _, line in
+                Text("+ " + line).foregroundStyle(theme.green)
+            }
+        }
+        .font(.caption.monospaced())
+        .lineLimit(1)
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.surface, in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+/// What Claude is doing right now, how long this turn has run, and Stop.
+private struct ChatFooter: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    let paneId: PaneID
+    let state: SessionState
+    let transcript: TranscriptModel?
+
+    var body: some View {
+        if state == .working || state == .needsInput {
+            HStack(spacing: 8) {
+                if state == .working {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "hand.raised.fill").font(.caption).foregroundStyle(theme.blue)
+                }
+                Text(activity)
+                    .font(.callout)
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let start = model.turnStartedAt[paneId] { RunningTime(start: start) }
+                Spacer(minLength: 0)
+                if state == .working {
+                    Button { model.interrupt(pane: paneId) } label: {
+                        Label("Stop", systemImage: "stop.fill").font(.caption.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Stop Claude (same as Esc in the terminal)")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private var activity: String {
+        if state == .needsInput {
+            switch model.paneAttention[paneId] {
+            case .permission?: return "Waiting for you to allow or deny"
+            case .question?: return "Waiting for your answer"
+            default: return "Waiting on you"
+            }
+        }
+        guard case .steps(_, let steps)? = transcript?.items.last,
+              let running = steps.last(where: \.isRunning) else { return "Thinking" }
+        let target = running.file.map { ($0 as NSString).lastPathComponent }
+        switch running.name {
+        case "Bash": return "Running " + String(running.summary.prefix(80))
+        case "Read": return "Reading " + (target ?? "a file")
+        case "Edit", "MultiEdit", "Write", "NotebookEdit": return "Editing " + (target ?? "a file")
+        case "Grep", "Glob": return "Searching " + String(running.summary.prefix(60))
+        default: return "Using " + running.name
         }
     }
 }

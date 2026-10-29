@@ -8,18 +8,42 @@ public struct ToolStep: Hashable, Sendable, Identifiable {
     public var result: String?
     public var isError: Bool
     public var at: Date
+    /// The file a Read, Edit or Write touched, as an absolute path.
+    public var file: String?
+    /// For edits: the lines taken out and put in, common lines trimmed away.
+    public var removed: [String]
+    public var added: [String]
 
     public init(id: String, name: String, summary: String, result: String? = nil,
-                isError: Bool = false, at: Date) {
+                isError: Bool = false, at: Date, file: String? = nil,
+                removed: [String] = [], added: [String] = []) {
         self.id = id
         self.name = name
         self.summary = summary
         self.result = result
         self.isError = isError
         self.at = at
+        self.file = file
+        self.removed = removed
+        self.added = added
     }
 
     public var isRunning: Bool { result == nil }
+
+    /// The user interrupted or denied this call. Claude Code records that as an
+    /// error result, but it is not a failure of the command.
+    public var isStopped: Bool {
+        guard isError, let result else { return false }
+        return result.hasPrefix("[Request interrupted by user")
+            || result.contains("doesn't want to proceed with this tool use")
+            || result.hasPrefix("The user rejected")
+            || (result.hasPrefix("Permission to use") && result.contains("denied"))
+    }
+
+    /// The result's first line, for tools whose output is not worth a tail.
+    public var resultFirstLine: String? {
+        result?.split(whereSeparator: \.isNewline).first.map(String.init)
+    }
 }
 
 /// What the chat mirror renders. Consecutive tool calls collapse into one
@@ -74,6 +98,14 @@ public struct TranscriptModel: Sendable, Equatable {
                 items.append(.steps(id: "steps-\(id)", steps: [step]))
             }
             stepIndex[id] = items.count - 1
+        case .toolDetail(let toolUseId, let file, let removed, let added, _):
+            guard let index = stepIndex[toolUseId],
+                  case .steps(let groupId, var steps) = items[index],
+                  let s = steps.firstIndex(where: { $0.id == toolUseId }) else { return }
+            steps[s].file = file
+            steps[s].removed = removed
+            steps[s].added = added
+            items[index] = .steps(id: groupId, steps: steps)
         case .toolResult(_, let toolUseId, let summary, let isError, _):
             guard let index = stepIndex[toolUseId],
                   case .steps(let groupId, var steps) = items[index],
@@ -128,6 +160,7 @@ extension MirrorEvent {
         case .userText(let id, _, _), .assistantText(let id, _, _), .notice(let id, _, _): "t:\(id)"
         case .toolUse(let id, _, _, _): "u:\(id)"
         case .toolResult(let id, _, _, _, _): "r:\(id)"
+        case .toolDetail(let toolUseId, _, _, _, _): "d:\(toolUseId)"
         case .usage: nil
         }
     }

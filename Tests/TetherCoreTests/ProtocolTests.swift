@@ -40,12 +40,13 @@ import TetherProtocol
         let original = MacMessage.transcript(sessionId: "s1", events: [
             .userText(id: "u1", text: "hi", at: at),
             .toolUse(id: "t1", name: "Bash", summary: "ls", at: at),
+            .toolDetail(toolUseId: "t1", file: "/p/a.swift", removed: ["x"], added: ["y"], at: at),
         ], reset: true)
         let data = try WireCodec.encoder().encode(original)
         guard case .transcript(let id, let events, let reset) = try WireCodec.decoder().decode(MacMessage.self, from: data) else {
             Issue.record("wrong case"); return
         }
-        #expect(id == "s1" && reset && events.count == 2)
+        #expect(id == "s1" && reset && events.count == 3)
         var model = TranscriptModel()
         model.apply(events)
         #expect(model.items.count == 2)
