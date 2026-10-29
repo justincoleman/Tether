@@ -1,5 +1,6 @@
 import SwiftUI
 import TetherCore
+import TetherProtocol
 
 /// Native replacement for Claude Code's permission prompt while Tether is
 /// running. "Ask in terminal" hands the decision back to the TUI.
