@@ -32,6 +32,8 @@ final class AppModel {
     private(set) var paneAttention: [PaneID: AttentionReason] = [:]
     /// Messages held back per pane until Claude can take them.
     private(set) var queuedCounts: [PaneID: Int] = [:]
+    /// What each tab is holding for Claude, oldest first, so the chat can show it.
+    private(set) var queuedMessages: [PaneID: [String]] = [:]
     /// When each tab's current turn started, while Claude works or waits on
     /// you mid-turn. Shown as elapsed time in the Overview.
     private(set) var turnStartedAt: [PaneID: Date] = [:]
@@ -723,6 +725,8 @@ final class AppModel {
     private func syncQueuedCount(_ paneId: PaneID) {
         let count = promptQueue.count(for: paneId)
         queuedCounts[paneId] = count > 0 ? count : nil
+        let texts = promptQueue.texts(for: paneId)
+        queuedMessages[paneId] = texts.isEmpty ? nil : texts
         companion.setNeedsSnapshot()
     }
 
@@ -1243,6 +1247,7 @@ final class AppModel {
         paneWorktreePaths[id] = nil
         promptQueue.clear(pane: id)
         queuedCounts[id] = nil
+        queuedMessages[id] = nil
         turnStartedAt[id] = nil
         recordedSessions[id] = nil
         launchSessions[id] = nil
@@ -1414,6 +1419,18 @@ extension AppModel {
             DevServerInfo(port: $0.port, command: $0.command)
         }
         return .success(servers)
+    }
+
+    /// Saves images pasted into the chat and sends Claude their paths with the text.
+    func sendWithImages(_ text: String, images: [Data], toPane paneId: PaneID) -> SendOutcome {
+        guard claudeTabs.contains(where: { $0.pane.id == paneId }) else { return .failed }
+        do {
+            let paths = try images.map { try ImageUpload.save($0, in: ImageUpload.defaultDirectory(), prefix: "mac") }
+            return sendOrQueue(ImageUpload.prompt(text: text, imagePaths: paths), toPane: paneId)
+        } catch {
+            print("Pasted image refused: \(error)")
+            return .failed
+        }
     }
 
     /// Saves a photo from the phone and sends Claude its path with the text.

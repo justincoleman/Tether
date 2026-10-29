@@ -1,18 +1,24 @@
 import SwiftUI
 import TetherCore
 import TetherProtocol
+import UniformTypeIdentifiers
 
 /// Native chat view of the selected tab's Claude session, built from the
 /// transcript. It replaces the terminal in the main card when the top bar's
 /// toggle is on chat. The phone renders the same TranscriptModel.
 struct MirrorView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
     let paneId: PaneID?
+    /// Where the conversation is scrolled to, so Send and the jump button can go to the end.
+    @State private var position = ScrollPosition(edge: .bottom)
+    @State private var atBottom = true
 
     var body: some View {
         let sessionId = paneId.flatMap { model.sessionId(forPane: $0) }
         let transcript = model.mirror.model(for: sessionId)
         let state = paneId.flatMap { model.paneStates[$0] } ?? .idle
+        let queued = paneId.flatMap { model.queuedMessages[$0] } ?? []
 
         VStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -34,23 +40,47 @@ struct MirrorView: View {
             .frame(height: 36)
             Divider()
 
-            if let transcript, !transcript.items.isEmpty {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
-                            ForEach(transcript.items) { item in
-                                TranscriptItemView(item: item).id(item.id)
-                            }
+            if transcript?.items.isEmpty == false || !queued.isEmpty {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(transcript?.items ?? []) { item in
+                            TranscriptItemView(item: item).id(item.id)
                         }
-                        .padding(16)
-                        // A readable column in a wide window.
-                        .frame(maxWidth: Self.columnWidth)
-                        .frame(maxWidth: .infinity)
+                        // Held for Claude, shown now; it becomes a normal message once Claude reads it.
+                        ForEach(Array(queued.enumerated()), id: \.offset) { _, text in
+                            QueuedBubble(text: text)
+                        }
                     }
-                    .onChange(of: transcript.items.count, initial: true) {
-                        if let last = transcript.items.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    .padding(16)
+                    // A readable column in a wide window.
+                    .frame(maxWidth: Self.columnWidth)
+                    .frame(maxWidth: .infinity)
+                }
+                // Follows the conversation while you're at the end; scroll up and it stays put.
+                .defaultScrollAnchor(.bottom)
+                .defaultScrollAnchor(.bottom, for: .sizeChanges)
+                .scrollPosition($position)
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 32
+                } action: { _, isAtBottom in
+                    atBottom = isAtBottom
+                }
+                .overlay(alignment: .bottom) {
+                    if !atBottom {
+                        Button { withAnimation { position.scrollTo(edge: .bottom) } } label: {
+                            Label("Jump to latest", systemImage: "arrow.down")
+                                .font(.caption.weight(.medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(theme.elevated, in: Capsule())
+                                .overlay(Capsule().strokeBorder(theme.border, lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.bottom, 10)
+                        .transition(.opacity)
                     }
                 }
+                .animation(.easeOut(duration: 0.15), value: atBottom)
             } else {
                 ContentUnavailableView(sessionId == nil ? "No Claude session" : "Nothing yet",
                                        systemImage: sessionId == nil ? "bubble.left.and.bubble.right" : "sparkle",
@@ -68,7 +98,10 @@ struct MirrorView: View {
                         PermissionPromptView(request: request)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    ComposeBar(paneId: paneId, state: state)
+                    ComposeBar(paneId: paneId, state: state) {
+                        // Sending always brings you back to the end.
+                        position.scrollTo(edge: .bottom)
+                    }
                 }
                 .animation(.snappy, value: model.pendingPermissions.map(\.id))
                 .frame(maxWidth: Self.columnWidth)
@@ -162,16 +195,53 @@ private struct ChatModelMenu: View {
     }
 }
 
+/// A message waiting for Claude, in the same place it will take once sent.
+private struct QueuedBubble: View {
+    @Environment(\.theme) private var theme
+    let text: String
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 40)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(text)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .foregroundStyle(theme.text)
+                    .background(theme.claude.opacity(0.28), in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(theme.claude.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                Label("Queued", systemImage: "clock")
+                    .font(.caption2)
+                    .foregroundStyle(theme.secondaryText)
+            }
+        }
+    }
+}
+
+/// An image pasted into the message box, waiting to be sent with it.
+private struct PastedImage: Identifiable {
+    let id = UUID()
+    let data: Data
+    let thumbnail: NSImage
+}
+
 private struct ComposeBar: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     let paneId: PaneID
     let state: SessionState
+    /// Called after a message is sent or queued.
+    var didSend: () -> Void = {}
     @State private var text = ""
+    @State private var images: [PastedImage] = []
+    @State private var pasteNote: String?
     @FocusState private var focused: Bool
 
     private var canSend: Bool {
-        state != .detached && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        state != .detached
+            && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty)
     }
 
     private var queued: Int { model.queuedCounts[paneId] ?? 0 }
@@ -185,6 +255,28 @@ private struct ComposeBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if !images.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(images) { image in
+                            Image(nsImage: image.thumbnail)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 56, height: 56)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(alignment: .topTrailing) {
+                                    Button { images.removeAll { $0.id == image.id } } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .symbolRenderingMode(.palette)
+                                            .foregroundStyle(.white, .black.opacity(0.6))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(2)
+                                }
+                        }
+                    }
+                }
+            }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(answersPermission ? "Return allows, Esc denies" : "Message Claude", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -202,6 +294,11 @@ private struct ComposeBar: View {
                             model.resolvePermission(permission.id, .deny(message: nil))
                         }
                     }
+                    // Command-V with an image or image files on the clipboard attaches them;
+                    // text still pastes as text.
+                    .onPasteCommand(of: [.image, .fileURL]) { providers in
+                        attach(providers)
+                    }
                 Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                     .buttonStyle(.plain)
                     .foregroundStyle(canSend ? theme.accent : theme.secondaryText)
@@ -212,6 +309,9 @@ private struct ComposeBar: View {
             .padding(.vertical, 7)
             .background(theme.surface, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.border, lineWidth: 0.5))
+            if let pasteNote {
+                Text(pasteNote).font(.caption).foregroundStyle(theme.red)
+            }
             if state == .detached {
                 Text("Claude isn't running in this tab.")
                     .font(.caption)
@@ -238,7 +338,50 @@ private struct ComposeBar: View {
 
     private func send() {
         guard canSend else { return }
-        if model.sendOrQueue(text, toPane: paneId) != .failed { text = "" }
+        let outcome = images.isEmpty
+            ? model.sendOrQueue(text, toPane: paneId)
+            : model.sendWithImages(text, images: images.map(\.data), toPane: paneId)
+        guard outcome != .failed else { return }
+        text = ""
+        images = []
+        pasteNote = nil
+        didSend()
+    }
+
+    /// Takes images from a paste: a screenshot or copied picture, or image files copied in Finder.
+    private func attach(_ providers: [NSItemProvider]) {
+        for provider in providers {
+            if provider.canLoadObject(ofClass: NSImage.self) {
+                _ = provider.loadObject(ofClass: NSImage.self) { image, _ in
+                    guard let png = image.flatMap(Self.pngData) else { return }
+                    Task { @MainActor in add(png) }
+                }
+            } else if provider.canLoadObject(ofClass: URL.self) {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url, url.isFileURL,
+                          ["png", "jpg", "jpeg", "heic", "gif", "tiff", "bmp"].contains(url.pathExtension.lowercased()),
+                          let png = NSImage(contentsOf: url).flatMap(Self.pngData) else { return }
+                    Task { @MainActor in add(png) }
+                }
+            }
+        }
+    }
+
+    private nonisolated static func pngData(_ image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    @MainActor private func add(_ png: Data) {
+        do {
+            _ = try ImageUpload.fileExtension(for: png)
+        } catch {
+            pasteNote = "\(error)"
+            return
+        }
+        guard let thumbnail = NSImage(data: png) else { return }
+        pasteNote = nil
+        images.append(PastedImage(data: png, thumbnail: thumbnail))
     }
 }
 
