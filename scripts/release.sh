@@ -46,7 +46,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 make project
 
-echo "Archiving Tether $VERSION…"
+echo "Archiving Tether ${VERSION}…"
 xcodebuild -quiet -project Apps/Tether.xcodeproj -scheme Tether -configuration Release \
   -archivePath "$OUT/Tether.xcarchive" -derivedDataPath build/release-dd \
   -allowProvisioningUpdates DEVELOPMENT_TEAM="$TEAM" archive
