@@ -944,31 +944,54 @@ final class AppModel {
     private var trustLeftToTerminal: Set<PaneID> = []
 
     /// Claude Code asks about an unfamiliar folder before it starts, and no
-    /// hook fires until it is answered. A tab that has shown no session after
-    /// a moment, in a folder `~/.claude.json` doesn't list, is sitting at that
-    /// question: show it as a card so a phone or another Mac can answer too.
+    /// hook fires until it is answered. A tab that has shown no session and no
+    /// status line after a moment, in a folder `~/.claude.json` doesn't list,
+    /// is sitting at that question: show it as a card so a phone or another Mac
+    /// can answer too. The phone is only notified once the card has stood a
+    /// few seconds, since a slow start looks the same at first.
     private func scheduleTrustCheck(paneId: PaneID, path: String) {
         Task { [weak self] in
-            for delay in [2.5, 6.0] {
+            for (delay, notify) in [(3.0, false), (4.0, true)] {
                 try? await Task.sleep(for: .seconds(delay))
                 guard let self, self.panes[paneId] != nil else { return }
-                self.checkTrust(paneId: paneId, path: path)
+                self.checkTrust(paneId: paneId, path: path, notify: notify)
             }
         }
     }
 
-    private func checkTrust(paneId: PaneID, path: String) {
+    private func checkTrust(paneId: PaneID, path: String, notify: Bool) {
         guard hookServer != nil, let pane = panes[paneId], pane.isClaude, !pane.hasExited,
-              paneStates[paneId] == nil, !trustLeftToTerminal.contains(paneId),
-              !pendingPermissions.contains(where: { $0.paneId == paneId }) else { return }
+              !claudeHasStarted(paneId), !trustLeftToTerminal.contains(paneId) else { return }
         let config = try? Data(contentsOf: FolderTrust.configFile)
         guard !FolderTrust.isTrusted(path, config: config) else { return }
-        let request = PendingPermission(sessionId: launchSessions[paneId] ?? "", paneId: paneId,
-                                        toolName: TrustFolder.toolName,
-                                        toolInput: .object(["path": .string(path)]), suggestions: nil)
-        pendingPermissions.append(request)
-        companion.permissionRequested(phoneSummary(of: request), projectName: projectName(forPane: paneId))
-        requestAttention()
+        var request = pendingPermissions.first { $0.paneId == paneId && $0.toolName == TrustFolder.toolName }
+        if request == nil {
+            guard !pendingPermissions.contains(where: { $0.paneId == paneId }) else { return }
+            let card = PendingPermission(sessionId: launchSessions[paneId] ?? "", paneId: paneId,
+                                         toolName: TrustFolder.toolName,
+                                         toolInput: .object(["path": .string(path)]), suggestions: nil)
+            pendingPermissions.append(card)
+            requestAttention()
+            companion.setNeedsSnapshot()
+            request = card
+        }
+        if notify, let request {
+            companion.permissionRequested(phoneSummary(of: request), projectName: projectName(forPane: paneId))
+        }
+    }
+
+    /// Claude only runs hooks and draws its status line once it is past the
+    /// trust question. Until then nothing typed in chat can reach it.
+    func claudeHasStarted(_ paneId: PaneID) -> Bool {
+        hookServer == nil || paneStates[paneId] != nil || paneStatus[paneId] != nil
+            || panes[paneId]?.hasExited == true
+    }
+
+    /// Claude started, so the folder question was answered in the terminal.
+    private func dropTrustCard(_ paneId: PaneID) {
+        guard pendingPermissions.contains(where: { $0.paneId == paneId && $0.toolName == TrustFolder.toolName })
+        else { return }
+        pendingPermissions.removeAll { $0.paneId == paneId && $0.toolName == TrustFolder.toolName }
         companion.setNeedsSnapshot()
     }
 
@@ -992,11 +1015,7 @@ final class AppModel {
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
             paneAttention[paneId] = session.attention
-            if pendingPermissions.contains(where: { $0.paneId == paneId && $0.toolName == TrustFolder.toolName }) {
-                // Claude started, so the folder question was answered in the terminal.
-                pendingPermissions.removeAll { $0.paneId == paneId && $0.toolName == TrustFolder.toolName }
-                companion.setNeedsSnapshot()
-            }
+            dropTrustCard(paneId)
             updateTurnStart(paneId, previous: previous, state: session.state)
             if let mode = session.permissionMode { paneModes[paneId] = mode }
             if let old = sessionId(forPane: paneId), old != session.id {
@@ -1032,6 +1051,7 @@ final class AppModel {
             companion.setNeedsSnapshot()
         case .status(let paneId, let report):
             guard panes[paneId] != nil else { return }
+            dropTrustCard(paneId)
             var changed = false
             if paneStatus[paneId] != report.status {
                 paneStatus[paneId] = report.status

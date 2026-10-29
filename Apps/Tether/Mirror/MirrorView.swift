@@ -140,7 +140,8 @@ private struct ChatModeMenu: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .disabled(switching)
+        // Shift-Tab before Claude starts would move the answer of a terminal question.
+        .disabled(switching || !model.claudeHasStarted(paneId))
         .help("Permission mode. Presses ⇧⇥ in Claude until it lands on your choice.")
         .alert("Couldn't switch mode", isPresented: $failed) {
             Button("OK", role: .cancel) {}
@@ -181,6 +182,7 @@ private struct ChatModelMenu: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .disabled(!model.claudeHasStarted(paneId))
         .help("Model. Sent as /model, after the current turn if Claude is working.")
         .alert("Switch model", isPresented: $askingOther) {
             TextField("Alias or model id", text: $custom)
@@ -557,7 +559,9 @@ private struct ChatFooter: View {
     let transcript: TranscriptModel?
 
     var body: some View {
-        if state == .working || state == .needsInput {
+        if !model.claudeHasStarted(paneId) {
+            if model.pendingPermission(forPane: paneId) == nil { StartingRow(paneId: paneId) }
+        } else if state == .working || state == .needsInput {
             HStack(spacing: 8) {
                 if state == .working {
                     ProgressView().controlSize(.small)
@@ -602,6 +606,39 @@ private struct ChatFooter: View {
         case "Edit", "MultiEdit", "Write", "NotebookEdit": return "Editing " + (target ?? "a file")
         case "Grep", "Glob": return "Searching " + String(running.summary.prefix(60))
         default: return "Using " + running.name
+        }
+    }
+}
+
+/// Shown until Claude reports in. A tab that stays here is usually sitting
+/// at a question in the terminal (folder trust, a login), which chat can't show.
+private struct StartingRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    let paneId: PaneID
+    @State private var slow = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(slow ? "Claude hasn't started. It may be asking something in the terminal." : "Starting Claude")
+                .font(.callout)
+                .foregroundStyle(theme.secondaryText)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            if slow {
+                Button { model.setChat(false, forPane: paneId) } label: {
+                    Label("Show Terminal", systemImage: "apple.terminal").font(.caption.weight(.medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .task {
+            try? await Task.sleep(for: .seconds(5))
+            slow = true
         }
     }
 }

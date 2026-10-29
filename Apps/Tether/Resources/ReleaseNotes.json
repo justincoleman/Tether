@@ -1,8 +1,8 @@
 [
   {
-    "version": "0.20.5",
+    "version": "0.20.6",
     "date": "2026-10-29",
-    "summary": "Tether 0.20.5 refines the iPhone's new look: better contrast, nicer questions, and every sheet in your colors.",
+    "summary": "Tether 0.20.6 refines the iPhone's new look: better contrast, nicer questions, and every sheet in your colors.",
     "highlights": [
       {
         "title": "Questions you can tap.",
@@ -15,6 +15,21 @@
       {
         "title": "Every screen matches.",
         "body": "New Task, Edit Projects, Changes and Pair a Mac now follow your Mac's colors like the rest of the iPhone app. This needs the new iPhone build."
+      }
+    ]
+  },
+  {
+    "version": "0.20.5",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.5 makes it clear when a new Claude tab is waiting on the terminal.",
+    "highlights": [
+      {
+        "title": "Chat tells you when Claude hasn't started.",
+        "body": "In a folder Claude hasn't opened before, it asks whether to trust the files before it starts, and messages you send wait until then. The chat now says when Claude hasn't started yet, with a button to show the terminal, and Mode and Model stay disabled until Claude is running so they can't press keys into that question."
+      },
+      {
+        "title": "Fewer stray folder-trust alerts.",
+        "body": "Your phone is alerted about the trust question only once it has waited a few seconds, and the alert clears as soon as Claude is running."
       }
     ]
   },
