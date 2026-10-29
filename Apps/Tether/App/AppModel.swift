@@ -66,6 +66,7 @@ final class AppModel {
     let mirror = MirrorStore()
     let releases = ReleaseNotesStore()
     let changes = ChangesStore()
+    let pullRequests = PullRequestStore()
     let companion = CompanionHub()
     let updater = Updater()
 
@@ -695,6 +696,23 @@ final class AppModel {
         return projects.first { $0.id == pid }?.path
     }
 
+    /// Worktrees on a branch other than their project's base, by path, with
+    /// that branch: the ones that can have a pull request.
+    private func pullRequestTargets() -> [String: String] {
+        var result: [String: String] = [:]
+        for wt in worktrees {
+            guard let project = projects.first(where: { $0.id == wt.projectId }),
+                  let branch = changes.snapshots[wt.path]?.branch,
+                  branch != project.baseBranch else { continue }
+            result[wt.path] = branch
+        }
+        return result
+    }
+
+    func pullRequest(forPath path: String) -> PullRequestStatus? {
+        pullRequests.statuses[path]
+    }
+
     func branchLabel(for project: Project) -> String {
         changes.snapshots[project.path]?.branchLabel ?? project.baseBranch
     }
@@ -821,6 +839,7 @@ final class AppModel {
             if previous == .working, session.state != .working, let worktree = paneWorktreePaths[paneId] {
                 // The turn ended: files may have changed, and the base branch may have moved.
                 changes.refresh(worktree)
+                pullRequests.refreshSoon(worktree)
                 if [.done, .idle, .error].contains(session.state) { changes.fetchNow(worktree) }
             }
         case .permissionRequested(let request):
@@ -962,6 +981,8 @@ final class AppModel {
     private func restore() async {
         await startHookServer()
         companion.start()
+        pullRequests.targets = { [weak self] in self?.pullRequestTargets() ?? [:] }
+        pullRequests.start()
         await reload()
         splits = await store.state.splits
         updater.startAutomaticChecks()

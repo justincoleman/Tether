@@ -270,10 +270,15 @@ private struct ProjectRow: View {
                         .font(.body.weight(.medium))
                         .lineLimit(1)
                 }
-                Text(model.branchLabel(for: project))
-                    .font(.caption)
-                    .lineLimit(1)
-                    .foregroundStyle(theme.secondaryText)
+                HStack(spacing: 6) {
+                    Text(model.branchLabel(for: project))
+                        .font(.caption)
+                        .lineLimit(1)
+                        .foregroundStyle(theme.secondaryText)
+                    if let pr = model.pullRequest(forPath: project.path) {
+                        PullRequestBadge(status: pr)
+                    }
+                }
             }
             Spacer(minLength: 4)
             StatusBadge(state: state)
@@ -349,7 +354,9 @@ private struct WorktreeRow: View {
         let panes = model.panes(onWorktree: worktree.id)
         let state = panes.map { model.paneStates[$0.id] ?? .idle }.max { $0.urgency < $1.urgency } ?? .idle
         let selected = panes.contains { $0.id == model.selectedPaneId }
-        let merged = model.isMerged(worktree)
+        let pr = model.pullRequest(forPath: worktree.path)
+        // A squash merge leaves the branch unmerged as far as git can tell.
+        let merged = model.isMerged(worktree) || pr?.state == .merged
         HStack(spacing: 8) {
             Image(systemName: "arrow.triangle.branch")
                 .font(.caption)
@@ -359,6 +366,9 @@ private struct WorktreeRow: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .layoutPriority(1)
+            if let pr {
+                PullRequestBadge(status: pr)
+            }
             Spacer(minLength: 4)
             // Hover offers removal; otherwise a quiet check marks a merged branch.
             if hovering {

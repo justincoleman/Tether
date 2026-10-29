@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.6.0",
+    "date": "2026-10-29",
+    "summary": "Tether 0.6.0 shows each branch's pull request and whether its checks passed.",
+    "highlights": [
+      {
+        "title": "Pull requests and checks.",
+        "body": "A branch with a pull request shows its number next to the branch in the sidebar and on its Overview card, with a green check, a red cross or a clock for its checks. Hover for which checks failed, and click to open it on GitHub. A merged pull request marks its worktree as merged, squash merges included. This needs the GitHub CLI (gh), signed in."
+      }
+    ]
+  },
+  {
     "version": "0.5.0",
     "date": "2026-10-28",
     "summary": "Tether 0.5.0 shows every Claude tab at a glance, in the window and in the menu bar.",
