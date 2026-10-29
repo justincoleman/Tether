@@ -14,6 +14,10 @@ final class ChangesStore {
     }
 
     private(set) var snapshots: [String: ChangesSnapshot] = [:]
+    /// How staged each uncommitted file is, by worktree then file path.
+    private(set) var staging: [String: [String: StagingState]] = [:]
+    /// The last stage or unstage that failed, by worktree, until the next one.
+    private(set) var stagingErrors: [String: String] = [:]
     private(set) var errors: [String: String] = [:]
     private(set) var fetchInfo: [String: FetchInfo] = [:]
     private(set) var refreshing: Set<String> = []
@@ -69,6 +73,8 @@ final class ChangesStore {
         debounceTasks[path] = nil
         baseBranches[path] = nil
         snapshots[path] = nil
+        staging[path] = nil
+        stagingErrors[path] = nil
         errors[path] = nil
         fetchInfo[path] = nil
         revisions[path] = nil
@@ -116,7 +122,9 @@ final class ChangesStore {
             dirty.remove(path)
             guard let base = baseBranches[path] else { break }
             do {
-                let snapshot = try await GitRepository(path: path, runner: runner).snapshot(baseBranch: base)
+                let (snapshot, staged) = try await GitRepository(path: path, runner: runner)
+                    .snapshotAndStaging(baseBranch: base)
+                if staging[path] != staged { staging[path] = staged }
                 if let old = snapshots[path], old.sameContent(as: snapshot) {
                     // Nothing new; keep the existing value so views do not redraw.
                 } else {
@@ -130,6 +138,35 @@ final class ChangesStore {
         } while dirty.contains(path) && baseBranches[path] != nil
         running.remove(path)
         refreshing.remove(path)
+    }
+
+    // MARK: Staging
+
+    /// Stages the files' uncommitted changes, both sides of a rename included.
+    func stage(_ files: [ChangedFile], in path: String) {
+        changeIndex(files, in: path) { try await $0.stage($1) }
+    }
+
+    func unstage(_ files: [ChangedFile], in path: String) {
+        changeIndex(files, in: path) { try await $0.unstage($1) }
+    }
+
+    private func changeIndex(_ files: [ChangedFile], in path: String,
+                             _ action: @escaping @Sendable (GitRepository, [String]) async throws -> Void) {
+        let paths = files.flatMap { [$0.path] + ($0.oldPath.map { [$0] } ?? []) }
+        guard !paths.isEmpty else { return }
+        let repository = GitRepository(path: path, runner: runner)
+        Task { [weak self] in
+            var failure: String?
+            do {
+                try await action(repository, paths)
+            } catch {
+                failure = Self.describe(error)
+            }
+            guard let self else { return }
+            self.stagingErrors[path] = failure
+            self.scheduleRefresh(path, immediate: true)
+        }
     }
 
     // MARK: Fetch

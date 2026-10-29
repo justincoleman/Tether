@@ -81,7 +81,9 @@ private struct SnapshotView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(snapshot.files) { file in
-                            FileRow(file: file, selected: model.openDiffTarget?.file.path == file.path
+                            FileRow(file: file, worktreePath: path,
+                                    staging: model.changes.staging[path]?[file.path],
+                                    selected: model.openDiffTarget?.file.path == file.path
                                     && model.openDiffTarget?.worktreePath == path)
                         }
                         if !snapshot.commits.isEmpty {
@@ -113,6 +115,7 @@ private struct SnapshotView: View {
             HStack(spacing: 6) {
                 Text(summary).foregroundStyle(.secondary)
                 Spacer()
+                stageAllButton
                 if !snapshot.files.isEmpty {
                     Text("+\(snapshot.additions)").foregroundStyle(theme.green)
                     Text("−\(snapshot.deletions)").foregroundStyle(theme.red)
@@ -121,6 +124,26 @@ private struct SnapshotView: View {
             .font(.caption.monospacedDigit())
         }
         .padding(10)
+    }
+
+    /// Stage All while anything is unstaged, then Unstage All.
+    @ViewBuilder
+    private var stageAllButton: some View {
+        let states = model.changes.staging[path] ?? [:]
+        let stageable = snapshot.files.filter { states[$0.path] != nil }
+        if !stageable.isEmpty {
+            let allStaged = stageable.allSatisfy { states[$0.path] == .staged }
+            Button(allStaged ? "Unstage All" : "Stage All") {
+                if allStaged {
+                    model.changes.unstage(stageable, in: path)
+                } else {
+                    model.changes.stage(stageable.filter { states[$0.path] != .staged }, in: path)
+                }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .help(allStaged ? "Take every file out of the index" : "git add every uncommitted file")
+        }
     }
 
     private var commits: some View {
@@ -159,6 +182,11 @@ private struct SnapshotView: View {
                 Text("Not fetched yet")
             }
             Spacer()
+            if let error = model.changes.stagingErrors[path] {
+                Label("Staging failed", systemImage: "exclamationmark.triangle")
+                    .help(error)
+                    .foregroundStyle(theme.red)
+            }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -171,6 +199,10 @@ private struct FileRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     let file: ChangedFile
+    let worktreePath: String
+    /// Nil when there's nothing to stage: the file only differs by commits,
+    /// or it's a conflict.
+    let staging: StagingState?
     let selected: Bool
 
     var body: some View {
@@ -197,7 +229,9 @@ private struct FileRow: View {
                     }
                     .font(.caption.monospacedDigit())
                 }
-                if file.hasUncommittedChanges {
+                if let staging {
+                    StageToggle(state: staging) { toggleStaging() }
+                } else if file.hasUncommittedChanges {
                     Circle().fill(theme.claude).frame(width: 6, height: 6).help("Has uncommitted changes")
                 }
             }
@@ -209,6 +243,59 @@ private struct FileRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            if let staging {
+                if staging != .staged {
+                    Button("Stage") { model.changes.stage([file], in: worktreePath) }
+                }
+                if staging != .unstaged {
+                    Button("Unstage") { model.changes.unstage([file], in: worktreePath) }
+                }
+            }
+        }
+    }
+
+    private func toggleStaging() {
+        if staging == .staged {
+            model.changes.unstage([file], in: worktreePath)
+        } else {
+            model.changes.stage([file], in: worktreePath)
+        }
+    }
+}
+
+/// Empty circle: unstaged. Half: partly staged. Check: staged. Click to flip.
+private struct StageToggle: View {
+    @Environment(\.theme) private var theme
+    let state: StagingState
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .foregroundStyle(state == .unstaged ? theme.secondaryText : theme.green)
+                .frame(width: 16, height: 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    private var symbol: String {
+        switch state {
+        case .unstaged: "circle"
+        case .partlyStaged: "circle.lefthalf.filled"
+        case .staged: "checkmark.circle.fill"
+        }
+    }
+
+    private var help: String {
+        switch state {
+        case .unstaged: "Not staged. Click to stage."
+        case .partlyStaged: "Partly staged. Click to stage the rest."
+        case .staged: "Staged. Click to unstage."
+        }
     }
 }
 

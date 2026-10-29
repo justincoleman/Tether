@@ -175,6 +175,52 @@ private struct TempGitRepo {
         #expect(snapshot.branchLabel == "main")
     }
 
+    @Test func stagingFollowsTheIndex() async throws {
+        let f = try await TempGitRepo.make()
+        defer { f.cleanup() }
+        try f.write("a.txt", "one\ntwo\nthree\nfour\n")
+        try f.write("[id].txt", "x\n")
+        try f.write("i.txt", "y\n") // would match [id].txt as a glob
+        try FileManager.default.removeItem(atPath: f.work + "/keep.txt")
+        func staging() async throws -> [String: StagingState] {
+            try await f.repository.snapshotAndStaging(baseBranch: "main").staging
+        }
+        let state1 = try await staging()
+        #expect(state1 == ["a.txt": .unstaged, "[id].txt": .unstaged, "i.txt": .unstaged,
+                           "keep.txt": .unstaged])
+
+        try await f.repository.stage(["a.txt", "[id].txt", "keep.txt"])
+        let state2 = try await staging()
+        #expect(state2 == ["a.txt": .staged, "[id].txt": .staged, "i.txt": .unstaged,
+                           "keep.txt": .staged])
+
+        try f.write("a.txt", "one\ntwo\nthree\nfour\nfive\n")
+        let state3 = try await staging()
+        #expect(state3["a.txt"] == .partlyStaged)
+
+        try await f.repository.unstage(["a.txt", "[id].txt", "keep.txt"])
+        let state4 = try await staging()
+        #expect(state4 == ["a.txt": .unstaged, "[id].txt": .unstaged, "i.txt": .unstaged,
+                           "keep.txt": .unstaged])
+    }
+
+    @Test func unstagingWorksBeforeTheFirstCommit() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tether-git-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let runner = GitRunner(environment: TempGitRepo.environment)
+        _ = try await runner.run(["init", "-q", "-b", "main"], in: root.path)
+        try Data("hi\n".utf8).write(to: root.appendingPathComponent("f.txt"))
+        let repo = GitRepository(path: root.path, runner: runner)
+
+        try await repo.stage(["f.txt"])
+        let state5 = try await repo.snapshotAndStaging(baseBranch: "main").staging
+        #expect(state5 == ["f.txt": .staged])
+        try await repo.unstage(["f.txt"])
+        let state6 = try await repo.snapshotAndStaging(baseBranch: "main").staging
+        #expect(state6 == ["f.txt": .unstaged])
+    }
+
     @Test func aFolderThatIsNotARepositoryThrowsAClearError() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tether-plain-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

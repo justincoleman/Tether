@@ -2,7 +2,8 @@ import Foundation
 import TetherProtocol
 
 /// Reads one worktree's state from git. Everything here only reads, apart
-/// from `fetch`, which updates remote-tracking refs.
+/// from `fetch`, which updates remote-tracking refs, and `stage`/`unstage`,
+/// which change the index when the user asks.
 public struct GitRepository: Sendable {
     public let path: String
     public let runner: GitRunner
@@ -20,10 +21,21 @@ public struct GitRepository: Sendable {
     /// branch, so commits that landed on the base after this branch started do
     /// not show up as reversed changes.
     public func snapshot(baseBranch: String) async throws -> ChangesSnapshot {
+        try await snapshotAndStaging(baseBranch: baseBranch).snapshot
+    }
+
+    /// The snapshot, plus how staged each uncommitted file is (by path). The
+    /// Mac shows staging; the phone gets only the snapshot.
+    public func snapshotAndStaging(baseBranch: String) async throws
+        -> (snapshot: ChangesSnapshot, staging: [String: StagingState]) {
         let statusOutput = try await runner.run(
             ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"], in: path)
         let status = GitStatus.parse(statusOutput.stdout)
         let uncommitted = Set(status.entries.map(\.path))
+        var staging: [String: StagingState] = [:]
+        for entry in status.entries {
+            if let state = entry.staging { staging[entry.path] = state }
+        }
 
         var baseRef: String?
         var mergeBase: String?
@@ -86,7 +98,7 @@ public struct GitRepository: Sendable {
 
         let files = byPath.values
             .sorted { $0.path.lowercased() < $1.path.lowercased() }
-        return ChangesSnapshot(
+        let snapshot = ChangesSnapshot(
             branch: status.branch,
             commitShort: status.oid.map { String($0.prefix(7)) },
             upstream: status.upstream,
@@ -96,6 +108,30 @@ public struct GitRepository: Sendable {
             mergeBase: mergeBase,
             files: Array(files.prefix(1000)),
             commits: commits)
+        return (snapshot, staging)
+    }
+
+    // MARK: Staging
+
+    /// `git add -A` for these paths, so deletions and new files are staged
+    /// too. Pass both sides of a rename. Paths are literal: `[id].tsx` is a
+    /// file name, not a pattern.
+    public func stage(_ paths: [String]) async throws {
+        guard !paths.isEmpty else { return }
+        _ = try await runner.run(["--literal-pathspecs", "add", "-A", "--"] + paths, in: path)
+    }
+
+    /// Takes these paths out of the index, leaving the working tree alone.
+    public func unstage(_ paths: [String]) async throws {
+        guard !paths.isEmpty else { return }
+        let head = try await runner.run(["rev-parse", "--verify", "--quiet", "HEAD"], in: path,
+                                        allowedExitCodes: [0, 1])
+        if head.status == 0 {
+            _ = try await runner.run(["--literal-pathspecs", "restore", "--staged", "--"] + paths, in: path)
+        } else {
+            // No commits yet: there is no HEAD to restore from.
+            _ = try await runner.run(["--literal-pathspecs", "rm", "--cached", "-r", "-q", "--"] + paths, in: path)
+        }
     }
 
     /// The first of origin/<base>, origin's default branch, or the local base
