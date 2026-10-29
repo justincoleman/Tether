@@ -221,6 +221,7 @@ struct RemoteDetailView: View {
     let connection: MacConnection
     @Binding var showSidebar: Bool
     @State private var showNewTab = false
+    @State private var showHistory = false
     @State private var starting = false
 
     private var sessions: [SessionSummary] { connection.snapshot?.sessions ?? [] }
@@ -285,8 +286,15 @@ struct RemoteDetailView: View {
                         help: "New Claude tab on \(connection.mac.name)") { startClaude() }
                 .disabled(!canStart)
             ToolbarPill(title: "History", systemImage: "clock.arrow.circlepath",
-                        help: "Past sessions aren't available for other Macs yet") {}
-                .disabled(true)
+                        help: "Past sessions on \(connection.mac.name)") { showHistory.toggle() }
+                .disabled(!online || projectId == nil)
+                .popover(isPresented: $showHistory, arrowEdge: .bottom) {
+                    if let projectId {
+                        RemoteHistoryPopover(connection: connection, projectId: projectId) { showHistory = false }
+                            .environment(model)
+                            .environment(\.theme, theme)
+                    }
+                }
             Menu {
                 Button("Claude") { startClaude() }
                 Button("Agent on a Branch…") { showNewTab = true }
@@ -301,9 +309,9 @@ struct RemoteDetailView: View {
             .frame(width: 28, height: 28)
             .disabled(!canStart)
             .help("New tab on \(connection.mac.name)")
-            ChromeButton(systemImage: "sidebar.right", active: false,
-                         help: "Changes and files aren't available for other Macs yet") {}
-                .disabled(true)
+            ChromeButton(systemImage: "sidebar.right", active: model.showInspector,
+                         help: "Changes on \(connection.mac.name)") { model.toggleInspector() }
+                .disabled(model.remote.selectedPaneId == nil)
         }
         .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
         .frame(height: ChromeMetrics.headerHeight)

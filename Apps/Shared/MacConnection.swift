@@ -121,6 +121,12 @@ final class MacConnection: Identifiable {
         if status == .online { channel?.send(PhoneMessage.subscribe(sessionId: sessionId)) }
     }
 
+    /// Stops streaming `sessionId`, unless another session has been subscribed
+    /// since. A closing view's cleanup can run after the next view's setup.
+    func unsubscribe(_ sessionId: SessionID) {
+        if subscribed == sessionId { subscribe(nil) }
+    }
+
     func send(_ text: String, to paneId: PaneID) {
         sendResults[paneId] = nil
         channel?.send(PhoneMessage.sendMessage(paneId: paneId, text: text))
@@ -137,13 +143,33 @@ final class MacConnection: Identifiable {
     /// Creating a worktree can take a while on a big repo.
     func startSession(projectId: ProjectID, branch: String?, prompt: String,
                       permissionMode: String?) async -> StartOutcome {
+        await startRequest { requestId in
+            PhoneMessage.startSession(requestId: requestId, projectId: projectId,
+                                      branch: branch, prompt: prompt, permissionMode: permissionMode)
+        }
+    }
+
+    /// Opens a past session in a tab on the Mac, or finds the tab running it.
+    func resumeSession(_ sessionId: SessionID, projectId: ProjectID) async -> StartOutcome {
+        await startRequest { PhoneMessage.resumeSession(requestId: $0, projectId: projectId, sessionId: sessionId) }
+    }
+
+    /// The project's past sessions, newest first.
+    func history(for projectId: ProjectID) async -> Result<[PastSessionInfo], ReplyError> {
+        switch await request({ PhoneMessage.requestHistory(requestId: $0, projectId: projectId) }) {
+        case .history(_, let sessions?, _)?: return .success(sessions)
+        case .history(_, nil, let error)?: return .failure(ReplyError(message: error ?? "No history."))
+        default: return .failure(ReplyError(message: "\(mac.name) didn't answer."))
+        }
+    }
+
+    private func startRequest(_ make: (UUID) -> PhoneMessage) async -> StartOutcome {
         guard status == .online, let channel else { return .failed("\(mac.name) is offline.") }
         let requestId = UUID()
+        let message = make(requestId)
         return await withCheckedContinuation { continuation in
             pendingStarts[requestId] = continuation
-            channel.send(PhoneMessage.startSession(requestId: requestId, projectId: projectId,
-                                                   branch: branch, prompt: prompt,
-                                                   permissionMode: permissionMode))
+            channel.send(message)
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(90))
                 self?.finishStart(requestId, .failed("\(self?.mac.name ?? "The Mac") didn't answer."))
@@ -282,7 +308,7 @@ final class MacConnection: Identifiable {
             sendResults[paneId] = outcome
         case .startResult(let requestId, let paneId, let error):
             finishStart(requestId, paneId.map(StartOutcome.started) ?? .failed(error ?? "The Mac couldn't start it."))
-        case .changes(let requestId, _, _), .fileDiff(let requestId, _, _):
+        case .changes(let requestId, _, _), .fileDiff(let requestId, _, _), .history(let requestId, _, _):
             finishReply(requestId, message)
         case .error(let message):
             print("Mac says: \(message)")

@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.10.6",
+    "date": "2026-10-29",
+    "summary": "Tether 0.10.6 adds History and Changes for a paired Mac.",
+    "highlights": [
+      {
+        "title": "History and Changes on another Mac.",
+        "body": "With a paired Mac selected, History lists that project's past sessions and reopens one in a tab there, and the right sidebar button shows the tab's changes and diffs. Update both Macs: the Macs now speak a newer version. Terminals still stay on the other Mac."
+      },
+      {
+        "title": "A new tab on another Mac shows its conversation.",
+        "body": "Fixes a new tab that could stay on Nothing yet after you sent a message."
+      }
+    ]
+  },
+  {
     "version": "0.10.5",
     "date": "2026-10-29",
     "summary": "Tether 0.10.5 makes another Mac look like this one.",

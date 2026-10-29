@@ -299,6 +299,23 @@ final class CompanionHub {
                     client.send(.fileDiff(requestId: requestId, diff: nil, error: error.message))
                 }
             }
+        case .requestHistory(let requestId, let projectId):
+            Task {
+                let sessions = await model.pastSessions(for: projectId).map {
+                    PastSessionInfo(id: $0.id, title: $0.title, firstPrompt: $0.firstPrompt,
+                                    branch: $0.branch, lastActivity: $0.lastActivity)
+                }
+                client.send(.history(requestId: requestId, sessions: sessions, error: nil))
+            }
+        case .resumeSession(let requestId, let projectId, let sessionId):
+            Task {
+                do {
+                    let paneId = try await model.resumePastSession(sessionId, projectId: projectId, select: false)
+                    client.send(.startResult(requestId: requestId, paneId: paneId, error: nil))
+                } catch {
+                    client.send(.startResult(requestId: requestId, paneId: nil, error: "\(error)"))
+                }
+            }
         case .sendImage(let paneId, let image, let text):
             let outcome: String = switch model.sendImage(image, text: text, toPane: paneId) {
             case .sent: "sent"
