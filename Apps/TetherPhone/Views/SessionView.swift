@@ -439,6 +439,28 @@ struct PermissionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        if let question = request.question {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    QuestionOptionsView(question: question) { answer in
+                        connection.answer(request.id, answer: answer)
+                        dismiss()
+                    }
+                    Button("Skip", role: .destructive) {
+                        connection.decide(request.id, allow: false)
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                }
+                .padding()
+            }
+        } else {
+            permissionBody
+        }
+    }
+
+    private var permissionBody: some View {
         VStack(alignment: .leading, spacing: 16) {
             Label(request.heading, systemImage: "hand.raised.fill")
                 .font(.headline)

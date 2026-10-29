@@ -201,7 +201,8 @@ struct RemoteSessionView: View {
                     .frame(maxHeight: .infinity)
             }
             if let permission {
-                PermissionBar(request: permission) { allow in connection.decide(permission.id, allow: allow) }
+                PermissionBar(request: permission, decide: { allow in connection.decide(permission.id, allow: allow) },
+                              answer: { connection.answer(permission.id, answer: $0) })
             }
             if session != nil {
                 compose
@@ -315,8 +316,19 @@ private struct PermissionBar: View {
     @Environment(\.theme) private var theme
     let request: PermissionRequested
     let decide: (Bool) -> Void
+    let answer: (String) -> Void
 
     var body: some View {
+        if let question = request.question {
+            QuestionOptionsView(question: question, answer: answer)
+                .padding(12)
+                .background(theme.elevated)
+        } else {
+            permissionBody
+        }
+    }
+
+    private var permissionBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(request.heading, systemImage: "hand.raised.fill")
                 .font(.headline)

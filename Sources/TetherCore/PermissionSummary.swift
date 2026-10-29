@@ -35,6 +35,12 @@ public struct PermissionSummary: Sendable, Equatable {
             return .init(title: "Find files", detail: field("pattern") ?? "")
         case "Task", "Agent":
             return .init(title: "Run a subagent", detail: field("description") ?? "")
+        case AskUserQuestion.toolName:
+            var question = AskUserQuestion.prompt(from: input)?.question
+            if question == nil, case .array(let all)? = input?["questions"], let first = all.first {
+                question = first["question"]?.stringValue
+            }
+            return .init(title: "Ask you a question", detail: question ?? "")
         case TrustFolder.toolName:
             return .init(title: "Trust this folder", detail: field("path") ?? "")
         case "TodoWrite":

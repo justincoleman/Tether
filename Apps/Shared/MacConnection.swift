@@ -290,6 +290,11 @@ final class MacConnection: Identifiable {
         snapshot?.permissions.removeAll { $0.id == requestId }
     }
 
+    func answer(_ requestId: UUID, answer: String) {
+        channel?.send(PhoneMessage.answerQuestion(requestId: requestId, answer: answer))
+        snapshot?.permissions.removeAll { $0.id == requestId }
+    }
+
     // MARK: Incoming
 
     private func received(_ data: Data) {

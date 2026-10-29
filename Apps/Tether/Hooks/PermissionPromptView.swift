@@ -10,6 +10,32 @@ struct PermissionPromptView: View {
     let request: PendingPermission
 
     var body: some View {
+        if request.toolName == AskUserQuestion.toolName,
+           let prompt = AskUserQuestion.prompt(from: request.toolInput) {
+            questionCard(prompt)
+        } else {
+            permissionCard
+        }
+    }
+
+    /// Claude's own multiple-choice question: the choice goes back to it as the answer.
+    private func questionCard(_ prompt: QuestionPrompt) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            QuestionOptionsView(question: prompt) { answer in
+                model.answerQuestion(request.id, answer: answer)
+            }
+            Button("Ask in Terminal") { model.resolvePermission(request.id, .askInTerminal) }
+                .buttonStyle(.link)
+        }
+        .padding(14)
+        .background(theme.elevated, in: RoundedRectangle(cornerRadius: 10))
+        .background(theme.window, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.blue.opacity(0.6)))
+        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
+        .padding(12)
+    }
+
+    @ViewBuilder private var permissionCard: some View {
         let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
         let isTrust = request.toolName == TrustFolder.toolName
         VStack(alignment: .leading, spacing: 10) {

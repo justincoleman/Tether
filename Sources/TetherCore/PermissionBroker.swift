@@ -5,6 +5,8 @@ public enum PermissionDecision: Sendable, Equatable {
     case allow
     /// Allow and apply Claude Code's own `permission_suggestions` so it stops asking.
     case allowAlways
+    /// Allow with a changed tool input, e.g. the answer to a question.
+    case allowWithInput(JSONValue)
     case deny(message: String?)
     /// Return no decision, so Claude Code shows its normal prompt in the terminal.
     case askInTerminal

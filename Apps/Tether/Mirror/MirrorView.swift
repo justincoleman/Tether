@@ -92,9 +92,10 @@ private struct ComposeBar: View {
     private var queued: Int { model.queuedCounts[paneId] ?? 0 }
     private var permission: PendingPermission? { model.pendingPermission(forPane: paneId) }
     /// Return and Escape answer the permission only while nothing is typed.
-    /// Never a folder-trust question: that one takes a deliberate click.
+    /// Never a folder-trust or multiple-choice question: those take a deliberate click.
     private var answersPermission: Bool {
-        permission != nil && permission?.toolName != TrustFolder.toolName && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        permission != nil && permission?.toolName != TrustFolder.toolName
+            && permission?.toolName != AskUserQuestion.toolName && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {

@@ -86,6 +86,8 @@ public struct HookRouter: Sendable {
             if case .array(let rules) = suggestions, !rules.isEmpty {
                 decisionObject["updatedPermissions"] = .array(rules)
             }
+        case .allowWithInput(let input):
+            decisionObject = ["behavior": .string("allow"), "updatedInput": input]
         case .deny(let message):
             decisionObject = ["behavior": .string("deny"),
                               "message": .string(message ?? "Denied from Tether.")]

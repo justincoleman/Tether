@@ -899,6 +899,16 @@ final class AppModel {
         Task { await self.broker.resolve(id, decision) }
     }
 
+    /// Answers a question Claude asked with options: the choice goes back to
+    /// Claude Code as the tool's answer, so no terminal dialog is needed.
+    func answerQuestion(_ id: UUID, answer: String) {
+        guard let request = pendingPermissions.first(where: { $0.id == id }),
+              request.toolName == AskUserQuestion.toolName,
+              let prompt = AskUserQuestion.prompt(from: request.toolInput) else { return }
+        let input = AskUserQuestion.updatedInput(request.toolInput, question: prompt.question, answer: answer)
+        resolvePermission(id, .allowWithInput(input))
+    }
+
     // MARK: Folder trust
 
     /// Tabs whose trust question the user left to the terminal.
@@ -938,7 +948,7 @@ final class AppModel {
     private func answerTrust(_ request: PendingPermission, _ decision: PermissionDecision) {
         guard let paneId = request.paneId, let pane = panes[paneId] else { return }
         switch decision {
-        case .allow, .allowAlways: pane.confirm()
+        case .allow, .allowAlways, .allowWithInput: pane.confirm()
         case .deny: pane.interrupt()
         case .askInTerminal: trustLeftToTerminal.insert(paneId)
         }
@@ -1397,8 +1407,11 @@ extension AppModel {
 extension AppModel {
     func phoneSummary(of request: PendingPermission) -> PermissionRequested {
         let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
+        let question = request.toolName == AskUserQuestion.toolName
+            ? AskUserQuestion.prompt(from: request.toolInput) : nil
         return PermissionRequested(id: request.id, paneId: request.paneId, sessionId: request.sessionId,
-                                   toolName: request.toolName, title: summary.title, detail: summary.detail)
+                                   toolName: request.toolName, title: summary.title, detail: summary.detail,
+                                   question: question)
     }
 
     func projectName(forPane paneId: PaneID?) -> String {
