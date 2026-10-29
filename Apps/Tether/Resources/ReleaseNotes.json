@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.7.0",
+    "date": "2026-10-29",
+    "summary": "Tether 0.7.0 lets you stage and unstage files from the Changes panel, and shows how long each turn has been running.",
+    "highlights": [
+      {
+        "title": "Staging.",
+        "body": "Each file with uncommitted changes in Changes shows an empty circle, a half circle or a check for unstaged, partly staged or staged. Click it to stage or unstage, or right-click the file. Stage All and Unstage All sit in the panel's header."
+      },
+      {
+        "title": "Time running.",
+        "body": "While Claude works on a turn, the sidebar shows how long it has been going, next to the project and next to each branch."
+      }
+    ]
+  },
+  {
     "version": "0.6.0",
     "date": "2026-10-29",
     "summary": "Tether 0.6.0 shows each branch's pull request and whether its checks passed.",

@@ -311,6 +311,12 @@ final class AppModel {
         }
     }
 
+    /// When the longest-running current turn among these tabs started, if any
+    /// of them is mid-turn.
+    func turnStart(of panes: [TerminalPane]) -> Date? {
+        panes.compactMap { turnStartedAt[$0.id] }.min()
+    }
+
     /// Leaves the Overview for one tab.
     func select(pane: TerminalPane) {
         closeOverlays()

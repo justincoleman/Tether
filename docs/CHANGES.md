@@ -68,6 +68,24 @@ git 2.43 output (`GitParsingTests`):
 
 The sidebar shows each project's current branch from the same snapshots.
 
+## Staging
+
+The panel is read-only apart from the index. A file with uncommitted changes
+shows a circle (unstaged), a half circle (partly staged) or a check (staged)
+from `git status` (`StatusEntry.staging`). Clicking it, the row's context menu,
+or Stage All / Unstage All in the header run:
+
+- stage: `git --literal-pathspecs add -A -- <paths>`, which picks up deletions
+  and new files. A rename passes both paths.
+- unstage: `git --literal-pathspecs restore --staged -- <paths>`, or
+  `git rm --cached -r -q` before the first commit, when there is no HEAD.
+
+Paths are literal, so `app/[id]/page.tsx` is a file name and not a glob.
+Conflicts have no toggle, because they're resolved rather than staged. The
+phone doesn't see staging: it only gets the snapshot. A failure shows "Staging
+failed" in the footer (hover for git's message). Tested in
+`GitRepositoryTests.stagingFollowsTheIndex`.
+
 ## Pull requests and checks
 
 `PullRequestStore` asks the GitHub CLI about every worktree whose branch isn't

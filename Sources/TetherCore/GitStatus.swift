@@ -25,6 +25,25 @@ public struct StatusEntry: Sendable, Hashable {
     }
 }
 
+/// How much of a file's uncommitted change is in the index.
+public enum StagingState: String, Sendable, Hashable {
+    case unstaged, partlyStaged, staged
+}
+
+extension StatusEntry {
+    /// Nil for conflicts, which are resolved, not staged.
+    public var staging: StagingState? {
+        if isUnmerged { return nil }
+        if isUntracked { return .unstaged }
+        switch (staged != ".", unstaged != ".") {
+        case (true, true): return .partlyStaged
+        case (true, false): return .staged
+        case (false, true): return .unstaged
+        case (false, false): return nil
+        }
+    }
+}
+
 /// Parsed `git status --porcelain=v2 --branch -z`.
 public struct GitStatus: Sendable, Equatable {
     /// Full commit id of HEAD; nil in a repository with no commits yet.
