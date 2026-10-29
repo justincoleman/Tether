@@ -24,6 +24,20 @@ public actor SessionRegistry {
     @discardableResult
     public func apply(_ hook: HookPayload, paneId: PaneID?) -> Session {
         let t = now()
+        if hook.hookEventName == .sessionEnd, let paneId, let current = paneToSession[paneId],
+           current != hook.sessionId {
+            // A late SessionEnd from the session this pane already replaced (/clear,
+            // a resume that forks): the pane has moved on, so it must not be pulled
+            // back to the old id and marked ended. Returned without a pane.
+            var ended = sessions.removeValue(forKey: hook.sessionId) ?? Session(
+                id: hook.sessionId, paneId: nil, cwd: hook.cwd,
+                transcriptPath: hook.transcriptPath, startedAt: t, lastEventAt: t)
+            ended.paneId = nil
+            ended.state = .detached
+            ended.attention = nil
+            ended.lastEventAt = t
+            return ended
+        }
         var session = sessions[hook.sessionId] ?? Session(
             id: hook.sessionId, paneId: paneId, cwd: hook.cwd,
             transcriptPath: hook.transcriptPath, startedAt: t, lastEventAt: t)

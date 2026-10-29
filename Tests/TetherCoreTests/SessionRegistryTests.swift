@@ -22,6 +22,21 @@ import TetherProtocol
         #expect(await r.apply(hook(.sessionEnd), paneId: pane).state == .detached)
     }
 
+    @Test func lateSessionEndFromAReplacedSessionLeavesThePaneAlone() async {
+        let r = SessionRegistry()
+        let pane = PaneID()
+        await r.apply(hook(.sessionStart, session: "old"), paneId: pane)
+        // /clear: the new session's SessionStart can arrive before the old one's SessionEnd.
+        await r.apply(hook(.sessionStart, session: "new"), paneId: pane)
+        let late = await r.apply(hook(.sessionEnd, session: "old"), paneId: pane)
+        #expect(late.state == .detached)
+        #expect(late.paneId == nil)
+        #expect(await r.session(forPane: pane)?.id == "new")
+        #expect(await r.session(forPane: pane)?.state == .idle)
+        // The pane's own SessionEnd still ends it.
+        #expect(await r.apply(hook(.sessionEnd, session: "new"), paneId: pane).state == .detached)
+    }
+
     @Test func permissionModeIsKeptUntilAHookReportsAnother() async throws {
         let r = SessionRegistry()
         func payload(_ json: String) throws -> HookPayload {

@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.20.9",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.9 stops running Claude tabs from showing as Ended on your iPhone.",
+    "highlights": [
+      {
+        "title": "Live tabs no longer show as Ended.",
+        "body": "A late end-of-session message from a tab's previous session could mark a running tab as Ended, which left it read-only on the iPhone until Claude did something. Tether now ignores those, and a tab whose Claude is visibly running is treated as live again."
+      }
+    ]
+  },
+  {
     "version": "0.20.8",
     "date": "2026-10-29",
     "summary": "Tether 0.20.8 fixes Trust Folder, which quit Claude instead of trusting the folder.",

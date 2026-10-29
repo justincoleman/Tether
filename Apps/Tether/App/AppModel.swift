@@ -1050,9 +1050,20 @@ final class AppModel {
             pendingPermissions.removeAll { $0.id == id }
             companion.setNeedsSnapshot()
         case .status(let paneId, let report):
-            guard panes[paneId] != nil else { return }
+            guard let pane = panes[paneId] else { return }
             dropTrustCard(paneId)
             var changed = false
+            if paneStates[paneId] == .detached, !pane.hasExited {
+                // Claude only draws its status line while running, so this tab
+                // hasn't ended, whatever a stray SessionEnd said.
+                paneStates[paneId] = .idle
+                paneAttention[paneId] = nil
+                if let id = sessionId(forPane: paneId) {
+                    Task { await self.registry.setState(.idle, for: id) }
+                }
+                recomputeProjectStates()
+                changed = true
+            }
             if paneStatus[paneId] != report.status {
                 paneStatus[paneId] = report.status
                 changed = true
