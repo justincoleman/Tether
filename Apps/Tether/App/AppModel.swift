@@ -1325,8 +1325,10 @@ extension AppModel {
             }
         }
         let permissions = pendingPermissions.map(phoneSummary(of:))
+        let colors = TerminalHost.palette
         return Snapshot(macName: macName, projects: projectList, sessions: sessions, permissions: permissions,
-                        limits: usageLimits.flatMap { SavedLimits.current($0, now: Date()) })
+                        limits: usageLimits.flatMap { SavedLimits.current($0, now: Date()) },
+                        theme: MacTheme(background: colors.surface.hexString, foreground: colors.text.hexString))
     }
 }
 

@@ -175,3 +175,24 @@ import TetherProtocol
         #expect(p.notificationType == "permission_prompt")
     }
 }
+
+@Suite struct ThemeAndInterruptTests {
+    @Test func snapshotCarriesTheTheme() throws {
+        let snapshot = Snapshot(macName: "m", projects: [], sessions: [], permissions: [],
+                                theme: MacTheme(background: "#282c34", foreground: "#ffffff"))
+        let data = try WireCodec.encoder().encode(MacMessage.snapshot(snapshot))
+        guard case .snapshot(let decoded) = try WireCodec.decoder().decode(MacMessage.self, from: data) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(decoded.theme?.background == "#282c34")
+    }
+
+    @Test func interruptRoundTrips() throws {
+        let pane = UUID()
+        let data = try WireCodec.encoder().encode(PhoneMessage.interrupt(paneId: pane))
+        guard case .interrupt(let id) = try WireCodec.decoder().decode(PhoneMessage.self, from: data) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(id == pane)
+    }
+}

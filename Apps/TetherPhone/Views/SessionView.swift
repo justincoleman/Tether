@@ -34,6 +34,10 @@ struct SessionView: View {
     }
 
     var body: some View {
+        sessionBody.macColors(connection.snapshot?.theme)
+    }
+
+    @ViewBuilder private var sessionBody: some View {
         let sessionId = session?.sessionId
         let transcript = sessionId.flatMap { connection.transcripts[$0] }
         VStack(spacing: 0) {
@@ -48,7 +52,7 @@ struct SessionView: View {
                                 PhoneTranscriptItem(item: item).id(item.id)
                             }
                             if session?.state == .working {
-                                ProgressView().id("working")
+                                WorkingRow { connection.interrupt(paneId) }.id("working")
                             }
                         }
                         .padding()
@@ -380,32 +384,77 @@ private struct PhoneSteps: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(steps) { step in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(step.name).font(.caption.weight(.semibold))
-                            if step.isRunning { ProgressView().controlSize(.mini) }
-                        }
-                        Text(step.summary).font(.caption.monospaced()).lineLimit(3)
-                        if let result = step.result, !result.isEmpty {
-                            let isCommand = step.name == "Bash"
-                            Text(isCommand ? result : (step.resultFirstLine ?? result))
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(step.isError && !step.isStopped ? Color.red : Color.secondary)
-                                .lineLimit(isCommand ? 6 : 2)
-                        }
-                    }
+                    PhoneStepRow(step: step)
                 }
             }
             .padding(.top, 6)
         } label: {
-            Label("\(steps.count) step\(steps.count == 1 ? "" : "s")", systemImage: "hammer")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Label("\(steps.count) step\(steps.count == 1 ? "" : "s")", systemImage: "hammer")
+                if steps.contains(where: { $0.isError && !$0.isStopped }) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                }
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
         }
         .padding(10)
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// One tool call: the file it touched, the lines an edit changed, and for a
+/// command whether it worked, was stopped or failed, and its last lines.
+private struct PhoneStepRow: View {
+    let step: ToolStep
+
+    private var isCommand: Bool { step.name == "Bash" }
+    private var quietResult: Bool { step.file != nil && !step.isError }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(step.name).font(.caption.weight(.semibold))
+                if isCommand, step.result != nil { outcome }
+                if step.isRunning { ProgressView().controlSize(.mini) }
+            }
+            Text(step.file.map { ($0 as NSString).lastPathComponent } ?? step.summary)
+                .font(.caption.monospaced())
+                .lineLimit(3)
+            if !step.removed.isEmpty || !step.added.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(step.removed.enumerated()), id: \.offset) { _, line in
+                        Text("- " + line).foregroundStyle(.red)
+                    }
+                    ForEach(Array(step.added.enumerated()), id: \.offset) { _, line in
+                        Text("+ " + line).foregroundStyle(.green)
+                    }
+                }
+                .font(.caption2.monospaced())
+                .lineLimit(1)
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+            }
+            if let result = step.result, !result.isEmpty, !quietResult {
+                Text(isCommand ? result : (step.resultFirstLine ?? result))
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(step.isError && !step.isStopped ? Color.red : Color.secondary)
+                    .lineLimit(isCommand ? 6 : 2)
+            }
+        }
+    }
+
+    @ViewBuilder private var outcome: some View {
+        if step.isStopped {
+            Label("Stopped", systemImage: "stop.circle").font(.caption2).foregroundStyle(.secondary)
+        } else if step.isError {
+            Label("Failed", systemImage: "xmark.circle.fill").font(.caption2).foregroundStyle(.red)
+        } else {
+            Label("Worked", systemImage: "checkmark.circle").font(.caption2).foregroundStyle(.green)
+        }
     }
 }
 

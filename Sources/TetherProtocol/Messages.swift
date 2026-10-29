@@ -226,6 +226,18 @@ public struct DevServerInfo: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+/// The Mac terminal's background and text colors as `#rrggbb`, so the phone
+/// can wear them. Light or dark follows from the background.
+public struct MacTheme: Codable, Hashable, Sendable {
+    public var background: String
+    public var foreground: String
+
+    public init(background: String, foreground: String) {
+        self.background = background
+        self.foreground = foreground
+    }
+}
+
 /// The Mac's whole state for the phone. Small, so it is resent in full on
 /// every change instead of diffed.
 public struct Snapshot: Codable, Hashable, Sendable {
@@ -235,9 +247,12 @@ public struct Snapshot: Codable, Hashable, Sendable {
     public var permissions: [PermissionRequested]
     /// The latest plan limits any session's status line reported.
     public var limits: UsageLimits?
+    /// The Mac's Ghostty colors, when it has them.
+    public var theme: MacTheme?
 
     public init(macName: String, projects: [ProjectSummary], sessions: [SessionSummary],
-                permissions: [PermissionRequested], limits: UsageLimits? = nil) {
+                permissions: [PermissionRequested], limits: UsageLimits? = nil, theme: MacTheme? = nil) {
+        self.theme = theme
         self.macName = macName
         self.projects = projects
         self.sessions = sessions
@@ -291,6 +306,8 @@ public enum PhoneMessage: Codable, Sendable {
     /// Stream this session's transcript; nil stops streaming.
     case subscribe(sessionId: SessionID?)
     case sendMessage(paneId: PaneID, text: String)
+    /// Stops Claude's current turn, like Esc in the terminal.
+    case interrupt(paneId: PaneID)
     case permissionDecision(requestId: UUID, allow: Bool)
     /// Answers a `PermissionRequested.question` with one option's label, or free text.
     case answerQuestion(requestId: UUID, answer: String)
