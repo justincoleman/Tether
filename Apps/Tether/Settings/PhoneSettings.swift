@@ -4,7 +4,8 @@ import SwiftUI
 import TetherCore
 import UniformTypeIdentifiers
 
-/// Settings → iPhone: pair a phone with a QR code, see and revoke paired phones.
+/// Settings → iPhone: pair a phone (QR code) or another Mac (the link under
+/// it), see and revoke paired devices.
 struct PhoneSettings: View {
     @Environment(AppModel.self) private var model
 
@@ -15,13 +16,13 @@ struct PhoneSettings: View {
             if let pairing = hub.pairing {
                 PairingCard(window: pairing) { hub.cancelPairing() }
             } else {
-                Button("Pair iPhone…") { Task { await hub.beginPairing() } }
+                Button("Pair iPhone or Mac…") { Task { await hub.beginPairing() } }
                     .disabled(hub.tailnetAddress == nil || hub.problem != nil)
             }
             Divider()
             NotificationSettings(hub: hub)
             Divider()
-            Text("Paired iPhones").font(.headline)
+            Text("Paired devices").font(.headline)
             if hub.devices.isEmpty {
                 Text("None yet.").foregroundStyle(.secondary)
             } else {
@@ -81,7 +82,8 @@ private struct PairingCard: View {
                     .background(.white, in: RoundedRectangle(cornerRadius: 8))
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text("Scan with the iPhone's Camera or the Tether app.")
+                Text("Scan with the iPhone's Camera or the Tether app. On another Mac, paste the link in Window → Remote Macs.")
+                    .fixedSize(horizontal: false, vertical: true)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let left = max(0, Int(window.expires.timeIntervalSince(context.date)))
                     Text(left > 0 ? "Expires in \(left)s" : "Expired. Close and try again.")
@@ -93,7 +95,13 @@ private struct PairingCard: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .lineLimit(3)
-                Button("Done", action: cancel)
+                HStack {
+                    Button("Copy Link") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(window.link.url.absoluteString, forType: .string)
+                    }
+                    Button("Done", action: cancel)
+                }
             }
         }
     }

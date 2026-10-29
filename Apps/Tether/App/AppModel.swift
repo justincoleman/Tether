@@ -68,6 +68,7 @@ final class AppModel {
     let changes = ChangesStore()
     let pullRequests = PullRequestStore()
     let preview = PreviewStore()
+    let remote = RemoteStore()
     let companion = CompanionHub()
     let updater = Updater()
 

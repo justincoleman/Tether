@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.10.0",
+    "date": "2026-10-29",
+    "summary": "Tether 0.10.0 lets one Mac follow and answer the Claude tabs on another.",
+    "highlights": [
+      {
+        "title": "Remote Macs.",
+        "body": "Pair a second Mac the way you pair an iPhone: on the Mac running Claude, open Settings → iPhone, click Pair iPhone or Mac…, then Copy Link. On the other Mac, open Window → Remote Macs and paste it. You can read each tab's conversation, allow or deny permissions, and send messages. Both Macs need Tailscale."
+      }
+    ]
+  },
+  {
     "version": "0.9.0",
     "date": "2026-10-29",
     "summary": "Tether 0.9.0 adds a Preview panel that shows your dev server next to the terminal.",

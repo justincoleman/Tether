@@ -130,7 +130,7 @@ private struct ComposeBar: View {
     }
 }
 
-private struct TranscriptItemView: View {
+struct TranscriptItemView: View {
     @Environment(\.theme) private var theme
     let item: TranscriptItem
 
