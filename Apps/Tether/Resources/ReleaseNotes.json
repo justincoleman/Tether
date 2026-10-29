@@ -1,13 +1,20 @@
 [
   {
-    "version": "0.10.1",
+    "version": "0.10.2",
     "date": "2026-10-29",
-    "summary": "Tether 0.10.1 makes pairing another Mac one step with a clear pass or fail, and fixes the version number.",
+    "summary": "Tether 0.10.2 makes pairing another Mac one step with a clear pass or fail.",
     "highlights": [
       {
         "title": "Settings → Macs.",
         "body": "Pairing another Mac now lives in Settings → Macs: click Paste and Pair after copying the link from the other Mac's Settings → iPhone. Tether connects right away and says whether it worked, and each paired Mac shows whether it's reachable, with a Test button. The old Remote Hosts tab is now called SSH Hosts."
-      },
+      }
+    ]
+  },
+  {
+    "version": "0.10.1",
+    "date": "2026-10-29",
+    "summary": "Tether 0.10.1 fixes the version number and simplifies Settings → Updates.",
+    "highlights": [
       {
         "title": "Updates settings.",
         "body": "Settings → Updates now shows the real version, and the GitHub token field is gone: Tether reads the public releases page without signing in."
