@@ -95,6 +95,8 @@ struct TetherApp: App {
                     .keyboardShortcut("d", modifiers: [.command, .shift])
                 Button("Files") { model.toggleInspector(.files) }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
+                Button("Preview") { model.toggleInspector(.preview) }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
             }
         }
         Settings {

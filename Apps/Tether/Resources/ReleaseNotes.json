@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.9.0",
+    "date": "2026-10-29",
+    "summary": "Tether 0.9.0 adds a Preview panel that shows your dev server next to the terminal.",
+    "highlights": [
+      {
+        "title": "Preview.",
+        "body": "The inspector has a third tab, Preview (Shift-Command-P). It finds the dev server running in the selected project or branch by its port and shows it in a browser, with no setup. Pick another server from the network menu, type an address or port, or open the page in your browser."
+      }
+    ]
+  },
+  {
     "version": "0.8.0",
     "date": "2026-10-29",
     "summary": "Tether 0.8.0 lets the iPhone app show a tab's changes and send Claude a photo. Update both the Mac and iPhone apps.",

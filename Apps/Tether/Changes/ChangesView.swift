@@ -2,7 +2,7 @@ import SwiftUI
 import TetherCore
 import TetherProtocol
 
-/// Right-hand panel: Changes and Files behind one tab switcher.
+/// Right-hand panel: Changes, Files and Preview behind one tab switcher.
 struct InspectorView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
@@ -11,10 +11,11 @@ struct InspectorView: View {
         @Bindable var model = model
         let changeCount = model.selectedWorktreePath.flatMap { model.changes.snapshots[$0]?.files.count } ?? 0
         VStack(spacing: 0) {
-            PillPicker(selection: $model.inspectorTab, options: [.changes, .files]) { tab in
+            PillPicker(selection: $model.inspectorTab, options: [.changes, .files, .preview]) { tab in
                 switch tab {
                 case .changes: changeCount > 0 ? "Changes \(changeCount)" : "Changes"
                 case .files: "Files"
+                case .preview: "Preview"
                 }
             }
             .frame(height: ChromeMetrics.headerHeight)
@@ -22,6 +23,7 @@ struct InspectorView: View {
                 switch model.inspectorTab {
                 case .changes: ChangesView()
                 case .files: FilesView()
+                case .preview: PreviewView()
                 }
             }
             .background(theme.surface.opacity(0.5), in: RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius))

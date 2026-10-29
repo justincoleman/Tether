@@ -57,7 +57,7 @@ final class AppModel {
     /// The Overview grid replaces the tabs in the detail column. Picking a
     /// project, or opening or switching a tab, leaves it.
     var showOverview = false
-    /// Right-hand panel, showing Changes or Files.
+    /// Right-hand panel, showing Changes, Files or Preview.
     var showInspector = false
     var inspectorTab: InspectorTab = .changes
     /// Shortcut commands for every project, shown in the top bar.
@@ -67,6 +67,7 @@ final class AppModel {
     let releases = ReleaseNotesStore()
     let changes = ChangesStore()
     let pullRequests = PullRequestStore()
+    let preview = PreviewStore()
     let companion = CompanionHub()
     let updater = Updater()
 
@@ -989,6 +990,10 @@ final class AppModel {
         companion.start()
         pullRequests.targets = { [weak self] in self?.pullRequestTargets() ?? [:] }
         pullRequests.start()
+        preview.folders = { [weak self] in
+            guard let self else { return [] }
+            return self.projects.map(\.path) + self.worktrees.map(\.path)
+        }
         await reload()
         splits = await store.state.splits
         updater.startAutomaticChecks()
@@ -1094,7 +1099,7 @@ final class AppModel {
 }
 
 enum InspectorTab: String {
-    case changes, files
+    case changes, files, preview
 }
 
 /// A file from the Files panel shown over the terminal area.
