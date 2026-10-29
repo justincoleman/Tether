@@ -19,10 +19,15 @@ their own every six hours).
      --apple-id <your Apple ID> --team-id <TEAM_ID> --password <app-specific password>
    ```
    Another profile name works with `TETHER_NOTARY_PROFILE=<name>`.
-3. **GitHub CLI.** `brew install gh && gh auth login`. The script publishes
-   with it, and Tether reads releases with `gh auth token` when no token is
-   saved in Settings → Updates.
-4. `export TETHER_TEAM_ID=<TEAM_ID>` (already set if `make phone-install` works).
+3. **A public releases repo.** Create `justincoleman/Tether-releases` on
+   GitHub: public, with a README so it has a default branch. It holds only
+   release zips and notes; the source repo stays private. Another name works
+   with `TETHER_RELEASES_REPO=<owner/name>`, but `UpdateCheck.repository`
+   must be changed to match.
+4. **GitHub CLI.** `brew install gh && gh auth login`, on the Mac that cuts
+   releases. Only the script needs it: installed copies read the public repo
+   with no login.
+5. `export TETHER_TEAM_ID=<TEAM_ID>` (already set if `make phone-install` works).
 
 ## Cutting a release
 
@@ -31,16 +36,19 @@ their own every six hours).
    fails otherwise). Commit and push.
 2. `make release`. It archives a Release build, exports it signed with
    Developer ID, notarizes and staples it, zips it as `Tether-<version>.zip`,
-   and runs `gh release create v<version>` with the notes from
-   `ReleaseNotes.json`. `scripts/release.sh --no-publish` stops after the zip
+   and runs `gh release create v<version>` in the releases repo with the
+   notes from `ReleaseNotes.json` and the source commit. `scripts/release.sh --no-publish` stops after the zip
    in `build/release/`.
 3. First install only: download the zip from the release, unzip, move
    `Tether.app` to /Applications and open it. From then on it updates itself.
 
 ## How the updater decides (`UpdateCheck`, TetherCore)
 
-- Lists `GET /repos/justincoleman/Tether/releases` with the saved token or
-  `gh auth token`; the repo is private, so without either GitHub answers 404.
+- Lists `GET /repos/justincoleman/Tether-releases/releases`. The repo is
+  public, so no login is needed (the unauthenticated limit of 60 requests an
+  hour per address is far above one check every six hours). A token saved in
+  Settings → Updates, or `gh auth token`, is sent if present; a bad token
+  answers 401 even for a public repo.
 - Takes the newest release that isn't a draft or pre-release, whose tag
   (`v0.4.0`) is above the running version, and that has a `Tether-*.zip`.
 - Downloads it through the API (`Accept: application/octet-stream`),

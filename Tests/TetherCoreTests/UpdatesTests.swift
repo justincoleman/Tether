@@ -45,7 +45,7 @@ import Testing
 
     @Test func requestsCarryTokenOnlyWhenGiven() {
         let url = UpdateCheck.releasesURL()
-        #expect(url.absoluteString == "https://api.github.com/repos/justincoleman/Tether/releases?per_page=20")
+        #expect(url.absoluteString == "https://api.github.com/repos/justincoleman/Tether-releases/releases?per_page=20")
         let authed = UpdateCheck.request(url, token: "abc", accept: "application/octet-stream")
         #expect(authed.value(forHTTPHeaderField: "Authorization") == "Bearer abc")
         #expect(authed.value(forHTTPHeaderField: "Accept") == "application/octet-stream")
