@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.20.5",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.5 makes it clear when a new Claude tab is waiting on the terminal.",
+    "highlights": [
+      {
+        "title": "Chat tells you when Claude hasn't started.",
+        "body": "In a folder Claude hasn't opened before, it asks whether to trust the files before it starts, and messages you send wait until then. The chat now says when Claude hasn't started yet, with a button to show the terminal, and Mode and Model stay disabled until Claude is running so they can't press keys into that question."
+      },
+      {
+        "title": "Fewer stray folder-trust alerts.",
+        "body": "Your phone is alerted about the trust question only once it has waited a few seconds, and the alert clears as soon as Claude is running."
+      }
+    ]
+  },
+  {
     "version": "0.20.4",
     "date": "2026-10-29",
     "summary": "Tether 0.20.4 gives the iPhone app a proper design, in your Mac's colors.",
