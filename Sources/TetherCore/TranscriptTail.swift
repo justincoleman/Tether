@@ -27,11 +27,30 @@ public struct TranscriptTail: Sendable {
     public let path: String
     private var offset: UInt64
     private var buffer = JSONLLineBuffer()
+    /// The first read began mid-file, so everything up to its first newline is
+    /// the end of a line that started before it.
+    private var skipsPartialFirstLine = false
+    /// Older records were left out by `init(path:lastBytes:)`.
+    public private(set) var skippedEarlier = false
 
     /// Starts at the current end of the file unless `fromStart` is set.
     public init(path: String, fromStart: Bool = false) {
         self.path = path
         self.offset = fromStart ? 0 : Self.fileSize(path) ?? 0
+    }
+
+    /// Starts at most `lastBytes` before the end of the file, so a transcript of
+    /// hundreds of megabytes opens with its recent records only.
+    public init(path: String, lastBytes: UInt64) {
+        self.path = path
+        let size = Self.fileSize(path) ?? 0
+        if size > lastBytes {
+            offset = size - lastBytes
+            skipsPartialFirstLine = true
+            skippedEarlier = true
+        } else {
+            offset = 0
+        }
     }
 
     public mutating func readNewLines() -> [String] {
@@ -44,8 +63,13 @@ public struct TranscriptTail: Sendable {
         defer { try? handle.close() }
         do {
             try handle.seek(toOffset: offset)
-            let data = try handle.readToEnd() ?? Data()
+            var data = try handle.readToEnd() ?? Data()
             offset += UInt64(data.count)
+            if skipsPartialFirstLine {
+                guard let newline = data.firstIndex(of: UInt8(ascii: "\n")) else { return [] }
+                data = Data(data[data.index(after: newline)...])
+                skipsPartialFirstLine = false
+            }
             return buffer.append(data)
         } catch {
             return []

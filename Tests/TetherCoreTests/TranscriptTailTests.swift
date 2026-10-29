@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TetherProtocol
 @testable import TetherCore
 
 @Suite struct TranscriptSignalTests {
@@ -77,5 +78,62 @@ import Testing
         _ = await feed.poll()
         #expect(await feed.takeMode() == "plan")
         #expect(await feed.takeMode() == nil)
+    }
+}
+
+@Suite struct LongTranscriptTests {
+    private func writeTranscript(lines: Int) throws -> (URL, [String]) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("long-\(UUID().uuidString).jsonl")
+        let rows = (0..<lines).map { i in
+            #"{"type":"user","uuid":"u\#(i)","isSidechain":false,"timestamp":"2026-10-28T13:21:36.619Z","message":{"role":"user","content":"message number \#(i)"}}"#
+        }
+        try Data((rows.joined(separator: "\n") + "\n").utf8).write(to: url)
+        return (url, rows)
+    }
+
+    @Test func shortFileIsReadWhole() async throws {
+        let (url, _) = try writeTranscript(lines: 5)
+        let feed = TranscriptFeed(path: url.path, windowBytes: 1_000_000)
+        let events = await feed.poll()
+        #expect(events.count == 5)
+        #expect(!events.contains { if case .notice = $0 { true } else { false } })
+    }
+
+    @Test func longFileOpensWithItsEndAndSaysSo() async throws {
+        let (url, rows) = try writeTranscript(lines: 200)
+        let window = UInt64(rows[0].utf8.count * 10 + 25) // about ten lines, starting mid-line
+        let feed = TranscriptFeed(path: url.path, windowBytes: window)
+        let events = await feed.poll()
+        guard case .notice(_, let text, _)? = events.first else { Issue.record("no notice"); return }
+        #expect(text == "Earlier messages are left out")
+        let texts = events.compactMap { event -> String? in
+            if case .userText(_, let t, _) = event { t } else { nil }
+        }
+        #expect(texts.last == "message number 199")
+        #expect(texts.count >= 8 && texts.count <= 11)
+        // The cut line is dropped, never parsed half-way.
+        #expect(texts.first.map { $0.hasPrefix("message number ") } == true)
+        #expect(await feed.poll().isEmpty)
+    }
+
+    @Test func appendedRecordsFollowTheWindow() async throws {
+        let (url, _) = try writeTranscript(lines: 100)
+        let feed = TranscriptFeed(path: url.path, windowBytes: 600)
+        _ = await feed.poll()
+        let h = try FileHandle(forWritingTo: url)
+        try h.seekToEnd()
+        try h.write(contentsOf: Data((Fixture.reply + "\n").utf8))
+        try h.close()
+        let events = await feed.poll()
+        #expect(events.count == 1)
+    }
+
+    @Test func tailStartsOnAWholeLine() throws {
+        let (url, rows) = try writeTranscript(lines: 50)
+        var tail = TranscriptTail(path: url.path, lastBytes: UInt64(rows[0].utf8.count * 3 + 7))
+        let lines = tail.readNewLines()
+        #expect(tail.skippedEarlier)
+        #expect(lines.allSatisfy { $0.hasPrefix("{") && $0.hasSuffix("}") })
+        #expect(lines.last == rows.last)
     }
 }

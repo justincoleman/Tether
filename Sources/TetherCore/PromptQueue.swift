@@ -13,6 +13,11 @@ public struct PromptQueue: Sendable, Equatable {
         items[pane, default: []].append(clean)
     }
 
+    /// The messages waiting for the pane, oldest first, as they will be typed.
+    public func texts(for pane: PaneID) -> [String] {
+        items[pane] ?? []
+    }
+
     public func count(for pane: PaneID) -> Int {
         items[pane]?.count ?? 0
     }

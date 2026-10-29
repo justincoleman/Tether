@@ -30,4 +30,18 @@ import Testing
         #expect(ImageUpload.prompt(text: "Fix this layout\n", imagePath: "/u/x.jpg")
                 == "Fix this layout\n\nImage from my iPhone: /u/x.jpg")
     }
+
+    @Test func pastedImagesAreListedOnePerLine() {
+        #expect(ImageUpload.prompt(text: "what is this?", imagePaths: ["/a.png", "/b.jpg"])
+                == "what is this?\n\nImage: /a.png\nImage: /b.jpg")
+        #expect(ImageUpload.prompt(text: "  ", imagePaths: ["/a.png"]) == "Image: /a.png")
+        #expect(ImageUpload.prompt(text: " hi ", imagePaths: []) == "hi")
+    }
+
+    @Test func savedFileNameCarriesItsSource() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("up-\(UUID().uuidString)")
+        let path = try ImageUpload.save(Self.png, in: dir, prefix: "mac")
+        #expect(URL(fileURLWithPath: path).lastPathComponent.hasPrefix("mac-"))
+        #expect(path.hasSuffix(".png"))
+    }
 }

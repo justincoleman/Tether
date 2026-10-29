@@ -134,3 +134,10 @@ Shift-Tab in the terminal shows without waiting for the next hook. The chat's mo
 waits for this record after each press (`AppModel.setPermissionMode`). Unverified: that Claude Code writes the
 record at the moment of the change, and the exact field names; if a switch fails with "didn't confirm", check
 a transcript for what Claude writes after Shift-Tab and fix the parser.
+
+## Long transcripts
+
+Sessions write transcripts of hundreds of megabytes. `TranscriptFeed` reads only the last 2 MiB on its first
+poll (`TranscriptTail(path:lastBytes:)`), drops the cut line at the start of that window, and puts an
+`Earlier messages are left out` notice first when it skipped anything. Tool results whose call is before the
+window are ignored, and later polls read only what is appended. Nothing in the file is changed.

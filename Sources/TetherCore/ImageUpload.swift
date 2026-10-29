@@ -35,13 +35,22 @@ public enum ImageUpload {
     }
 
     /// Writes the image under a fresh name and returns its path.
-    public static func save(_ data: Data, in directory: URL, now: Date = Date()) throws -> String {
+    public static func save(_ data: Data, in directory: URL, now: Date = Date(),
+                            prefix: String = "iphone") throws -> String {
         let ext = try fileExtension(for: data)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let stamp = Int(now.timeIntervalSince1970)
-        let url = directory.appendingPathComponent("iphone-\(stamp)-\(UUID().uuidString.prefix(8)).\(ext)")
+        let url = directory.appendingPathComponent("\(prefix)-\(stamp)-\(UUID().uuidString.prefix(8)).\(ext)")
         try data.write(to: url, options: .atomic)
         return url.path
+    }
+
+    /// The same for images pasted into the Mac's chat: one line per image.
+    public static func prompt(text: String, imagePaths: [String]) -> String {
+        let lines = imagePaths.map { "Image: \($0)" }.joined(separator: "\n")
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if lines.isEmpty { return clean }
+        return clean.isEmpty ? lines : "\(clean)\n\n\(lines)"
     }
 
     /// What gets typed into Claude: the user's text, then the image's path,

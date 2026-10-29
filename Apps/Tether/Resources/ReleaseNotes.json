@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.20.3",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.3 makes the chat easier to follow while Claude works.",
+    "highlights": [
+      {
+        "title": "The chat stays at the bottom.",
+        "body": "New text and tool steps now follow along as the conversation grows. Scroll up to read something earlier and it stays put, with a button to jump back to the latest. Sending a message always brings you back down."
+      },
+      {
+        "title": "See messages you've queued.",
+        "body": "A message you send while Claude is busy shows up right away as a Queued bubble at the end of the chat. It becomes a normal message once Claude reads it."
+      },
+      {
+        "title": "Paste images into the chat.",
+        "body": "Press Command-V in the message box to attach a screenshot, a copied image, or image files copied in Finder. Text still pastes as text."
+      }
+    ]
+  },
+  {
+    "version": "0.20.2",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.2 opens long conversations in a moment.",
+    "highlights": [
+      {
+        "title": "Big chats open in a moment.",
+        "body": "Long Claude sessions write transcripts of hundreds of megabytes, and the chat used to read all of it before showing anything. Now it reads from the end, just far enough to show the recent conversation. The top of the chat says when older messages are left out, and nothing in the transcript is changed. Your phone and other Macs get the same speedup."
+      }
+    ]
+  },
+  {
     "version": "0.20.1",
     "date": "2026-10-29",
     "summary": "Tether 0.20.1 puts Stop, edits and your terminal's colors on the iPhone, and adds mode and model switching to the chat.",

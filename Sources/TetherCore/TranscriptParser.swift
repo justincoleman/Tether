@@ -222,8 +222,15 @@ public actor TranscriptFeed {
     private var tail: TranscriptTail
     private let settingsFile: URL
 
-    public init(path: String, settingsFile: URL = ContextWindow.defaultSettingsFile) {
-        tail = TranscriptTail(path: path, fromStart: true)
+    /// How much of a long transcript the first read takes, from the end. Claude
+    /// Code sessions write hundreds of megabytes; the chat shows the recent part.
+    public static let defaultWindowBytes: UInt64 = 2 * 1024 * 1024
+
+    private var announcedGap = false
+
+    public init(path: String, settingsFile: URL = ContextWindow.defaultSettingsFile,
+                windowBytes: UInt64 = TranscriptFeed.defaultWindowBytes) {
+        tail = TranscriptTail(path: path, lastBytes: windowBytes)
         self.settingsFile = settingsFile
     }
 
@@ -239,7 +246,11 @@ public actor TranscriptFeed {
     public func poll() -> [MirrorEvent] {
         let lines = tail.readNewLines()
         if let mode = lines.compactMap(TranscriptSignals.permissionMode).last { seenMode = mode }
-        let events = lines.flatMap(TranscriptParser.events(fromLine:))
+        var events = lines.flatMap(TranscriptParser.events(fromLine:))
+        if tail.skippedEarlier, !announcedGap {
+            announcedGap = true
+            events.insert(.notice(id: "earlier-left-out", text: "Earlier messages are left out", at: Date()), at: 0)
+        }
         guard events.contains(where: { if case .usage = $0 { true } else { false } }) else { return events }
         // Read on each batch with usage, so a /model switch shows on the next reply.
         let model = ContextWindow.configuredModel(settings: try? Data(contentsOf: settingsFile))

@@ -71,6 +71,17 @@ import TetherProtocol
 }
 
 @Suite struct PromptQueueTests {
+    @Test func textsListWaitingMessagesSeparately() {
+        var queue = PromptQueue()
+        let pane = PaneID()
+        #expect(queue.texts(for: pane).isEmpty)
+        queue.enqueue("first", for: pane)
+        queue.enqueue("  second  ", for: pane)
+        #expect(queue.texts(for: pane) == ["first", "second"])
+        _ = queue.drain(for: pane)
+        #expect(queue.texts(for: pane).isEmpty)
+    }
+
     @Test func drainsEverythingAsOneMessageOldestFirst() {
         var queue = PromptQueue()
         let pane = PaneID()
