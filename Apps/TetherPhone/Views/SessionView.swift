@@ -530,14 +530,12 @@ private struct PermissionSheetBody: View {
     var body: some View {
         if let question = request.question {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    QuestionOptionsView(question: question) { answer in
-                        connection.answer(request.id, answer: answer)
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        dismiss()
-                    }
-                    Button("Skip") { decide(false) }
-                        .buttonStyle(PillButtonStyle(tint: theme.red))
+                PhoneQuestionView(question: question) { answer in
+                    connection.answer(request.id, answer: answer)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    dismiss()
+                } skip: {
+                    decide(false)
                 }
                 .padding(20)
             }

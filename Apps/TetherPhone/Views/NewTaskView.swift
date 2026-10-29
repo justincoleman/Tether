@@ -31,6 +31,8 @@ struct NewTaskView: View {
 
     private var projects: [ProjectSummary] { connection?.snapshot?.projects ?? [] }
 
+    private var theme: PhoneTheme { .resolved(connection?.snapshot?.theme) }
+
     private var canStart: Bool {
         !starting && connection != nil && projectId != nil
             && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -40,49 +42,53 @@ struct NewTaskView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if online.isEmpty {
-                    Text("No Mac is online. Check Tailscale and that Tether is running.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    if online.count > 1 {
-                        Picker("Mac", selection: Binding(get: { connection?.id }, set: { macId = $0 })) {
-                            ForEach(online) { Text($0.mac.name).tag(Optional($0.id)) }
-                        }
-                    }
-                    Picker("Project", selection: $projectId) {
-                        ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
-                    }
-                    Section {
-                        Toggle("On a new branch", isOn: $onBranch)
-                        if onBranch {
-                            TextField("Branch name, e.g. fix-login", text: $branch)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        }
-                    } footer: {
-                        Text(onBranch
-                             ? "The Mac creates a separate worktree, so this doesn't touch the main checkout."
-                             : "Runs in the project's main folder, next to any open tabs.")
-                    }
-                    Section("Task") {
-                        TextField("What should Claude do?", text: $prompt, axis: .vertical)
-                            .lineLimit(4...12)
-                    }
-                    Section {
-                        Picker("Mode", selection: $mode) {
-                            Text("Default from settings").tag(String?.none)
-                            ForEach(PermissionModeName.launchable, id: \.self) { m in
-                                Text(PermissionModeName.label(m)).tag(Optional(m))
+                Group {
+                    if online.isEmpty {
+                        Text("No Mac is online. Check Tailscale and that Tether is running.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        if online.count > 1 {
+                            Picker("Mac", selection: Binding(get: { connection?.id }, set: { macId = $0 })) {
+                                ForEach(online) { Text($0.mac.name).tag(Optional($0.id)) }
                             }
                         }
-                    } footer: {
-                        Text(PermissionModeName.explanation(mode))
-                    }
-                    if let error {
-                        Text(error).foregroundStyle(.red)
+                        Picker("Project", selection: $projectId) {
+                            ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
+                        }
+                        Section {
+                            Toggle("On a new branch", isOn: $onBranch)
+                            if onBranch {
+                                TextField("Branch name, e.g. fix-login", text: $branch)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                            }
+                        } footer: {
+                            Text(onBranch
+                                 ? "The Mac creates a separate worktree, so this doesn't touch the main checkout."
+                                 : "Runs in the project's main folder, next to any open tabs.")
+                        }
+                        Section("Task") {
+                            TextField("What should Claude do?", text: $prompt, axis: .vertical)
+                                .lineLimit(4...12)
+                        }
+                        Section {
+                            Picker("Mode", selection: $mode) {
+                                Text("Default from settings").tag(String?.none)
+                                ForEach(PermissionModeName.launchable, id: \.self) { m in
+                                    Text(PermissionModeName.label(m)).tag(Optional(m))
+                                }
+                            }
+                        } footer: {
+                            Text(PermissionModeName.explanation(mode))
+                        }
+                        if let error {
+                            Text(error).foregroundStyle(.red)
+                        }
                     }
                 }
+                .listRowBackground(theme.card)
             }
+            .macColors(connection?.snapshot?.theme)
             .navigationTitle("New Task")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -135,26 +141,32 @@ struct ReorderProjectsView: View {
     @State private var renaming: ProjectSummary?
     @State private var newName = ""
 
+    private var theme: PhoneTheme { .resolved(connection.snapshot?.theme) }
+
     var body: some View {
         NavigationStack {
             List {
-                ForEach(projects) { project in
-                    HStack {
-                        ProjectTile(name: project.name, icon: connection.projectIcons[project.id])
-                        Text(project.name)
-                        Spacer()
-                        Button {
-                            newName = project.name
-                            renaming = project
-                        } label: {
-                            Image(systemName: "pencil")
+                Group {
+                    ForEach(projects) { project in
+                        HStack {
+                            ProjectTile(name: project.name, icon: connection.projectIcons[project.id])
+                            Text(project.name)
+                            Spacer()
+                            Button {
+                                newName = project.name
+                                renaming = project
+                            } label: {
+                                Image(systemName: "pencil")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Rename \(project.name)")
                         }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Rename \(project.name)")
                     }
+                    .onMove { projects.move(fromOffsets: $0, toOffset: $1) }
                 }
-                .onMove { projects.move(fromOffsets: $0, toOffset: $1) }
+                .listRowBackground(theme.card)
             }
+            .macColors(connection.snapshot?.theme)
             .alert("Rename Project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("Name", text: $newName)
                 Button("Cancel", role: .cancel) {}

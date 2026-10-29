@@ -9,6 +9,8 @@ struct ChangesSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var result: Result<ChangesSnapshot, MacConnection.ReplyError>?
 
+    private var theme: PhoneTheme { .resolved(connection.snapshot?.theme) }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -22,6 +24,7 @@ struct ChangesSheet: View {
                     list(snapshot)
                 }
             }
+            .macColors(connection.snapshot?.theme)
             .navigationTitle("Changes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -64,6 +67,7 @@ struct ChangesSheet: View {
                 } footer: {
                     if let base = snapshot.baseRef { Text("Against \(base)") }
                 }
+                .listRowBackground(theme.card)
                 if !snapshot.commits.isEmpty {
                     Section("Commits (\(snapshot.commits.count))") {
                         ForEach(snapshot.commits) { commit in
@@ -73,6 +77,7 @@ struct ChangesSheet: View {
                             }
                         }
                     }
+                    .listRowBackground(theme.card)
                 }
             }
             .refreshable { await load() }
@@ -150,6 +155,7 @@ private struct DiffScreen: View {
                 }
             }
         }
+        .macColors(connection.snapshot?.theme)
         .navigationTitle(file.fileName)
         .navigationBarTitleDisplayMode(.inline)
         .task { result = await connection.diff(of: file, in: paneId) }

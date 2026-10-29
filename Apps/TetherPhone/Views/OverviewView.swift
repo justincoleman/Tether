@@ -109,22 +109,27 @@ struct OverviewView: View {
                     }
                     ForEach(store.connections) { MacNotice(connection: $0) }
                 }
-                .clearRow()
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                // Not flush with the edge: the section clips anything that touches it.
+                .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 4, trailing: 6))
             }
             let waiting = store.connections.flatMap { c in
                 (c.snapshot?.permissions ?? []).map { WaitingPermission(connection: c, request: $0) }
             }
-            if !waiting.isEmpty {
+            // A section each, so every request is its own rounded card that the
+            // list draws (and clips) itself.
+            ForEach(waiting) { item in
                 Section {
-                    ForEach(waiting) { item in
-                        NeedsYouCard(connection: item.connection, request: item.request,
-                                     context: item.context) {
-                            answering = (item.connection, item.request)
-                        }
-                        .clearRow()
+                    NeedsYouCard(connection: item.connection, request: item.request,
+                                 context: item.context, framed: false) {
+                        answering = (item.connection, item.request)
                     }
+                    .listRowBackground(NeedsYouCard.rowBackground(theme))
                 } header: {
-                    SectionLabel(title: "Needs you", count: waiting.count)
+                    if item.id == waiting.first?.id {
+                        SectionLabel(title: "Needs you", count: waiting.count)
+                    }
                 }
             }
             ForEach(store.connections) { connection in
@@ -146,7 +151,9 @@ struct OverviewView: View {
         let sessions = store.connections.flatMap { $0.snapshot?.sessions ?? [] }
         guard !sessions.isEmpty else { return nil }
         let working = sessions.filter { $0.state == .working }.count
-        let waiting = sessions.filter { $0.state == .needsInput }.count
+        // A folder-trust prompt can come from a tab that still reads idle.
+        let permissions = store.connections.reduce(0) { $0 + ($1.snapshot?.permissions.count ?? 0) }
+        let waiting = max(sessions.filter { $0.state == .needsInput }.count, permissions)
         let done = sessions.filter { $0.state == .done }.count
         var parts: [String] = []
         if waiting > 0 { parts.append("\(waiting) waiting on you") }
@@ -231,7 +238,7 @@ private struct MacProjects: View {
         if let limits = connection.snapshot?.limits, limits.fiveHour != nil || limits.sevenDay != nil {
             Section {
                 UsageCard(limits: limits, macName: showMacName ? connection.mac.name : nil)
-                    .clearRow()
+                    .listRowBackground(theme.card)
             }
         }
         if let snapshot = connection.snapshot {
@@ -425,15 +432,6 @@ private struct ThreadRow: View {
         }
         .padding(.vertical, 4)
         .opacity(session.state == .detached ? 0.5 : 1)
-    }
-}
-
-extension View {
-    /// A list row that draws its own card: no row background, separator or inset.
-    func clearRow() -> some View {
-        listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
     }
 }
 

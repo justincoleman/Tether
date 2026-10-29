@@ -148,6 +148,9 @@ struct NeedsYouCard: View {
     let request: PermissionRequested
     /// "Tether · Claude": which tab is asking, when that isn't obvious.
     var context: String?
+    /// Draws its own tinted card and border. Off inside a List, which draws
+    /// `NeedsYouCard.rowBackground` instead so its rounded clip can't cut the border.
+    var framed = true
     let open: () -> Void
 
     private var icon: String {
@@ -211,13 +214,21 @@ struct NeedsYouCard: View {
             }
             .disabled(connection.status != .online)
         }
-        .padding(14)
+        .padding(framed ? 14 : 2)
+        .padding(.vertical, framed ? 0 : 6)
         .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(theme.card)
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(theme.blue.opacity(0.08)))
+            if framed {
+                Self.rowBackground(theme)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(theme.blue.opacity(0.4)))
+            }
         }
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(theme.blue.opacity(0.4)))
+    }
+
+    /// The card's blue-washed fill, for `.listRowBackground`.
+    static func rowBackground(_ theme: PhoneTheme) -> some View {
+        theme.card.overlay(theme.blue.opacity(0.12))
     }
 
     private func decide(_ allow: Bool) {
@@ -245,9 +256,8 @@ struct UsageCard: View {
                 if let limit = limits.sevenDay { meter("Weekly", limit) }
             }
         }
-        .padding(14)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func meter(_ label: String, _ limit: UsageLimit) -> some View {
@@ -360,5 +370,118 @@ struct MacNotice: View {
             .padding(12)
             .background(theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
+    }
+}
+
+/// Dims and shrinks a little while pressed, for buttons that draw their own card.
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// A question Claude asked, as the phone shows it: each option a numbered
+/// card (the numbers match the terminal's), then a field for an answer of
+/// your own. The Mac keeps the shared, more compact QuestionOptionsView.
+struct PhoneQuestionView: View {
+    @Environment(\.phoneTheme) private var theme
+    let question: QuestionPrompt
+    let answer: (String) -> Void
+    let skip: () -> Void
+    @State private var other = ""
+
+    private var canSendOther: Bool { !other.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "questionmark.bubble.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(theme.blue, in: Circle())
+                    Text(question.header.isEmpty ? "Claude asks" : question.header)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(theme.blue)
+                }
+                Text(question.question)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(spacing: 8) {
+                ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
+                    Button { answer(option.label) } label: {
+                        optionCard(number: index + 1, option: option)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                }
+            }
+            HStack(spacing: 4) {
+                TextField("Something else…", text: $other)
+                    .foregroundStyle(theme.text)
+                    .submitLabel(.send)
+                    .onSubmit(sendOther)
+                    .padding(.leading, 14)
+                    .padding(.vertical, 11)
+                Button(action: sendOther) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(canSendOther ? Color.white : theme.tertiaryText)
+                        .frame(width: 32, height: 32)
+                        .background(canSendOther ? theme.blue : theme.elevated, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSendOther)
+                .padding(4)
+                .accessibilityLabel("Send answer")
+            }
+            .background(theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(theme.border.opacity(0.7)))
+            Button("Skip Question", action: skip)
+                .buttonStyle(PillButtonStyle(tint: theme.red))
+        }
+    }
+
+    private func optionCard(number: Int, option: QuestionPrompt.Option) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(number)")
+                .font(.footnote.weight(.bold).monospacedDigit())
+                .foregroundStyle(theme.blue)
+                .frame(width: 26, height: 26)
+                .background(theme.blue.opacity(0.16), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.label)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.text)
+                if !option.description.isEmpty, option.description != option.label {
+                    Text(option.description)
+                        .font(.subheadline)
+                        .foregroundStyle(theme.secondaryText)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .padding(.top, 2)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.tertiaryText)
+                .padding(.top, 7)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(theme.border.opacity(0.7)))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func sendOther() {
+        let text = other.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        answer(text)
     }
 }
