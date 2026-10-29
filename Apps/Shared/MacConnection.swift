@@ -1,10 +1,18 @@
 import Foundation
 import Observation
 import TetherProtocol
+#if canImport(UIKit)
 import UIKit
+typealias PlatformImage = UIImage
+#else
+import AppKit
+typealias PlatformImage = NSImage
+#endif
 
 /// The live link to one Mac: connects, authenticates (or pairs), keeps the
 /// Mac's snapshot and the subscribed transcript, and reconnects with backoff.
+/// The iPhone app and the Mac app (pairing with another Mac) both use it.
+/// The Mac answering is told apart from this one only by `deviceName`.
 @MainActor
 @Observable
 final class MacConnection: Identifiable {
@@ -23,7 +31,7 @@ final class MacConnection: Identifiable {
     private(set) var snapshot: Snapshot?
     private(set) var transcripts: [SessionID: TranscriptModel] = [:]
     /// Project icons the Mac found in its project folders.
-    private(set) var projectIcons: [ProjectID: UIImage] = [:]
+    private(set) var projectIcons: [ProjectID: PlatformImage] = [:]
     /// Last answer to a sent message, per tab, e.g. "queued".
     private(set) var sendResults: [PaneID: String] = [:]
 
@@ -81,7 +89,7 @@ final class MacConnection: Identifiable {
         let channel = WebSocketChannel(host: mac.host, port: mac.port)
         channel.onReady = { [weak self, weak channel] in
             guard let self, let channel else { return }
-            channel.send(PhoneMessage.hello(Hello(appVersion: Self.appVersion, deviceName: UIDevice.current.name)))
+            channel.send(PhoneMessage.hello(Hello(appVersion: Self.appVersion, deviceName: Self.deviceName)))
             if let code = self.pairingCode {
                 channel.send(PhoneMessage.pair(code: code))
             } else {
@@ -255,11 +263,13 @@ final class MacConnection: Identifiable {
             closeChannel()
         case .projectIcons(let icons):
             projectIcons = Dictionary(icons.compactMap { icon in
-                UIImage(data: icon.png).map { (icon.id, $0) }
+                PlatformImage(data: icon.png).map { (icon.id, $0) }
             }, uniquingKeysWith: { _, latest in latest })
         case .snapshot(let snapshot):
             self.snapshot = snapshot
+            #if os(iOS)
             LiveActivities.reconcile(macId: mac.id, snapshot: snapshot)
+            #endif
             // A queued message has gone out once the Mac's queue for that tab is empty.
             for session in snapshot.sessions where session.queued == 0 && sendResults[session.id] == "queued" {
                 sendResults[session.id] = nil
@@ -324,6 +334,14 @@ final class MacConnection: Identifiable {
             guard !Task.isCancelled, let self, self.wanted else { return }
             self.connect()
         }
+    }
+
+    private static var deviceName: String {
+        #if canImport(UIKit)
+        UIDevice.current.name
+        #else
+        Host.current().localizedName ?? "Mac"
+        #endif
     }
 
     private static var appVersion: String {

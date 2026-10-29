@@ -460,6 +460,11 @@ sent together, and the send queue is in memory only, not persisted.*
   Code's own listener and Tether are skipped. Nothing is configured or
   written to the project; a typed address or picked port lasts until
   relaunch. The web view uses a non-persistent data store.
+- Remote Macs (0.10.0): a Mac pairs with another Mac like an iPhone does,
+  using the same protocol and `MacConnection` (moved to `Apps/Shared`). The
+  Remote Macs window lists each paired Mac's Claude tabs, mirrors the chosen
+  tab's transcript, answers permissions and sends messages. Paired Macs are
+  kept in the login keychain and connected only while the window is open.
 - Notes: a `theme = light:X,dark:Y` side is picked at launch only; named X11
   colors in the config fall back to Ghostty defaults for the chrome.
 

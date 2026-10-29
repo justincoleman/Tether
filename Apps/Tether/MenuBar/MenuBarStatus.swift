@@ -90,7 +90,7 @@ struct MenuBarMenu: View {
         NSApp.activate(ignoringOtherApps: true)
         let main = NSApp.windows.first { window in
             let id = window.identifier?.rawValue ?? ""
-            return window.canBecomeMain && !id.contains("whats-new") && !id.contains("Settings")
+            return window.canBecomeMain && !id.contains("whats-new") && !id.contains("remote-macs") && !id.contains("Settings")
         }
         if let main {
             if main.isMiniaturized { main.deminiaturize(nil) }

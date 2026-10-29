@@ -4,6 +4,13 @@ Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
 `ProtocolVersion.current` with any shape change (currently 14).
 
+Clients are the iPhone app and, since 0.10.0, another Mac's Remote Macs
+window (`Apps/Shared/MacConnection.swift`, shared by both). A Mac client
+pairs with the link shown under the QR code instead of scanning it, sends its
+computer name as `deviceName`, and never sends `registerPush` or
+`registerActivity`, so it gets no pushes. The serving Mac lists it with its
+phones under paired devices.
+
 ## Transport
 
 - The Mac listens on TCP **7891** (`CompanionServer`), WebSocket over

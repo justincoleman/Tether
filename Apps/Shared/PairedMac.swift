@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-/// A Mac this phone has paired with. Stored in the Keychain because of the token.
+/// A Mac this device has paired with. Stored in the Keychain because of the token.
 struct PairedMac: Codable, Hashable, Identifiable {
     var id: UUID
     var name: String
@@ -11,9 +11,14 @@ struct PairedMac: Codable, Hashable, Identifiable {
 }
 
 /// The paired-Mac list as one Keychain item, readable after first unlock so
-/// background work in phase 6 can use it.
+/// background work in phase 6 can use it. On the Mac it is the list of other
+/// Macs this one controls, under its own service name.
 enum MacKeychain {
+    #if os(iOS)
     private static let service = "com.justincoleman.tether.macs"
+    #else
+    private static let service = "com.justincoleman.tether.remote-macs"
+    #endif
     private static let account = "paired"
 
     static func load() -> [PairedMac] {
@@ -38,10 +43,15 @@ enum MacKeychain {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
+        #if os(iOS)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
+        #else
+        // The login keychain; accessibility classes apply only to the data protection keychain.
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        #endif
         if SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSecItemNotFound {
             SecItemAdd(query.merging(attributes) { $1 } as CFDictionary, nil)
         }

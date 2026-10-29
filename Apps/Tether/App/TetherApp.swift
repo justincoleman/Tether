@@ -35,6 +35,15 @@ struct TetherApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 580, height: 680)
+        Window("Remote Macs", id: "remote-macs") {
+            RemoteMacsView()
+                .environment(model)
+                .environment(\.theme, theme)
+                .tint(theme.accent)
+                .foregroundStyle(theme.text)
+                .frame(minWidth: 640, minHeight: 420)
+        }
+        .defaultSize(width: 900, height: 640)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("What's New in Tether") { openWindow(id: "whats-new") }
