@@ -232,7 +232,9 @@ goes out only at the 7 s check, so a slow start doesn't buzz the phone.
   Tether never writes the config or trusts a folder itself.
 - The first hook or status line report for the tab removes the card (Claude only runs either once
   it is past the question, so it was answered in the terminal).
-- Seen on 2026-10-29: a folder Justin had trusted had no `projects` entry in `~/.claude.json`,
-  so the config check alone can't rule the card out; the hook and status line signals do.
+- Until a hook or status line arrives, chat view shows "Starting Claude", then after 5 s a
+  "Show Terminal" button (Claude may be asking something chat can't show), and the Mode and Model
+  menus stay disabled: their Shift-Tab or `/model` would land in the terminal question.
+  Messages sent meanwhile queue (`canSendNow` needs a state).
 - An unreadable or missing `~/.claude.json` counts as trusted: no card is better than a wrong one.
 - Return and Esc in an empty chat box answer ordinary permissions but never this one.

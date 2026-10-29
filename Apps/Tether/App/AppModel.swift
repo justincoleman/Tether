@@ -981,9 +981,10 @@ final class AppModel {
     }
 
     /// Claude only runs hooks and draws its status line once it is past the
-    /// trust question.
-    private func claudeHasStarted(_ paneId: PaneID) -> Bool {
-        paneStates[paneId] != nil || paneStatus[paneId] != nil
+    /// trust question. Until then nothing typed in chat can reach it.
+    func claudeHasStarted(_ paneId: PaneID) -> Bool {
+        hookServer == nil || paneStates[paneId] != nil || paneStatus[paneId] != nil
+            || panes[paneId]?.hasExited == true
     }
 
     /// Claude started, so the folder question was answered in the terminal.

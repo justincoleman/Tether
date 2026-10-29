@@ -2,11 +2,15 @@
   {
     "version": "0.20.5",
     "date": "2026-10-29",
-    "summary": "Tether 0.20.5 stops a false \"trust this folder\" alert.",
+    "summary": "Tether 0.20.5 makes it clear when a new Claude tab is waiting on the terminal.",
     "highlights": [
       {
-        "title": "No more stray folder-trust alerts.",
-        "body": "A new Claude tab that was just slow to start could be mistaken for one waiting on \"Do you trust the files in this folder?\", and the alert stayed on your phone after Claude was running. Tether now waits a little longer before alerting your phone, and clears the alert as soon as Claude shows its status line."
+        "title": "Chat tells you when Claude hasn't started.",
+        "body": "In a folder Claude hasn't opened before, it asks whether to trust the files before it starts, and messages you send wait until then. The chat now says when Claude hasn't started yet, with a button to show the terminal, and Mode and Model stay disabled until Claude is running so they can't press keys into that question."
+      },
+      {
+        "title": "Fewer stray folder-trust alerts.",
+        "body": "Your phone is alerted about the trust question only once it has waited a few seconds, and the alert clears as soon as Claude is running."
       }
     ]
   },
