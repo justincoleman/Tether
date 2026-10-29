@@ -9,7 +9,6 @@ struct RemoteMacsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     @State private var selection: RemoteSelection?
-    @State private var showingPair = false
 
     var body: some View {
         let remote = model.remote
@@ -30,17 +29,9 @@ struct RemoteMacsView: View {
                     } description: {
                         Text("Pair another Mac running Tether to follow its Claude tabs from here.")
                     } actions: {
-                        Button("Pair a Mac…") { showingPair = true }
+                        SettingsLink { Text("Pair a Mac in Settings…") }
                     }
                 }
-            }
-            .safeAreaInset(edge: .bottom) {
-                Button { showingPair = true } label: {
-                    Label("Pair a Mac…", systemImage: "plus")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.borderless)
-                .padding(10)
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 260)
         } detail: {
@@ -52,9 +43,8 @@ struct RemoteMacsView: View {
             }
         }
         .background(theme.window)
-        .sheet(isPresented: $showingPair) { PairMacSheet() }
-        .onAppear { remote.connectAll() }
-        .onDisappear { remote.disconnectAll() }
+        .onAppear { remote.retain() }
+        .onDisappear { remote.release() }
     }
 
     @ViewBuilder
@@ -105,7 +95,7 @@ private struct MacHeader: View {
         .confirmationDialog("Forget \(connection.mac.name)?", isPresented: $confirmRemove) {
             Button("Forget", role: .destructive, action: remove)
         } message: {
-            Text("To pair again, copy a new link from its Settings. To revoke this Mac there too, remove it from its paired devices.")
+            Text("To pair again, copy a new link from its Settings → iPhone tab. To revoke this Mac there too, remove it from its paired devices.")
         }
     }
 
@@ -310,73 +300,5 @@ private struct PermissionBar: View {
         }
         .padding(12)
         .background(theme.elevated)
-    }
-}
-
-/// Paste the link the other Mac shows under its pairing QR code.
-private struct PairMacSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.theme) private var theme
-    @State private var link = ""
-    @State private var error: String?
-    @State private var startCount = 0
-
-    var body: some View {
-        let remote = model.remote
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Pair a Mac").font(.title2.bold())
-            Text("On the other Mac, open Tether → Settings → iPhone, click Pair iPhone or Mac…, then Copy Link, and paste it here. Both Macs need Tailscale on the same tailnet. The link expires after a few minutes.")
-                .foregroundStyle(theme.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            TextField("tether://pair?…", text: $link)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(start)
-            if let error {
-                Text(error).foregroundStyle(theme.red).font(.callout)
-            } else if let pairing = remote.pairing {
-                HStack(spacing: 6) {
-                    switch pairing.status {
-                    case .rejected(let reason):
-                        Text(reason).foregroundStyle(theme.red)
-                    case .offline(let reason):
-                        Text("Couldn't reach \(pairing.mac.name): \(reason)").foregroundStyle(theme.red)
-                    case .updateNeeded:
-                        Text("Update Tether on both Macs to the same version.").foregroundStyle(theme.red)
-                    case .connecting, .online:
-                        ProgressView().controlSize(.small)
-                        Text("Pairing with \(pairing.mac.name)…")
-                    }
-                }
-                .font(.callout)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    remote.cancelPairing()
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-                Button("Pair", action: start)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(link.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(20)
-        .frame(width: 440)
-        .onAppear {
-            startCount = remote.pairedCount
-            // Prefill from the clipboard when it holds a pairing link.
-            if let text = NSPasteboard.general.string(forType: .string), text.hasPrefix("tether://pair") {
-                link = text
-            }
-        }
-        .onChange(of: remote.pairedCount) {
-            if remote.pairedCount > startCount { dismiss() }
-        }
-    }
-
-    private func start() {
-        error = model.remote.pair(text: link, ownName: model.companion.macName)
     }
 }

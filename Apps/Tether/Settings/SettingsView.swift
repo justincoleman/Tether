@@ -8,8 +8,10 @@ struct SettingsView: View {
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
             PhoneSettings()
                 .tabItem { Label("iPhone", systemImage: "iphone") }
+            MacsSettings()
+                .tabItem { Label("Macs", systemImage: "desktopcomputer") }
             RemoteHostsSettings()
-                .tabItem { Label("Remote Hosts", systemImage: "network") }
+                .tabItem { Label("SSH Hosts", systemImage: "terminal") }
             UpdatesSettings()
                 .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
@@ -58,7 +60,8 @@ struct AppearanceSettings: View {
     }
 }
 
-/// SSH targets offered in the + menu, e.g. the always-on Mac mini.
+/// SSH targets offered in the + menu, e.g. the always-on Mac mini. Not for
+/// pairing another Mac: that is Settings → Macs.
 struct RemoteHostsSettings: View {
     @Environment(AppModel.self) private var model
     @State private var draft = RemoteHost(name: "", host: "", user: nil)
@@ -80,6 +83,11 @@ struct RemoteHostsSettings: View {
                     }
                 }
             }
+            if draft.name.hasPrefix("tether://") || draft.host.hasPrefix("tether://") || (draft.user ?? "").hasPrefix("tether://") {
+                Label("That's a pairing link, not an SSH host. Paste it in Settings → Macs.",
+                      systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            }
             GroupBox("Add host") {
                 HStack {
                     TextField("Name", text: $draft.name)
@@ -92,7 +100,7 @@ struct RemoteHostsSettings: View {
                         draft = RemoteHost(name: "", host: "", user: nil)
                         Task { await model.addRemoteHost(host) }
                     }
-                    .disabled(draft.name.isEmpty || draft.host.isEmpty)
+                    .disabled(draft.name.isEmpty || draft.host.isEmpty || draft.host.hasPrefix("tether://"))
                 }
             }
         }

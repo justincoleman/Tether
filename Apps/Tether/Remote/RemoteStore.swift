@@ -13,6 +13,10 @@ final class RemoteStore {
     private(set) var pairing: MacConnection?
     /// Bumped on each successful pairing, so the sheet can close.
     private(set) var pairedCount = 0
+    /// Name of the Mac the last pairing succeeded with, until the next attempt.
+    private(set) var lastPairedName: String?
+    /// Views that need the connections up; they drop when the last one leaves.
+    @ObservationIgnored private var holds = 0
 
     init() {
         connections = MacKeychain.load().map(MacConnection.init(mac:))
@@ -22,8 +26,15 @@ final class RemoteStore {
         connections.first { $0.id == macId }
     }
 
-    func connectAll() { connections.forEach { $0.connect() } }
-    func disconnectAll() { connections.forEach { $0.disconnect() } }
+    func retain() {
+        holds += 1
+        connections.forEach { $0.connect() }
+    }
+
+    func release() {
+        holds = max(0, holds - 1)
+        if holds == 0 { connections.forEach { $0.disconnect() } }
+    }
 
     /// Starts pairing from the link the other Mac shows under its QR code.
     /// Returns what's wrong with the text, or nil once pairing has started.
@@ -36,6 +47,7 @@ final class RemoteStore {
             return "That link is for this Mac. Copy it from the other Mac's settings."
         }
         pairing?.disconnect()
+        lastPairedName = nil
         let connection = MacConnection(pairing: link)
         connection.onPaired = { [weak self, weak connection] mac in
             guard let self, let connection else { return }
@@ -69,6 +81,7 @@ final class RemoteStore {
         let connection = MacConnection(mac: mac)
         connections.append(connection)
         pairedCount += 1
+        lastPairedName = mac.name
         persist()
         connection.connect()
     }

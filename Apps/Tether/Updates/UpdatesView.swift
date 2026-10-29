@@ -24,6 +24,8 @@ struct UpdatesSettings: View {
                     }
                 }
                 .padding(.vertical, 4)
+                Link("Open source licenses",
+                     destination: URL(string: "https://github.com/justincoleman/Tether/blob/HEAD/THIRD_PARTY_NOTICES.md")!)
             }
             if updater.canInstall {
                 Section {
