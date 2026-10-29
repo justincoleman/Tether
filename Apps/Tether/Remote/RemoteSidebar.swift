@@ -20,9 +20,13 @@ struct MacChips: View {
                          selected: remote.selectedMacId == connection.id) {
                         remote.selectedMacId = connection.id
                         remote.selectedPaneId = nil
+                        remote.selectedProjectId = nil
                     }
                 }
-                Button { openSettings() } label: {
+                Button {
+                    UserDefaults.standard.set("macs", forKey: "settingsTab")
+                    openSettings()
+                } label: {
                     Image(systemName: "plus")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(theme.secondaryText)
@@ -175,7 +179,8 @@ private struct RemoteProjectRow: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                if let first { remote.selectedPaneId = first.id }
+                remote.selectedProjectId = project.id
+                remote.selectedPaneId = first?.id
             }
             .onHover { hovering = $0 }
             .contextMenu {
@@ -197,45 +202,158 @@ private struct RemoteProjectRow: View {
                     .padding(.trailing, 10)
                     .padding(.vertical, 3)
                     .contentShape(Rectangle())
-                    .onTapGesture { remote.selectedPaneId = session.id }
+                    .onTapGesture {
+                        remote.selectedProjectId = project.id
+                        remote.selectedPaneId = session.id
+                    }
                 }
             }
         }
     }
 }
 
-/// The main area while a paired Mac is selected: the chosen Claude tab's
-/// conversation, with permissions and a message box.
+/// The main area while a paired Mac is selected. Laid out like a local
+/// project: a strip of that project's Claude tabs with the same buttons, over
+/// the chat card. The terminal itself stays on the other Mac.
 struct RemoteDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     let connection: MacConnection
     @Binding var showSidebar: Bool
+    @State private var showNewTab = false
+    @State private var starting = false
+
+    private var sessions: [SessionSummary] { connection.snapshot?.sessions ?? [] }
+
+    /// The project the strip shows: the picked one, else the selected tab's.
+    private var projectId: ProjectID? {
+        model.remote.selectedProjectId
+            ?? sessions.first { $0.id == model.remote.selectedPaneId }?.projectId
+    }
 
     var body: some View {
         let paneId = model.remote.selectedPaneId
+        let tabs = sessions.filter { $0.projectId == projectId }
         VStack(spacing: 0) {
-            HStack {
-                if !showSidebar {
-                    ChromeButton(systemImage: "sidebar.left", help: "Show sidebar (⌃⌘S)") { showSidebar = true }
-                }
-                Spacer()
-            }
-            .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
-            .frame(height: ChromeMetrics.headerHeight)
+            header(tabs: tabs)
             Group {
-                if let paneId {
-                    RemoteSessionView(connection: connection, paneId: paneId)
+                if let paneId, sessions.contains(where: { $0.id == paneId }) {
+                    RemoteSessionView(connection: connection, paneId: paneId, showsHeader: false)
                         .id(paneId)
                 } else {
-                    ContentUnavailableView("Pick a Claude tab", systemImage: "bubble.left.and.bubble.right",
-                                           description: Text("Choose a project on \(connection.mac.name) in the sidebar."))
+                    ContentUnavailableView(tabs.isEmpty && projectId != nil ? "No Claude tab" : "Pick a Claude tab",
+                                           systemImage: "bubble.left.and.bubble.right",
+                                           description: Text(projectId != nil
+                                               ? "Start one with the Claude button."
+                                               : "Choose a project on \(connection.mac.name) in the sidebar."))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(theme.surface, in: RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius))
+            .overlay(RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius)
+                .strokeBorder(theme.border.opacity(0.6), lineWidth: 0.5))
             .padding(.bottom, 8)
         }
+        .sheet(isPresented: $showNewTab) {
+            NewRemoteTabSheet(connection: connection, projectId: projectId)
+        }
+    }
+
+    private func header(tabs: [SessionSummary]) -> some View {
+        let online = connection.status == .online
+        let canStart = online && projectId != nil && !starting
+        return HStack(spacing: 4) {
+            if !showSidebar {
+                ChromeButton(systemImage: "sidebar.left", help: "Show sidebar (⌃⌘S)") { showSidebar = true }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 2) {
+                    ForEach(tabs) { session in
+                        RemoteTabButton(session: session, selected: session.id == model.remote.selectedPaneId) {
+                            model.remote.selectedPaneId = session.id
+                        } close: {
+                            connection.closeSession(paneId: session.id)
+                            if model.remote.selectedPaneId == session.id { model.remote.selectedPaneId = nil }
+                        }
+                    }
+                }
+            }
+            Spacer(minLength: 8)
+            ViewModeToggle(showChat: .constant(true), chatAvailable: true, terminalAvailable: false)
+                .padding(.trailing, 4)
+            ToolbarPill(title: "Claude", systemImage: "sparkles", iconColor: theme.claude,
+                        help: "New Claude tab on \(connection.mac.name)") { startClaude() }
+                .disabled(!canStart)
+            ToolbarPill(title: "History", systemImage: "clock.arrow.circlepath",
+                        help: "Past sessions aren't available for other Macs yet") {}
+                .disabled(true)
+            Menu {
+                Button("Claude") { startClaude() }
+                Button("Agent on a Branch…") { showNewTab = true }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.secondaryText)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .frame(width: 28, height: 28)
+            .disabled(!canStart)
+            .help("New tab on \(connection.mac.name)")
+            ChromeButton(systemImage: "sidebar.right", active: false,
+                         help: "Changes and files aren't available for other Macs yet") {}
+                .disabled(true)
+        }
+        .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
+        .frame(height: ChromeMetrics.headerHeight)
+    }
+
+    private func startClaude() {
+        guard let projectId else { return }
+        starting = true
+        Task {
+            if case .started(let paneId) = await connection.startSession(
+                projectId: projectId, branch: nil, prompt: "", permissionMode: nil) {
+                model.remote.selectedPaneId = paneId
+            }
+            starting = false
+        }
+    }
+}
+
+/// One of a paired Mac's Claude tabs, drawn like a local tab.
+private struct RemoteTabButton: View {
+    @Environment(\.theme) private var theme
+    let session: SessionSummary
+    let selected: Bool
+    let select: () -> Void
+    let close: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles")
+                .font(.caption)
+                .foregroundStyle(theme.claude)
+            Text(session.title)
+                .font(.callout.weight(selected ? .medium : .regular))
+                .foregroundStyle(selected ? theme.text : theme.secondaryText)
+                .lineLimit(1)
+            StatusBadge(state: session.state).scaleEffect(0.75)
+            Button(action: close) {
+                Image(systemName: "xmark").font(.caption2)
+            }
+            .buttonStyle(.plain)
+            .opacity(hovering || selected ? 1 : 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(selected ? theme.elevated : hovering ? theme.hover : .clear, in: Capsule())
+        .contentShape(Rectangle())
+        .onTapGesture(perform: select)
+        .onHover { hovering = $0 }
+        .contextMenu { Button("Close Tab", action: close) }
     }
 }
 
@@ -310,6 +428,7 @@ struct NewRemoteTabSheet: View {
             switch await connection.startSession(projectId: projectId, branch: branchName, prompt: prompt,
                                                  permissionMode: nil) {
             case .started(let paneId):
+                model.remote.selectedProjectId = projectId
                 model.remote.selectedPaneId = paneId
                 dismiss()
             case .failed(let message):

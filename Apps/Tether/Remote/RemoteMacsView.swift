@@ -145,11 +145,14 @@ struct RemoteSessionView: View {
     @Environment(\.theme) private var theme
     let connection: MacConnection
     let paneId: PaneID
+    /// The Remote Macs window has no tab strip above it, so it draws its own.
+    let showsHeader: Bool
     @State private var text = ""
 
-    init(connection: MacConnection, paneId: PaneID) {
+    init(connection: MacConnection, paneId: PaneID, showsHeader: Bool = true) {
         self.connection = connection
         self.paneId = paneId
+        self.showsHeader = showsHeader
     }
 
     private var session: SessionSummary? {
@@ -164,8 +167,10 @@ struct RemoteSessionView: View {
         let sessionId = session?.sessionId
         let transcript = sessionId.flatMap { connection.transcripts[$0] }
         VStack(spacing: 0) {
-            header
-            Divider()
+            if showsHeader {
+                header
+                Divider()
+            }
             if let transcript, !transcript.items.isEmpty {
                 ScrollViewReader { proxy in
                     ScrollView {

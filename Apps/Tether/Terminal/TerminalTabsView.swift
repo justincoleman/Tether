@@ -349,14 +349,18 @@ extension TabStrip {
 }
 
 /// Terminal or chat for the selected Claude tab, as two icon segments.
-private struct ViewModeToggle: View {
+struct ViewModeToggle: View {
     @Environment(\.theme) private var theme
     @Binding var showChat: Bool
     let chatAvailable: Bool
+    /// Another Mac's tabs have no terminal to show, only the chat.
+    var terminalAvailable = true
 
     var body: some View {
         HStack(spacing: 2) {
-            segment(chat: false, systemImage: "apple.terminal", help: "Terminal (⇧⌘M)")
+            segment(chat: false, systemImage: "apple.terminal",
+                    help: terminalAvailable ? "Terminal (⇧⌘M)" : "Terminals stay on the other Mac")
+                .disabled(!terminalAvailable)
             segment(chat: true, systemImage: "bubble.left.and.text.bubble.right",
                     help: chatAvailable ? "Chat (⇧⌘M)" : "Chat is for Claude tabs")
                 .disabled(!chatAvailable)
@@ -367,7 +371,7 @@ private struct ViewModeToggle: View {
 
     private func segment(chat: Bool, systemImage: String, help: String) -> some View {
         // A shell tab always shows its terminal, whatever the setting.
-        let selected = chat == (showChat && chatAvailable)
+        let selected = chat == ((showChat || !terminalAvailable) && chatAvailable)
         return Button { showChat = chat } label: {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .medium))

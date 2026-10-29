@@ -19,6 +19,8 @@ final class RemoteStore {
     var selectedMacId: UUID?
     /// The Claude tab open in the main area while a paired Mac is selected.
     var selectedPaneId: PaneID?
+    /// The project whose tabs the header shows; follows the selected tab.
+    var selectedProjectId: ProjectID?
     /// Views that need the connections up; they drop when the last one leaves.
     @ObservationIgnored private var holds = 0
 
@@ -77,6 +79,7 @@ final class RemoteStore {
         if selectedMacId == macId {
             selectedMacId = nil
             selectedPaneId = nil
+            selectedProjectId = nil
         }
         persist()
     }
