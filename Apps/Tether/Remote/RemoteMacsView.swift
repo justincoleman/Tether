@@ -169,8 +169,10 @@ struct RemoteSessionView: View {
         VStack(spacing: 0) {
             if showsHeader {
                 header
-                Divider()
+            } else {
+                chatHeader(transcript)
             }
+            Divider()
             if let transcript, !transcript.items.isEmpty {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -211,6 +213,29 @@ struct RemoteSessionView: View {
             connection.subscribe(sessionId)
         }
         .onDisappear { if let sessionId { connection.unsubscribe(sessionId) } }
+    }
+
+    /// The strip above a chat on this Mac: its title, state and context use.
+    private func chatHeader(_ transcript: TranscriptModel?) -> some View {
+        HStack(spacing: 8) {
+            Text("Chat").font(.headline)
+            if let session { StatusBadge(state: session.state) }
+            Spacer()
+            if let status = session?.status {
+                let parts = [status.modelName, status.costUSD.map { $0.formatted(.currency(code: "USD")) }]
+                    .compactMap { $0 }
+                if !parts.isEmpty {
+                    Text(parts.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(theme.secondaryText)
+                }
+            }
+            if let usage = transcript?.usage {
+                ContextMeter(usage: usage.reported(window: session?.status?.contextWindow))
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 36)
     }
 
     private var header: some View {

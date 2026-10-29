@@ -299,6 +299,33 @@ final class CompanionHub {
                     client.send(.fileDiff(requestId: requestId, diff: nil, error: error.message))
                 }
             }
+        case .requestFileList(let requestId, let paneId):
+            Task {
+                switch await model.fileListForPhone(paneId: paneId) {
+                case .success(let paths):
+                    client.send(.fileList(requestId: requestId, paths: paths, error: nil))
+                case .failure(let error):
+                    client.send(.fileList(requestId: requestId, paths: nil, error: error.message))
+                }
+            }
+        case .requestFile(let requestId, let paneId, let path):
+            Task {
+                switch await model.fileForPhone(paneId: paneId, path: path) {
+                case .success(let file):
+                    client.send(.fileContent(requestId: requestId, file: file, error: nil))
+                case .failure(let error):
+                    client.send(.fileContent(requestId: requestId, file: nil, error: error.message))
+                }
+            }
+        case .requestDevServers(let requestId, let paneId):
+            Task {
+                switch await model.devServersForPhone(paneId: paneId) {
+                case .success(let servers):
+                    client.send(.devServers(requestId: requestId, servers: servers, error: nil))
+                case .failure(let error):
+                    client.send(.devServers(requestId: requestId, servers: nil, error: error.message))
+                }
+            }
         case .requestHistory(let requestId, let projectId):
             Task {
                 let sessions = await model.pastSessions(for: projectId).map {

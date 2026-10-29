@@ -1221,6 +1221,51 @@ extension AppModel {
         }
     }
 
+    func fileListForPhone(paneId: PaneID) async -> Result<[String], PhoneRequestError> {
+        guard let path = changesPath(forPane: paneId) else {
+            return .failure(PhoneRequestError(message: "That tab is no longer open."))
+        }
+        do {
+            return .success(try await FileTree.list(in: path))
+        } catch {
+            return .failure(PhoneRequestError(message: "\(error)"))
+        }
+    }
+
+    func fileForPhone(paneId: PaneID, path relative: String) async -> Result<RemoteFile, PhoneRequestError> {
+        guard let root = changesPath(forPane: paneId) else {
+            return .failure(PhoneRequestError(message: "That tab is no longer open."))
+        }
+        // Only files the Mac itself lists, so a paired device can't ask for arbitrary paths.
+        guard let listed = try? await FileTree.list(in: root), listed.contains(relative) else {
+            return .failure(PhoneRequestError(message: "\(relative) isn't in this project's files."))
+        }
+        let url = URL(fileURLWithPath: root).appendingPathComponent(relative)
+        let content = await Task.detached(priority: .userInitiated) { FileContent.load(url) }.value
+        switch content {
+        case .text(let lines, let truncated):
+            return .success(RemoteFile(path: relative, kind: .text, text: lines.joined(separator: "\n"),
+                                       truncated: truncated))
+        case .image(let data):
+            return .success(RemoteFile(path: relative, kind: .image, image: data))
+        case .binary:
+            return .success(RemoteFile(path: relative, kind: .binary))
+        case .unreadable(let reason):
+            return .success(RemoteFile(path: relative, kind: .unreadable, note: reason))
+        }
+    }
+
+    func devServersForPhone(paneId: PaneID) async -> Result<[DevServerInfo], PhoneRequestError> {
+        guard let path = changesPath(forPane: paneId) else {
+            return .failure(PhoneRequestError(message: "That tab is no longer open."))
+        }
+        let found = await DevServerFinder.scan(folders: preview.folders())
+        let servers = (found[DevServerFinder.key(for: path)] ?? []).map {
+            DevServerInfo(port: $0.port, command: $0.command)
+        }
+        return .success(servers)
+    }
+
     /// Saves a photo from the phone and sends Claude its path with the text.
     func sendImage(_ data: Data, text: String, toPane paneId: PaneID) -> SendOutcome {
         guard claudeTabs.contains(where: { $0.pane.id == paneId }) else { return .failed }

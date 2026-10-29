@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.10.8",
+    "date": "2026-10-29",
+    "summary": "Tether 0.10.8 adds Files and Preview for a paired Mac.",
+    "highlights": [
+      {
+        "title": "Files and Preview on another Mac.",
+        "body": "The right sidebar for a paired Mac now has Changes, Files and Preview, like this Mac's. Files browses the tab's folder there; Preview opens a dev server running there, as long as it listens beyond localhost (for example, started with --host). Update both Macs."
+      },
+      {
+        "title": "Context and cost on a paired Mac's chat.",
+        "body": "The chat strip shows the tab's state, model, cost and how much context it has used, like the origin Mac."
+      }
+    ]
+  },
+  {
     "version": "0.10.7",
     "date": "2026-10-29",
     "summary": "Tether 0.10.7 tucks Mac connection problems out of the way.",

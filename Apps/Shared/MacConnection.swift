@@ -200,6 +200,31 @@ final class MacConnection: Identifiable {
         }
     }
 
+    /// Relative paths of the tab's worktree, as the Mac's Files panel lists them.
+    func fileList(for paneId: PaneID) async -> Result<[String], ReplyError> {
+        switch await request({ PhoneMessage.requestFileList(requestId: $0, paneId: paneId) }) {
+        case .fileList(_, let paths?, _)?: return .success(paths)
+        case .fileList(_, nil, let error)?: return .failure(ReplyError(message: error ?? "No files."))
+        default: return .failure(ReplyError(message: "\(mac.name) didn't answer."))
+        }
+    }
+
+    func file(_ path: String, in paneId: PaneID) async -> Result<RemoteFile, ReplyError> {
+        switch await request({ PhoneMessage.requestFile(requestId: $0, paneId: paneId, path: path) }) {
+        case .fileContent(_, let file?, _)?: return .success(file)
+        case .fileContent(_, nil, let error)?: return .failure(ReplyError(message: error ?? "No file."))
+        default: return .failure(ReplyError(message: "\(mac.name) didn't answer."))
+        }
+    }
+
+    func devServers(for paneId: PaneID) async -> Result<[DevServerInfo], ReplyError> {
+        switch await request({ PhoneMessage.requestDevServers(requestId: $0, paneId: paneId) }) {
+        case .devServers(_, let servers?, _)?: return .success(servers)
+        case .devServers(_, nil, let error)?: return .failure(ReplyError(message: error ?? "No servers."))
+        default: return .failure(ReplyError(message: "\(mac.name) didn't answer."))
+        }
+    }
+
     struct ReplyError: Error {
         var message: String
     }
@@ -308,7 +333,8 @@ final class MacConnection: Identifiable {
             sendResults[paneId] = outcome
         case .startResult(let requestId, let paneId, let error):
             finishStart(requestId, paneId.map(StartOutcome.started) ?? .failed(error ?? "The Mac couldn't start it."))
-        case .changes(let requestId, _, _), .fileDiff(let requestId, _, _), .history(let requestId, _, _):
+        case .changes(let requestId, _, _), .fileDiff(let requestId, _, _), .history(let requestId, _, _),
+             .fileList(let requestId, _, _), .fileContent(let requestId, _, _), .devServers(let requestId, _, _):
             finishReply(requestId, message)
         case .error(let message):
             print("Mac says: \(message)")

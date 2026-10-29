@@ -130,6 +130,30 @@ import TetherProtocol
         #expect(id == "abc")
     }
 
+    @Test func filesAndDevServersRoundTrip() throws {
+        let request = UUID()
+        let file = RemoteFile(path: "a/b.swift", kind: .text, text: "let x = 1\n", truncated: false)
+        let data = try WireCodec.encoder().encode(MacMessage.fileContent(requestId: request, file: file, error: nil))
+        guard case .fileContent(request, let decoded?, nil) = try WireCodec.decoder().decode(MacMessage.self, from: data) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(decoded == file)
+
+        let servers = [DevServerInfo(port: 5173, command: "node")]
+        let serverData = try WireCodec.encoder().encode(MacMessage.devServers(requestId: request, servers: servers, error: nil))
+        guard case .devServers(_, let decodedServers?, nil) = try WireCodec.decoder().decode(MacMessage.self, from: serverData) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(decodedServers == servers)
+
+        let ask = PhoneMessage.requestFile(requestId: request, paneId: UUID(), path: "a/b.swift")
+        guard case .requestFile(_, _, let path) = try WireCodec.decoder().decode(
+            PhoneMessage.self, from: try WireCodec.encoder().encode(ask)) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(path == "a/b.swift")
+    }
+
     @Test func imagesTravelAsBase64() throws {
         let image = Data([0xFF, 0xD8, 0xFF, 0x00, 0x01])
         let data = try WireCodec.encoder().encode(PhoneMessage.sendImage(paneId: UUID(), image: image, text: "this"))
