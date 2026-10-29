@@ -205,7 +205,7 @@ private struct WaitingPermission: Identifiable {
     var id: UUID { request.id }
 
     /// "Tether · Claude": the project and tab that asked.
-    var context: String? {
+    @MainActor var context: String? {
         guard let snapshot = connection.snapshot, let pane = request.paneId,
               let session = snapshot.sessions.first(where: { $0.id == pane }) else { return nil }
         let project = snapshot.projects.first { $0.id == session.projectId }?.name

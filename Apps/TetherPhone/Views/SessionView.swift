@@ -197,7 +197,9 @@ struct SessionView: View {
     }
 
     private var compose: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // A local copy: the photo picker's label is a Sendable closure.
+        let theme = self.theme
+        return VStack(alignment: .leading, spacing: 4) {
             if let note = composeNote {
                 Text(note)
                     .font(.caption)
