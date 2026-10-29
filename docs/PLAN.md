@@ -452,6 +452,14 @@ sent together, and the send queue is in memory only, not persisted.*
   per-project shortcuts (`QuickAction`, stored in state.json, never in the
   project folder) that run in a `PaneKind.command` tab. Shortcut tabs are not
   persisted, so a relaunch doesn't start dev servers on its own.
+- Preview (0.9.0): a third inspector tab with a WKWebView on the selected
+  folder's dev server. `DevServerFinder` (TetherCore, tested against lsof
+  output) runs `lsof -iTCP -sTCP:LISTEN` and then `lsof -d cwd` every 4 s
+  while the panel is open, and credits each listener to the deepest
+  project or worktree folder containing its working directory. Claude
+  Code's own listener and Tether are skipped. Nothing is configured or
+  written to the project; a typed address or picked port lasts until
+  relaunch. The web view uses a non-persistent data store.
 - Notes: a `theme = light:X,dark:Y` side is picked at launch only; named X11
   colors in the config fall back to Ghostty defaults for the chrome.
 

@@ -312,7 +312,7 @@ private struct TabStrip: View {
             .frame(width: 28, height: 28)
             .help("New tab or shortcut")
             ChromeButton(systemImage: "sidebar.right", active: model.showInspector,
-                         help: "Changes and files (⇧⌘D, ⇧⌘E)") { model.toggleInspector() }
+                         help: "Changes, files and preview (⇧⌘D, ⇧⌘E, ⇧⌘P)") { model.toggleInspector() }
         }
         .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
         .frame(height: ChromeMetrics.headerHeight)
