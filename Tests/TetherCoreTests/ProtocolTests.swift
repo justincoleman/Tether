@@ -78,6 +78,47 @@ import TetherProtocol
         #expect(text == "ship it")
     }
 
+    @Test func changesAndDiffsRoundTrip() throws {
+        let request = UUID()
+        let file = ChangedFile(path: "a.swift", kind: .modified, additions: 1, deletions: 0)
+        let snapshot = ChangesSnapshot(branch: "feature", commitShort: "abc1234", upstream: nil, ahead: 1, behind: 0,
+                                       baseRef: "origin/main", mergeBase: "abc", files: [file], commits: [])
+        let data = try WireCodec.encoder().encode(MacMessage.changes(requestId: request, snapshot: snapshot, error: nil))
+        guard case .changes(let id, let decoded?, nil) = try WireCodec.decoder().decode(MacMessage.self, from: data) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(id == request)
+        #expect(decoded.sameContent(as: snapshot))
+
+        let diff = FileDiff(path: "a.swift", hunks: [DiffHunk(header: "@@ -1 +1,2 @@", oldStart: 1, oldCount: 1,
+                                                             newStart: 1, newCount: 2, lines: [
+            DiffLine(kind: .context, oldNumber: 1, newNumber: 1, text: "x"),
+            DiffLine(kind: .add, oldNumber: nil, newNumber: 2, text: "y"),
+        ])])
+        let diffData = try WireCodec.encoder().encode(MacMessage.fileDiff(requestId: request, diff: diff, error: nil))
+        guard case .fileDiff(_, let decodedDiff?, nil) = try WireCodec.decoder().decode(MacMessage.self, from: diffData) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(decodedDiff == diff)
+
+        let ask = PhoneMessage.requestDiff(requestId: request, paneId: UUID(), file: file)
+        guard case .requestDiff(_, _, let askedFile) = try WireCodec.decoder().decode(
+            PhoneMessage.self, from: try WireCodec.encoder().encode(ask)) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(askedFile == file)
+    }
+
+    @Test func imagesTravelAsBase64() throws {
+        let image = Data([0xFF, 0xD8, 0xFF, 0x00, 0x01])
+        let data = try WireCodec.encoder().encode(PhoneMessage.sendImage(paneId: UUID(), image: image, text: "this"))
+        guard case .sendImage(_, let decoded, let text) = try WireCodec.decoder().decode(PhoneMessage.self, from: data) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(decoded == image)
+        #expect(text == "this")
+    }
+
     @Test func hookPayloadDecodesSnakeCase() throws {
         let json = """
         {"session_id":"abc","cwd":"/x","transcript_path":"/x/t.jsonl",

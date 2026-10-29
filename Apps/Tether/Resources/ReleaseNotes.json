@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.8.0",
+    "date": "2026-10-29",
+    "summary": "Tether 0.8.0 lets the iPhone app show a tab's changes and send Claude a photo. Update both the Mac and iPhone apps.",
+    "highlights": [
+      {
+        "title": "Changes on iPhone.",
+        "body": "In a session on your iPhone, the ··· menu has Changes: the same files and line counts as the Mac's Changes panel. Tap a file to read its diff."
+      },
+      {
+        "title": "Photos for Claude.",
+        "body": "The photo button next to the iPhone's message box attaches a picture, with an optional note. The Mac saves it and tells Claude where it is, so you can send a screenshot of a bug or a sketch of a layout."
+      }
+    ]
+  },
+  {
     "version": "0.7.0",
     "date": "2026-10-29",
     "summary": "Tether 0.7.0 lets you stage and unstage files from the Changes panel, and shows how long each turn has been running.",
