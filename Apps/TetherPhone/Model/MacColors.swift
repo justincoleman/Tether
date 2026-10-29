@@ -57,10 +57,12 @@ struct PhoneTheme {
         background: Color(uiColor: .systemGroupedBackground),
         card: Color(uiColor: .secondarySystemGroupedBackground),
         elevated: Color(uiColor: .tertiarySystemFill),
-        border: Color(uiColor: .separator),
+        // Opaque: a list tints separators without the alpha, which turned
+        // the translucent `.separator` into near-black lines.
+        border: Color(uiColor: .opaqueSeparator),
         text: .primary,
-        secondaryText: .secondary,
-        tertiaryText: Color(uiColor: .tertiaryLabel))
+        secondaryText: Color(uiColor: .label).opacity(0.72),
+        tertiaryText: Color(uiColor: .secondaryLabel))
 
     /// The same steps as ChromePalette on the Mac: cards sit a step away from
     /// the terminal background, lighter on dark themes and darker on light.
@@ -75,8 +77,10 @@ struct PhoneTheme {
         elevated = card.mixed(with: fg, 0.09).color
         border = card.mixed(with: fg, 0.14).color
         text = fg.color
-        secondaryText = fg.mixed(with: bg, 0.4).color
-        tertiaryText = fg.mixed(with: bg, 0.62).color
+        // Closer to the text than the Mac's 0.4: phone type is read at arm's
+        // length, often outdoors.
+        secondaryText = fg.mixed(with: bg, 0.28).color
+        tertiaryText = fg.mixed(with: bg, 0.45).color
     }
 
     init(forcedDark: Bool?, background: Color, card: Color, elevated: Color, border: Color,
@@ -89,6 +93,15 @@ struct PhoneTheme {
         self.text = text
         self.secondaryText = secondaryText
         self.tertiaryText = tertiaryText
+    }
+}
+
+extension PhoneTheme {
+    /// What `.macColors` puts in the environment, for a view that needs the
+    /// colors in its own body.
+    static func resolved(_ mac: MacTheme?) -> PhoneTheme {
+        let enabled = UserDefaults.standard.object(forKey: "useMacColors") as? Bool ?? true
+        return (enabled ? mac.flatMap(PhoneTheme.init(mac:)) : nil) ?? .system
     }
 }
 
