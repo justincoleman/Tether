@@ -44,6 +44,10 @@ structural. Work proceeds in the numbered phases there.
   derived by `ChromePalette` from the Ghostty config, or system colors when
   Settings → Appearance says so. Never hard-code `Color.accentColor`, `.blue`,
   `textBackgroundColor` etc. for chrome.
+- The iPhone app's equivalent is `@Environment(\.phoneTheme)` (`PhoneTheme` in
+  `Apps/TetherPhone/Model/MacColors.swift`), set by `.macColors(_:)` from the Mac's
+  terminal colors. Shared phone pieces (status badge, mode chip, Needs-you card,
+  pill buttons) live in `Apps/TetherPhone/Views/PhoneChrome.swift`.
 
 ## Releases and What's New
 - Bumping `MARKETING_VERSION` in `Apps/project.yml` requires a new entry at the

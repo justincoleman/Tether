@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftUI
 import TetherProtocol
+import UIKit
 
 /// One Claude tab: its conversation, a compose box, and any permission it
 /// is waiting on.
@@ -20,6 +21,12 @@ struct SessionView: View {
     @Environment(\.dismiss) private var dismiss
     /// A tab started from the phone shows up in the next snapshot, a moment later.
     @State private var waitedForTab = false
+    @AppStorage("useMacColors") private var useMacColors = true
+
+    /// What `.macColors` puts in the environment, for this view's own controls.
+    private var theme: PhoneTheme {
+        (useMacColors ? connection.snapshot?.theme.flatMap(PhoneTheme.init(mac:)) : nil) ?? .system
+    }
 
     private var session: SessionSummary? {
         connection.snapshot?.sessions.first { $0.id == paneId }
@@ -58,6 +65,7 @@ struct SessionView: View {
                         .padding()
                     }
                     .defaultScrollAnchor(.bottom)
+                    .scrollDismissesKeyboard(.interactively)
                     .onChange(of: transcript.items.count) {
                         if let last = transcript.items.last {
                             withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -73,13 +81,10 @@ struct SessionView: View {
                     .frame(maxHeight: .infinity)
             }
             if let permission {
-                Button { answering = permission } label: {
-                    Label(permission.heading, systemImage: "hand.raised.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .padding(.horizontal)
-                .padding(.top, 8)
+                NeedsYouCard(connection: connection, request: permission) { answering = permission }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if session != nil {
                 compose
@@ -93,7 +98,7 @@ struct SessionView: View {
                     Text(project?.name ?? "Session").font(.headline)
                     if let session {
                         HStack(spacing: 4) {
-                            PhoneStatusBadge(state: session.state).frame(width: 14)
+                            PhoneStatusBadge(state: session.state, size: 14)
                             Text(session.statusNote ?? session.title)
                             if let mode = session.permissionMode {
                                 Text("· \(PermissionModeName.label(mode))")
@@ -103,7 +108,8 @@ struct SessionView: View {
                             }
                         }
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.secondaryText)
+                        .lineLimit(1)
                     }
                 }
             }
@@ -115,8 +121,9 @@ struct SessionView: View {
                         modelMenu
                         Button("Close Thread", systemImage: "xmark.circle", role: .destructive) { confirmClose = true }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "ellipsis")
                     }
+                    .accessibilityLabel("More")
                 }
             }
         }
@@ -190,9 +197,14 @@ struct SessionView: View {
     }
 
     private var compose: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // A local copy: the photo picker's label is a Sendable closure.
+        let theme = self.theme
+        return VStack(alignment: .leading, spacing: 4) {
             if let note = composeNote {
-                Text(note).font(.caption).foregroundStyle(.secondary)
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(theme.secondaryText)
+                    .padding(.horizontal, 4)
             }
             if let photo {
                 ZStack(alignment: .topTrailing) {
@@ -218,32 +230,53 @@ struct SessionView: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
-                    Image(systemName: "photo.badge.plus").font(.title2)
+                    Image(systemName: "plus")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(theme.secondaryText)
+                        .frame(width: 36, height: 36)
+                        .background(theme.card, in: Circle())
+                        .overlay(Circle().strokeBorder(theme.border.opacity(0.7)))
                 }
                 .disabled(connection.status != .online || session?.state == .detached)
-                .padding(.bottom, 6)
                 .accessibilityLabel("Attach a photo")
-                TextField(photo == nil ? "Message Claude" : "Add a note (optional)", text: $text, axis: .vertical)
-                    .lineLimit(1...6)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 18))
-                Button {
-                    if let photo {
-                        connection.sendImage(photo.jpeg, text: text, to: paneId)
-                    } else {
-                        connection.send(text, to: paneId)
+                HStack(alignment: .bottom, spacing: 4) {
+                    TextField(photo == nil ? "Message Claude" : "Add a note (optional)", text: $text, axis: .vertical)
+                        .lineLimit(1...6)
+                        .foregroundStyle(theme.text)
+                        .padding(.leading, 14)
+                        .padding(.vertical, 9)
+                    Button(action: send) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(canSend ? Color.white : theme.tertiaryText)
+                            .frame(width: 30, height: 30)
+                            .background(canSend ? theme.claude : theme.elevated, in: Circle())
                     }
-                    text = ""
-                    photo = nil
-                    photoItem = nil
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill").font(.title)
+                    .buttonStyle(.plain)
+                    .disabled(!canSend)
+                    .padding(3)
+                    .accessibilityLabel("Send")
+                    .animation(.easeOut(duration: 0.15), value: canSend)
                 }
-                .disabled(!canSend)
+                .background(theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(theme.border.opacity(0.7)))
             }
         }
-        .padding()
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+    }
+
+    private func send() {
+        if let photo {
+            connection.sendImage(photo.jpeg, text: text, to: paneId)
+        } else {
+            connection.send(text, to: paneId)
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        text = ""
+        photo = nil
+        photoItem = nil
     }
 
     private var canSend: Bool {
@@ -309,6 +342,7 @@ private struct PhotoReply: Sendable {
 /// "148k of 1M context · $1.24" with a ring, like the Mac's ContextMeter.
 /// Either half may be missing until the transcript or status line reports it.
 private struct PhoneContextMeter: View {
+    @Environment(\.phoneTheme) private var theme
     let usage: ContextUsage?
     let costUSD: Double?
 
@@ -317,31 +351,33 @@ private struct PhoneContextMeter: View {
             if let usage {
                 let fraction = Self.fraction(usage)
                 ZStack {
-                    Circle().stroke(.quaternary, lineWidth: 2.5)
+                    Circle().stroke(theme.elevated, lineWidth: 2.5)
                     Circle()
                         .trim(from: 0, to: fraction)
-                        .stroke(fraction > 0.85 ? Color.red : Color(red: 0.85, green: 0.47, blue: 0.34),
+                        .stroke(fraction > 0.85 ? theme.red : theme.claude,
                                 style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
                 .frame(width: 13, height: 13)
                 .accessibilityHidden(true)
                 Text("\(Self.short(usage.inputTokens)) of \(Self.short(usage.contextWindow))")
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.text)
                     .accessibilityLabel("\(Int(fraction * 100)) percent of context used")
-                Text("context").foregroundStyle(.secondary).accessibilityHidden(true)
+                Text("context").foregroundStyle(theme.secondaryText).accessibilityHidden(true)
             }
             if let costUSD {
-                if usage != nil { Text("·").foregroundStyle(.secondary).accessibilityHidden(true) }
+                if usage != nil { Text("·").foregroundStyle(theme.secondaryText).accessibilityHidden(true) }
                 Text(costUSD.formatted(.currency(code: "USD")))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
                     .accessibilityLabel("Cost \(costUSD.formatted(.currency(code: "USD")))")
             }
         }
-        .font(.footnote.monospacedDigit())
+        .font(.caption.monospacedDigit())
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(theme.card, in: Capsule())
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .background(.bar)
+        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
     }
 
@@ -355,30 +391,42 @@ private struct PhoneContextMeter: View {
 }
 
 private struct PhoneTranscriptItem: View {
+    @Environment(\.phoneTheme) private var theme
     let item: TranscriptItem
 
     var body: some View {
         switch item {
         case .user(_, let text, _):
             HStack {
-                Spacer(minLength: 40)
+                Spacer(minLength: 48)
                 Text(text)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
                     .foregroundStyle(.white)
-                    .background(Color(red: 0.85, green: 0.47, blue: 0.34), in: RoundedRectangle(cornerRadius: 16))
+                    .background(theme.claude, in: UnevenRoundedRectangle(
+                        topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 6,
+                        topTrailingRadius: 18, style: .continuous))
+                    .textSelection(.enabled)
             }
         case .assistant(_, let text, _):
             MarkdownView(text)
         case .steps(_, let steps):
             PhoneSteps(steps: steps)
         case .notice(_, let text, _):
-            Text(text).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(theme.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(theme.card, in: Capsule())
+                .frame(maxWidth: .infinity)
         }
     }
 }
 
 private struct PhoneSteps: View {
+    @Environment(\.phoneTheme) private var theme
     let steps: [ToolStep]
     @State private var expanded = false
 
@@ -392,16 +440,19 @@ private struct PhoneSteps: View {
             .padding(.top, 6)
         } label: {
             HStack(spacing: 6) {
-                Label("\(steps.count) step\(steps.count == 1 ? "" : "s")", systemImage: "hammer")
+                Image(systemName: "hammer").font(.caption.weight(.semibold))
+                Text("\(steps.count) step\(steps.count == 1 ? "" : "s")")
                 if steps.contains(where: { $0.isError && !$0.isStopped }) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.red)
                 }
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(theme.secondaryText)
         }
-        .padding(10)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+        .tint(theme.secondaryText)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -463,7 +514,18 @@ private struct PhoneStepRow: View {
 struct PermissionSheet: View {
     let connection: MacConnection
     let request: PermissionRequested
+
+    var body: some View {
+        PermissionSheetBody(connection: connection, request: request)
+            .macColors(connection.snapshot?.theme)
+    }
+}
+
+private struct PermissionSheetBody: View {
+    @Environment(\.phoneTheme) private var theme
     @Environment(\.dismiss) private var dismiss
+    let connection: MacConnection
+    let request: PermissionRequested
 
     var body: some View {
         if let question = request.question {
@@ -471,16 +533,13 @@ struct PermissionSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     QuestionOptionsView(question: question) { answer in
                         connection.answer(request.id, answer: answer)
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
                         dismiss()
                     }
-                    Button("Skip", role: .destructive) {
-                        connection.decide(request.id, allow: false)
-                        dismiss()
-                    }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
+                    Button("Skip") { decide(false) }
+                        .buttonStyle(PillButtonStyle(tint: theme.red))
                 }
-                .padding()
+                .padding(20)
             }
         } else {
             permissionBody
@@ -489,36 +548,53 @@ struct PermissionSheet: View {
 
     private var permissionBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label(request.heading, systemImage: "hand.raised.fill")
-                .font(.headline)
-            Text(request.toolName).font(.caption.monospaced()).foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: request.isFolderTrust ? "folder.badge.questionmark" : "hand.raised.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(theme.blue, in: Circle())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(request.heading)
+                        .font(.headline)
+                        .foregroundStyle(theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(request.toolName)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(theme.secondaryText)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(theme.elevated, in: Capsule())
+                }
+            }
             if !request.detail.isEmpty {
                 ScrollView {
                     Text(request.detail)
                         .font(.callout.monospaced())
+                        .foregroundStyle(theme.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
-                .padding(10)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+                .padding(12)
+                .background(theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(theme.border.opacity(0.6)))
             }
             Spacer(minLength: 0)
-            HStack {
-                Button(request.isFolderTrust ? "Don't Trust" : "Deny", role: .destructive) {
-                    connection.decide(request.id, allow: false)
-                    dismiss()
-                }
-                .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity)
-                Button(request.isFolderTrust ? "Trust Folder" : "Allow") {
-                    connection.decide(request.id, allow: true)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
+            HStack(spacing: 10) {
+                Button(request.isFolderTrust ? "Don't Trust" : "Deny") { decide(false) }
+                    .buttonStyle(PillButtonStyle(tint: theme.red))
+                Button(request.isFolderTrust ? "Trust Folder" : "Allow") { decide(true) }
+                    .buttonStyle(PillButtonStyle(prominent: true))
             }
             .controlSize(.large)
+            .disabled(connection.status != .online)
         }
-        .padding()
+        .padding(20)
+    }
+
+    private func decide(_ allow: Bool) {
+        UINotificationFeedbackGenerator().notificationOccurred(allow ? .success : .warning)
+        connection.decide(request.id, allow: allow)
+        dismiss()
     }
 }

@@ -187,18 +187,3 @@ struct ReorderProjectsView: View {
         }
     }
 }
-
-/// Small "Auto" / "Plan" tag for a tab's current mode.
-struct PermissionModeTag: View {
-    let mode: String
-
-    var body: some View {
-        Label(PermissionModeName.label(mode), systemImage: PermissionModeName.symbol(mode))
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(mode == "bypassPermissions" ? Color.red.opacity(0.15) : Color.secondary.opacity(0.12),
-                        in: Capsule())
-            .foregroundStyle(mode == "bypassPermissions" ? Color.red : Color.secondary)
-    }
-}
