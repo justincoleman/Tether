@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.20.4",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.4 gives the iPhone app a proper design, in your Mac's colors.",
+    "highlights": [
+      {
+        "title": "Answer from the overview.",
+        "body": "Permissions and folder-trust prompts now show as cards with Allow and Deny right on them, at the top of the iPhone's overview and above the message box in a chat. Tap the card to see the whole request first. Questions open their options with Answer."
+      },
+      {
+        "title": "Claude tabs that show what they're doing.",
+        "body": "Each tab shows the same sparkles, pulsing dot and check as the Mac's sidebar, with a tidy mode chip, and your Macs appear as chips with their connection status. Plan usage sits in one compact card."
+      },
+      {
+        "title": "A chat that feels like a chat.",
+        "body": "The message box, Send button, your bubbles, tool steps and the permission sheet now follow your Mac's terminal colors like the rest of the app. This needs the new iPhone build."
+      }
+    ]
+  },
+  {
     "version": "0.20.3",
     "date": "2026-10-29",
     "summary": "Tether 0.20.3 makes the chat easier to follow while Claude works.",

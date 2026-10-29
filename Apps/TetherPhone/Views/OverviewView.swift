@@ -24,6 +24,11 @@ struct OverviewView: View {
         store.connections.lazy.compactMap { $0.snapshot?.theme }.first
     }
 
+    /// What `.macColors` puts in the environment, for this view's own rows.
+    private var theme: PhoneTheme {
+        (useMacColors ? macTheme.flatMap(PhoneTheme.init(mac:)) : nil) ?? .system
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             Group {
@@ -35,6 +40,7 @@ struct OverviewView: View {
                     } actions: {
                         Button("Pair a Mac") { showPairing = true }
                             .buttonStyle(.borderedProminent)
+                            .tint(theme.claude)
                     }
                 } else {
                     list
@@ -42,6 +48,7 @@ struct OverviewView: View {
             }
             .macColors(macTheme)
             .navigationTitle("Tether")
+            .toolbarTitleDisplayMode(.inlineLarge)
             .navigationDestination(for: SessionRoute.self) { route in
                 if let connection = store.connection(route.macId) {
                     SessionView(connection: connection, paneId: route.paneId)
@@ -87,16 +94,37 @@ struct OverviewView: View {
 
     private var list: some View {
         List {
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(store.connections) { MacStatusChip(connection: $0) }
+                        }
+                    }
+                    .scrollClipDisabled()
+                    if let summary = activitySummary {
+                        Text(summary)
+                            .font(.subheadline)
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    ForEach(store.connections) { MacNotice(connection: $0) }
+                }
+                .clearRow()
+            }
             let waiting = store.connections.flatMap { c in
                 (c.snapshot?.permissions ?? []).map { WaitingPermission(connection: c, request: $0) }
             }
             if !waiting.isEmpty {
-                Section("Needs you") {
+                Section {
                     ForEach(waiting) { item in
-                        Button { answering = (item.connection, item.request) } label: {
-                            PermissionRow(request: item.request, snapshot: item.connection.snapshot)
+                        NeedsYouCard(connection: item.connection, request: item.request,
+                                     context: item.context) {
+                            answering = (item.connection, item.request)
                         }
+                        .clearRow()
                     }
+                } header: {
+                    SectionLabel(title: "Needs you", count: waiting.count)
                 }
             }
             ForEach(store.connections) { connection in
@@ -109,25 +137,28 @@ struct OverviewView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .listSectionSpacing(.compact)
         .refreshable { store.connectAll() }
+    }
+
+    /// "2 working · 1 done", across every Mac.
+    private var activitySummary: String? {
+        let sessions = store.connections.flatMap { $0.snapshot?.sessions ?? [] }
+        guard !sessions.isEmpty else { return nil }
+        let working = sessions.filter { $0.state == .working }.count
+        let waiting = sessions.filter { $0.state == .needsInput }.count
+        let done = sessions.filter { $0.state == .done }.count
+        var parts: [String] = []
+        if waiting > 0 { parts.append("\(waiting) waiting on you") }
+        if working > 0 { parts.append("\(working) working") }
+        if done > 0 { parts.append("\(done) done") }
+        if parts.isEmpty { return "\(sessions.count) Claude tab\(sessions.count == 1 ? "" : "s"), all quiet" }
+        return parts.joined(separator: " · ")
     }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         let editable = store.connections.filter { $0.snapshot != nil }
-        if !editable.isEmpty {
-            ToolbarItem(placement: .topBarLeading) {
-                if editable.count == 1 {
-                    Button("Edit") { reordering = editable[0] }
-                } else {
-                    Menu("Edit") {
-                        ForEach(editable) { c in
-                            Button("Projects on \(c.mac.name)") { reordering = c }
-                        }
-                    }
-                }
-            }
-        }
         if !store.isEmpty {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { newTask = NewTaskTarget(macId: nil, projectId: nil) } label: {
@@ -138,6 +169,15 @@ struct OverviewView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
+                if editable.count == 1 {
+                    Button("Edit Projects", systemImage: "list.bullet") { reordering = editable[0] }
+                } else if !editable.isEmpty {
+                    Menu("Edit Projects", systemImage: "list.bullet") {
+                        ForEach(editable) { c in
+                            Button("Projects on \(c.mac.name)") { reordering = c }
+                        }
+                    }
+                }
                 Button("Pair a Mac", systemImage: "qrcode.viewfinder") { showPairing = true }
                 Toggle("Use Mac's Colors", systemImage: "paintpalette", isOn: $useMacColors)
                 ForEach(store.connections) { connection in
@@ -146,8 +186,9 @@ struct OverviewView: View {
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "ellipsis")
             }
+            .accessibilityLabel("More")
         }
     }
 }
@@ -162,6 +203,14 @@ private struct WaitingPermission: Identifiable {
     let connection: MacConnection
     let request: PermissionRequested
     var id: UUID { request.id }
+
+    /// "Tether · Claude": the project and tab that asked.
+    var context: String? {
+        guard let snapshot = connection.snapshot, let pane = request.paneId,
+              let session = snapshot.sessions.first(where: { $0.id == pane }) else { return nil }
+        let project = snapshot.projects.first { $0.id == session.projectId }?.name
+        return [project, session.title].compactMap { $0 }.joined(separator: " · ")
+    }
 }
 
 struct NewTaskTarget: Identifiable {
@@ -170,33 +219,19 @@ struct NewTaskTarget: Identifiable {
     var projectId: ProjectID?
 }
 
-/// One Mac: a status row when it matters, then a section per project.
+/// One Mac: its plan usage, then a section per project.
 private struct MacProjects: View {
+    @Environment(\.phoneTheme) private var theme
     let connection: MacConnection
     let showMacName: Bool
     let startTask: (ProjectID) -> Void
     let askToClose: (SessionSummary) -> Void
 
     var body: some View {
-        if showMacName || connection.status != .online || connection.snapshot == nil {
-            Section {
-                HStack {
-                    Label(connection.mac.name, systemImage: "desktopcomputer")
-                    Spacer()
-                    ConnectionStatusLabel(status: connection.status)
-                }
-                .font(.subheadline)
-                if case .offline(let reason) = connection.status {
-                    Text(reason).font(.caption).foregroundStyle(.secondary)
-                } else if case .rejected(let reason) = connection.status {
-                    Text(reason).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
         if let limits = connection.snapshot?.limits, limits.fiveHour != nil || limits.sevenDay != nil {
-            Section(showMacName ? "Plan usage · \(connection.mac.name)" : "Plan usage") {
-                if let limit = limits.fiveHour { UsageLimitRow(label: "5-hour", limit: limit) }
-                if let limit = limits.sevenDay { UsageLimitRow(label: "Weekly", limit: limit) }
+            Section {
+                UsageCard(limits: limits, macName: showMacName ? connection.mac.name : nil)
+                    .clearRow()
             }
         }
         if let snapshot = connection.snapshot {
@@ -204,13 +239,25 @@ private struct MacProjects: View {
                 let sessions = snapshot.sessions.filter { $0.projectId == project.id }
                 Section {
                     if sessions.isEmpty {
-                        Button("Start a task", systemImage: "plus") { startTask(project.id) }
-                            .font(.subheadline)
+                        Button { startTask(project.id) } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "plus")
+                                    .font(.caption.weight(.bold))
+                                    .frame(width: 22, height: 22)
+                                    .background(theme.elevated, in: Circle())
+                                Text("Start a task")
+                                    .font(.subheadline.weight(.medium))
+                            }
+                            .foregroundStyle(theme.secondaryText)
+                        }
+                        .listRowBackground(theme.card)
                     }
                     ForEach(sessions) { session in
                         NavigationLink(value: SessionRoute(macId: connection.id, paneId: session.id)) {
                             ThreadRow(session: session)
                         }
+                        .listRowBackground(theme.card)
+                        .listRowSeparatorTint(theme.border)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             // Not role: .destructive, which animates the row away
                             // before the answer to "are you sure?" is known.
@@ -227,7 +274,30 @@ private struct MacProjects: View {
     }
 }
 
+/// "NEEDS YOU  2", in the list's section header spot.
+private struct SectionLabel: View {
+    @Environment(\.phoneTheme) private var theme
+    let title: String
+    var count: Int?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(theme.text)
+            if let count, count > 1 {
+                Text("\(count)")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(theme.blue, in: Capsule())
+            }
+        }
+        .textCase(nil)
+    }
+}
+
 private struct ProjectHeader: View {
+    @Environment(\.phoneTheme) private var theme
     let project: ProjectSummary
     let sessions: [SessionSummary]
     var icon: UIImage?
@@ -236,21 +306,34 @@ private struct ProjectHeader: View {
     var body: some View {
         HStack(spacing: 10) {
             ProjectTile(name: project.name, icon: icon)
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(project.name)
                     .font(.headline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.text)
+                    .lineLimit(1)
                 if let branch = project.branch {
-                    Text(branch).font(.caption).lineLimit(1).truncationMode(.middle)
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.triangle.branch").font(.caption2.weight(.semibold))
+                        Text(branch).lineLimit(1).truncationMode(.middle)
+                    }
+                    .font(.caption.monospaced())
+                    .foregroundStyle(theme.secondaryText)
                 }
             }
             Spacer()
             Button(action: startTask) {
-                Image(systemName: "plus.circle.fill").font(.title3)
+                Image(systemName: "plus")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.text)
+                    .frame(width: 30, height: 30)
+                    .background(theme.card, in: Circle())
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("New task in \(project.name)")
         }
         .textCase(nil)
+        .padding(.top, 8)
         .padding(.bottom, 2)
     }
 }
@@ -260,6 +343,7 @@ struct ProjectTile: View {
     let name: String
     /// The project's own app icon, when the Mac found one.
     var icon: UIImage?
+    var size: CGFloat = 32
 
     private static let colors: [Color] = [.red, .orange, .green, .blue, .purple, .teal]
 
@@ -282,122 +366,74 @@ struct ProjectTile: View {
                     .aspectRatio(contentMode: .fill)
             } else {
                 Text(name.first.map { String($0).uppercased() } ?? "?")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: size * 0.5, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(color)
+                    .background(color.gradient)
             }
         }
-        .frame(width: 30, height: 30)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.27, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: size * 0.27, style: .continuous).strokeBorder(Color.white.opacity(0.08)))
     }
 }
 
-/// One Claude tab: status, title, and the latest message.
+/// One Claude tab: status, title, mode, and the latest message.
 private struct ThreadRow: View {
+    @Environment(\.phoneTheme) private var theme
     let session: SessionSummary
+
+    private var noteColor: Color {
+        switch session.state {
+        case .needsInput: theme.blue
+        case .working: theme.claude
+        case .error: theme.red
+        default: theme.secondaryText
+        }
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             PhoneStatusBadge(state: session.state)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(session.title).font(.subheadline.weight(.semibold))
+                    Text(session.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(theme.text)
+                        .lineLimit(1)
                     if let mode = session.permissionMode {
                         PermissionModeTag(mode: mode)
                     }
-                    Spacer()
+                    Spacer(minLength: 4)
                     if let note = session.statusNote {
                         Text(note)
-                            .font(.caption)
-                            .foregroundStyle(session.state == .needsInput ? Color.blue : Color.secondary)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(noteColor)
+                            .lineLimit(1)
                     }
                 }
                 Text(session.preview ?? "No messages yet")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(session.preview == nil ? theme.tertiaryText : theme.secondaryText)
                     .lineLimit(2)
                 if let summary = session.status?.summary {
                     Text(summary)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(theme.tertiaryText)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         .opacity(session.state == .detached ? 0.5 : 1)
     }
 }
 
-struct ConnectionStatusLabel: View {
-    let status: MacConnection.Status
-
-    var body: some View {
-        switch status {
-        case .online:
-            Label("Online", systemImage: "circle.fill").foregroundStyle(.green)
-        case .connecting:
-            Label("Connecting", systemImage: "circle.dotted").foregroundStyle(.secondary)
-        case .offline:
-            Label("Offline", systemImage: "circle").foregroundStyle(.secondary)
-        case .updateNeeded:
-            Label("Update needed", systemImage: "exclamationmark.arrow.circlepath").foregroundStyle(.orange)
-        case .rejected:
-            Label("Not paired", systemImage: "xmark.circle").foregroundStyle(.red)
-        }
-    }
-}
-
-private struct PermissionRow: View {
-    let request: PermissionRequested
-    let snapshot: Snapshot?
-
-    private var prefix: String {
-        projectName.map { $0 + ": " } ?? ""
-    }
-
-    private var projectName: String? {
-        guard let snapshot, let pane = request.paneId,
-              let session = snapshot.sessions.first(where: { $0.id == pane }) else { return nil }
-        return snapshot.projects.first { $0.id == session.projectId }?.name
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "hand.raised.fill").foregroundStyle(.blue)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(prefix + request.heading)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text(request.detail).font(.caption.monospaced()).lineLimit(2).foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-/// One plan limit from Claude Code's status line, like its 5h and 7d bars.
-private struct UsageLimitRow: View {
-    let label: String
-    let limit: UsageLimit
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(label)
-                Spacer()
-                Text("\(Int(limit.usedPercent.rounded()))%").monospacedDigit()
-            }
-            .font(.subheadline)
-            ProgressView(value: min(max(limit.usedPercent, 0), 100), total: 100)
-                .tint(limit.usedPercent >= 90 ? .red : .orange)
-            if let reset = limit.resetsAt {
-                Text("Resets \(reset, format: .relative(presentation: .named))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 2)
+extension View {
+    /// A list row that draws its own card: no row background, separator or inset.
+    func clearRow() -> some View {
+        listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
     }
 }
 
@@ -406,28 +442,6 @@ extension SessionStatus {
     var summary: String? {
         let parts = [modelName, costUSD.map { $0.formatted(.currency(code: "USD")) }].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-}
-
-struct PhoneStatusBadge: View {
-    let state: SessionState
-
-    var body: some View {
-        Group {
-            switch state {
-            case .working:
-                Image(systemName: "sparkles").foregroundStyle(.orange).symbolEffect(.pulse)
-            case .needsInput:
-                Image(systemName: "circle.fill").foregroundStyle(.blue).symbolEffect(.pulse)
-            case .done:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            case .error:
-                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            case .idle, .detached:
-                Image(systemName: "circle").foregroundStyle(.tertiary)
-            }
-        }
-        .frame(width: 22)
     }
 }
 
