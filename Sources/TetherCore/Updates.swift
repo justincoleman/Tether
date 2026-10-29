@@ -54,7 +54,10 @@ public struct AvailableUpdate: Sendable, Equatable {
 /// Update rules. Releases come from GitHub (`scripts/release.sh` publishes
 /// them); see docs/RELEASING.md.
 public enum UpdateCheck {
-    public static let repository = "justincoleman/Tether"
+    /// A public repo that holds only signed release zips and notes, so
+    /// installed copies update without a GitHub login. The source repo can
+    /// stay private. `scripts/release.sh` publishes to the same name.
+    public static let repository = "justincoleman/Tether-releases"
 
     public static func releasesURL(repository: String = repository) -> URL {
         URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=20")!
@@ -89,8 +92,8 @@ public enum UpdateCheck {
         try JSONDecoder().decode([GitHubRelease].self, from: data)
     }
 
-    /// A GitHub API request. The repo is private, so it needs a token with
-    /// read access to it.
+    /// A GitHub API request. A public releases repo needs no token; one is
+    /// sent only if the user saved one or `gh` is signed in.
     public static func request(_ url: URL, token: String?, accept: String = "application/vnd.github+json") -> URLRequest {
         var request = URLRequest(url: url)
         request.setValue(accept, forHTTPHeaderField: "Accept")

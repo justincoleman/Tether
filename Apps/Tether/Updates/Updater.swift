@@ -66,9 +66,9 @@ final class Updater {
                 for: UpdateCheck.request(UpdateCheck.releasesURL(), token: token))
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard code == 200 else {
-                // A private repo answers 404, not 401, without a token.
+                // A private repo answers 404, not 401, without a token; a bad token answers 401.
                 throw UpdateError(code == 404 || code == 401
-                    ? "GitHub didn't let Tether read the releases. Add a token in Settings → Updates, or sign in with gh."
+                    ? "GitHub didn't let Tether read the releases (\(code)). If you saved a token in Settings → Updates, remove it or replace it."
                     : "GitHub answered \(code).")
             }
             let releases = try UpdateCheck.decodeReleases(data)

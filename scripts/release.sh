@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build a Developer ID signed, notarized Tether.app and publish it as a
-# GitHub release, which installed copies pick up through Check for Updates.
+# GitHub release in the public releases repo (TETHER_RELEASES_REPO, default
+# justincoleman/Tether-releases, which UpdateCheck.repository must match),
+# which installed copies pick up through Check for Updates.
 # One-time setup and the full flow: docs/RELEASING.md.
 #
 #   scripts/release.sh               build, notarize, publish
@@ -22,13 +24,16 @@ VERSION=$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"$/\1/p' Apps/project.yml | hea
 NOTES_VERSION=$(python3 -c 'import json; print(json.load(open("Apps/Tether/Resources/ReleaseNotes.json"))[0]["version"])')
 [ "$VERSION" = "$NOTES_VERSION" ] || die "MARKETING_VERSION is $VERSION but ReleaseNotes.json starts at $NOTES_VERSION."
 TAG="v$VERSION"
+RELEASES_REPO="${TETHER_RELEASES_REPO:-justincoleman/Tether-releases}"
 
 if [ "$PUBLISH" = 1 ]; then
   command -v gh >/dev/null || die "Install the GitHub CLI (brew install gh) and run gh auth login, or pass --no-publish."
   git diff --quiet && git diff --cached --quiet || die "Commit your changes first; a release is built from a clean tree."
   git fetch -q origin
   [ -n "$(git branch -r --contains HEAD)" ] || die "Push $(git rev-parse --short HEAD) first; the release tag points at it."
-  if gh release view "$TAG" >/dev/null 2>&1; then die "$TAG is already released. Bump MARKETING_VERSION."; fi
+  gh repo view "$RELEASES_REPO" >/dev/null 2>&1 \
+    || die "Can't see $RELEASES_REPO. Create it on GitHub (public, with a README so it has a branch) and run gh auth login."
+  if gh release view "$TAG" --repo "$RELEASES_REPO" >/dev/null 2>&1; then die "$TAG is already released. Bump MARKETING_VERSION."; fi
 fi
 
 xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 \
@@ -91,5 +96,7 @@ lines += [f"- **{h['title']}** {h['body']}" for h in entry["highlights"]]
 print("\n".join(lines))
 PY
 )
-gh release create "$TAG" "$ZIP" --title "Tether $VERSION" --notes "$NOTES" --target "$(git rev-parse HEAD)"
+# The tag lands on the releases repo's default branch; the source commit is in the notes.
+gh release create "$TAG" "$ZIP" --repo "$RELEASES_REPO" --title "Tether $VERSION" \
+  --notes "$NOTES"$'\n\n'"Built from $(git rev-parse --short HEAD)."
 echo "Published $TAG. Installed copies see it within six hours, or now with Tether → Check for Updates…"
