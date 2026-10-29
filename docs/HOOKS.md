@@ -222,13 +222,17 @@ card. Several questions, or multi-select, keep the plain permission card. Bare R
 
 Claude Code asks "Do you trust the files in this folder?" before it starts in a folder it
 hasn't opened, and no hook fires until that is answered. `AppModel.scheduleTrustCheck` looks at
-a new Claude tab 2.5 s and 6 s after launch: if no hook has reported a session and
-`FolderTrust.isTrusted` (reads `~/.claude.json`, `projects[path].hasTrustDialogAccepted`, the
-folder or any parent) says the folder is unknown, it adds a `PendingPermission` with tool name
-`TrustFolder`. The Mac card, the phone and paired Macs show it like a permission.
+a new Claude tab 3 s and 7 s after launch: if no hook has reported a session, no status line has
+arrived, and `FolderTrust.isTrusted` (reads `~/.claude.json`, `projects[path].hasTrustDialogAccepted`,
+the folder or any parent) says the folder is unknown, it adds a `PendingPermission` with tool name
+`TrustFolder`. The Mac card, the phone and paired Macs show it like a permission. The phone push
+goes out only at the 7 s check, so a slow start doesn't buzz the phone.
 
 - Trust sends Return to the tab, Don't Trust sends Esc, Ask in Terminal dismisses the card.
   Tether never writes the config or trusts a folder itself.
-- The first hook for the tab removes the card (it was answered in the terminal).
+- The first hook or status line report for the tab removes the card (Claude only runs either once
+  it is past the question, so it was answered in the terminal).
+- Seen on 2026-10-29: a folder Justin had trusted had no `projects` entry in `~/.claude.json`,
+  so the config check alone can't rule the card out; the hook and status line signals do.
 - An unreadable or missing `~/.claude.json` counts as trusted: no card is better than a wrong one.
 - Return and Esc in an empty chat box answer ordinary permissions but never this one.

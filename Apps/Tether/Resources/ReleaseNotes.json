@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.20.5",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.5 stops a false \"trust this folder\" alert.",
+    "highlights": [
+      {
+        "title": "No more stray folder-trust alerts.",
+        "body": "A new Claude tab that was just slow to start could be mistaken for one waiting on \"Do you trust the files in this folder?\", and the alert stayed on your phone after Claude was running. Tether now waits a little longer before alerting your phone, and clears the alert as soon as Claude shows its status line."
+      }
+    ]
+  },
+  {
     "version": "0.20.3",
     "date": "2026-10-29",
     "summary": "Tether 0.20.3 makes the chat easier to follow while Claude works.",
