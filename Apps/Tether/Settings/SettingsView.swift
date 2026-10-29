@@ -2,18 +2,26 @@ import SwiftUI
 import TetherCore
 
 struct SettingsView: View {
+    /// Which tab the window shows; other views set it before opening Settings.
+    @AppStorage("settingsTab") private var tab = "appearance"
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             AppearanceSettings()
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                .tag("appearance")
             PhoneSettings()
                 .tabItem { Label("iPhone", systemImage: "iphone") }
+                .tag("iphone")
             MacsSettings()
                 .tabItem { Label("Macs", systemImage: "desktopcomputer") }
+                .tag("macs")
             RemoteHostsSettings()
                 .tabItem { Label("SSH Hosts", systemImage: "terminal") }
+                .tag("ssh")
             UpdatesSettings()
                 .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
+                .tag("updates")
         }
         .frame(width: 620, height: 600)
     }

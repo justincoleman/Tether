@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.10.5",
+    "date": "2026-10-29",
+    "summary": "Tether 0.10.5 makes another Mac look like this one.",
+    "highlights": [
+      {
+        "title": "Same layout on a paired Mac.",
+        "body": "A paired Mac's project now has the same tab strip and buttons as a local one: its Claude tabs, the chat view, Claude, + and the sidebar toggle. Terminals and History stay on the other Mac for now."
+      },
+      {
+        "title": "The + chip opens Settings → Macs.",
+        "body": "Clicking + beside the Mac chips now lands on the Macs tab instead of whichever tab you used last."
+      }
+    ]
+  },
+  {
     "version": "0.10.4",
     "date": "2026-10-29",
     "summary": "Tether 0.10.4 lets you start Claude tabs on a paired Mac.",
