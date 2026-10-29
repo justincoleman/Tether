@@ -318,7 +318,7 @@ private struct PermissionBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Claude wants to \(request.title.lowercased())", systemImage: "hand.raised.fill")
+            Label(request.heading, systemImage: "hand.raised.fill")
                 .font(.headline)
                 .foregroundStyle(theme.blue)
             if !request.detail.isEmpty {
@@ -335,8 +335,8 @@ private struct PermissionBar: View {
             HStack {
                 Text(request.toolName).font(.caption.monospaced()).foregroundStyle(theme.secondaryText)
                 Spacer()
-                Button("Deny") { decide(false) }
-                Button("Allow") { decide(true) }
+                Button(request.isFolderTrust ? "Don't Trust" : "Deny") { decide(false) }
+                Button(request.isFolderTrust ? "Trust Folder" : "Allow") { decide(true) }
                     .buttonStyle(.borderedProminent)
             }
         }

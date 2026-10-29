@@ -359,7 +359,7 @@ private struct PermissionRow: View {
         HStack(spacing: 12) {
             Image(systemName: "hand.raised.fill").foregroundStyle(.blue)
             VStack(alignment: .leading, spacing: 2) {
-                Text(prefix + "Claude wants to " + request.title.lowercased())
+                Text(prefix + request.heading)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(request.detail).font(.caption.monospaced()).lineLimit(2).foregroundStyle(.secondary)

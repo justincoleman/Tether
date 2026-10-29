@@ -70,7 +70,7 @@ struct SessionView: View {
             }
             if let permission {
                 Button { answering = permission } label: {
-                    Label("Claude wants to \(permission.title.lowercased())", systemImage: "hand.raised.fill")
+                    Label(permission.heading, systemImage: "hand.raised.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -440,7 +440,7 @@ struct PermissionSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Claude wants to \(request.title.lowercased())", systemImage: "hand.raised.fill")
+            Label(request.heading, systemImage: "hand.raised.fill")
                 .font(.headline)
             Text(request.toolName).font(.caption.monospaced()).foregroundStyle(.secondary)
             if !request.detail.isEmpty {
@@ -455,13 +455,13 @@ struct PermissionSheet: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Button("Deny", role: .destructive) {
+                Button(request.isFolderTrust ? "Don't Trust" : "Deny", role: .destructive) {
                     connection.decide(request.id, allow: false)
                     dismiss()
                 }
                 .buttonStyle(.bordered)
                 .frame(maxWidth: .infinity)
-                Button("Allow") {
+                Button(request.isFolderTrust ? "Trust Folder" : "Allow") {
                     connection.decide(request.id, allow: true)
                     dismiss()
                 }

@@ -889,9 +889,59 @@ final class AppModel {
     }
 
     func resolvePermission(_ id: UUID, _ decision: PermissionDecision) {
+        let request = pendingPermissions.first { $0.id == id }
         pendingPermissions.removeAll { $0.id == id }
         companion.setNeedsSnapshot()
+        if let request, request.toolName == TrustFolder.toolName {
+            answerTrust(request, decision)
+            return
+        }
         Task { await self.broker.resolve(id, decision) }
+    }
+
+    // MARK: Folder trust
+
+    /// Tabs whose trust question the user left to the terminal.
+    private var trustLeftToTerminal: Set<PaneID> = []
+
+    /// Claude Code asks about an unfamiliar folder before it starts, and no
+    /// hook fires until it is answered. A tab that has shown no session after
+    /// a moment, in a folder `~/.claude.json` doesn't list, is sitting at that
+    /// question: show it as a card so a phone or another Mac can answer too.
+    private func scheduleTrustCheck(paneId: PaneID, path: String) {
+        Task { [weak self] in
+            for delay in [2.5, 6.0] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, self.panes[paneId] != nil else { return }
+                self.checkTrust(paneId: paneId, path: path)
+            }
+        }
+    }
+
+    private func checkTrust(paneId: PaneID, path: String) {
+        guard hookServer != nil, let pane = panes[paneId], pane.isClaude, !pane.hasExited,
+              paneStates[paneId] == nil, !trustLeftToTerminal.contains(paneId),
+              !pendingPermissions.contains(where: { $0.paneId == paneId }) else { return }
+        let config = try? Data(contentsOf: FolderTrust.configFile)
+        guard !FolderTrust.isTrusted(path, config: config) else { return }
+        let request = PendingPermission(sessionId: launchSessions[paneId] ?? "", paneId: paneId,
+                                        toolName: TrustFolder.toolName,
+                                        toolInput: .object(["path": .string(path)]), suggestions: nil)
+        pendingPermissions.append(request)
+        companion.permissionRequested(phoneSummary(of: request), projectName: projectName(forPane: paneId))
+        requestAttention()
+        companion.setNeedsSnapshot()
+    }
+
+    /// Passes the answer to Claude's own dialog. Tether never trusts a folder
+    /// itself: Return takes "Yes, I trust this folder", Esc declines.
+    private func answerTrust(_ request: PendingPermission, _ decision: PermissionDecision) {
+        guard let paneId = request.paneId, let pane = panes[paneId] else { return }
+        switch decision {
+        case .allow, .allowAlways: pane.confirm()
+        case .deny: pane.interrupt()
+        case .askInTerminal: trustLeftToTerminal.insert(paneId)
+        }
     }
 
     // MARK: Hook events
@@ -903,6 +953,11 @@ final class AppModel {
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
             paneAttention[paneId] = session.attention
+            if pendingPermissions.contains(where: { $0.paneId == paneId && $0.toolName == TrustFolder.toolName }) {
+                // Claude started, so the folder question was answered in the terminal.
+                pendingPermissions.removeAll { $0.paneId == paneId && $0.toolName == TrustFolder.toolName }
+                companion.setNeedsSnapshot()
+            }
             updateTurnStart(paneId, previous: previous, state: session.state)
             if let mode = session.permissionMode { paneModes[paneId] = mode }
             if let old = sessionId(forPane: paneId), old != session.id {
@@ -1133,6 +1188,9 @@ final class AppModel {
             launchSessions[d.id] = launchSession
             mirror.track(sessionId: launchSession, path: nil)
         }
+        if let worktree, case .claude = d.kind {
+            scheduleTrustCheck(paneId: d.id, path: worktree.path)
+        }
         companion.setNeedsSnapshot()
     }
 
@@ -1154,6 +1212,7 @@ final class AppModel {
         recordedSessions[id] = nil
         launchSessions[id] = nil
         pendingPermissions.removeAll { $0.paneId == id }
+        trustLeftToTerminal.remove(id)
         Task { _ = await self.broker.cancelAll(paneId: id) }
         if selectedPaneId == id {
             // Closing half of a split leaves the other half selected.

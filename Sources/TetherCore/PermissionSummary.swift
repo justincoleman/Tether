@@ -1,4 +1,5 @@
 import Foundation
+import TetherProtocol
 
 /// Human-readable one-liner for a permission request, shared by the Mac
 /// prompt and (phase 5) the phone.
@@ -34,6 +35,8 @@ public struct PermissionSummary: Sendable, Equatable {
             return .init(title: "Find files", detail: field("pattern") ?? "")
         case "Task", "Agent":
             return .init(title: "Run a subagent", detail: field("description") ?? "")
+        case TrustFolder.toolName:
+            return .init(title: "Trust this folder", detail: field("path") ?? "")
         case "TodoWrite":
             return .init(title: "Update the task list", detail: "")
         default:

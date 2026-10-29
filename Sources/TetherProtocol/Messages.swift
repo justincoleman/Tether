@@ -25,6 +25,23 @@ public struct Hello: Codable, Hashable, Sendable {
     }
 }
 
+/// Claude Code's "Do you trust the files in this folder?" question, shown
+/// through the same card as a permission so the phone can answer it too.
+/// It is not a hook: Tether reads `~/.claude.json` (see `FolderTrust`) and
+/// passes the user's answer to the terminal as a key press.
+public enum TrustFolder {
+    public static let toolName = "TrustFolder"
+}
+
+extension PermissionRequested {
+    public var isFolderTrust: Bool { toolName == TrustFolder.toolName }
+
+    /// "Claude wants to run a command", or the folder-trust question.
+    public var heading: String {
+        isFolderTrust ? "Do you trust the files in this folder?" : "Claude wants to \(title.lowercased())"
+    }
+}
+
 /// A project as the phone lists it.
 public struct ProjectSummary: Codable, Hashable, Sendable, Identifiable {
     public var id: ProjectID

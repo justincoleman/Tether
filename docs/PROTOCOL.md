@@ -136,3 +136,7 @@ and ends activities itself from each snapshot (`LiveActivities.reconcile`).
 `MirrorEvent.toolDetail(toolUseId:file:removed:added:at:)` carries the file a tool touched and, for
 edits, the changed lines. `toolResult.summary` now holds the last six lines of the output rather than
 the first. Phones on an older build cannot decode `toolDetail`; rebuild both apps together.
+
+The folder-trust question travels as a `PermissionRequested` with `toolName == "TrustFolder"`
+(`TrustFolder.toolName`, `PermissionRequested.isFolderTrust`), answered with `permissionDecision`
+(allow = Trust). No version bump: older phones show it as "Claude wants to trust this folder".

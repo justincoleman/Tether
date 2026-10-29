@@ -150,7 +150,7 @@ public enum PushPayload {
         case .permission(let p, let project):
             var info: [String: Any] = [PushKeys.macId: macId.uuidString, PushKeys.requestId: p.id.uuidString]
             if let pane = p.paneId { info[PushKeys.paneId] = pane.uuidString }
-            return alert(title: "\(project): Claude wants to \(p.title.lowercased())",
+            return alert(title: "\(project): \(p.heading)",
                          body: p.detail.isEmpty ? p.toolName : p.detail,
                          category: PushKeys.permissionCategory, timeSensitive: true,
                          thread: p.paneId?.uuidString, collapseId: nil, info: info)
