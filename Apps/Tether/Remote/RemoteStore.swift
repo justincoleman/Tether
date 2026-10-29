@@ -15,6 +15,10 @@ final class RemoteStore {
     private(set) var pairedCount = 0
     /// Name of the Mac the last pairing succeeded with, until the next attempt.
     private(set) var lastPairedName: String?
+    /// The Mac whose projects the sidebar shows; nil is this Mac.
+    var selectedMacId: UUID?
+    /// The Claude tab open in the main area while a paired Mac is selected.
+    var selectedPaneId: PaneID?
     /// Views that need the connections up; they drop when the last one leaves.
     @ObservationIgnored private var holds = 0
 
@@ -24,6 +28,10 @@ final class RemoteStore {
 
     func connection(_ macId: UUID) -> MacConnection? {
         connections.first { $0.id == macId }
+    }
+
+    var selectedConnection: MacConnection? {
+        selectedMacId.flatMap { connection($0) }
     }
 
     func retain() {
@@ -66,6 +74,10 @@ final class RemoteStore {
     func remove(_ macId: UUID) {
         connection(macId)?.disconnect()
         connections.removeAll { $0.id == macId }
+        if selectedMacId == macId {
+            selectedMacId = nil
+            selectedPaneId = nil
+        }
         persist()
     }
 

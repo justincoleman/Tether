@@ -9,9 +9,12 @@ struct MacsSettings: View {
     @Environment(\.openWindow) private var openWindow
     @State private var link = ""
     @State private var error: String?
+    @State private var justPaired: String?
+    @State private var linkCopied = false
 
     var body: some View {
         let remote = model.remote
+        let hub = model.companion
         Form {
             Section {
                 TextField("tether://pair?…", text: $link)
@@ -31,8 +34,65 @@ struct MacsSettings: View {
             } header: {
                 Text("Add a Mac")
             } footer: {
-                Text("On the other Mac: Tether → Settings → iPhone → Pair iPhone or Mac…, then Copy Link. "
+                Text("On the other Mac: Tether → Settings → Macs → Copy Pairing Link. "
                      + "Paste it here within two minutes. Both Macs need Tailscale on the same tailnet.")
+            }
+            Section {
+                if let window = hub.pairing {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if linkCopied {
+                            Label("Link copied. Paste it on the other Mac: Settings → Macs → Paste and Pair.",
+                                  systemImage: "doc.on.clipboard")
+                        }
+                        Text(window.link.url.absoluteString)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(3)
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            let left = max(0, Int(window.expires.timeIntervalSince(context.date)))
+                            Text(left > 0 ? "Expires in \(left)s" : "Expired. Create a new link.")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Button("Copy Again") { copy(window.link.url.absoluteString) }
+                            Button("Done") {
+                                hub.cancelPairing()
+                                linkCopied = false
+                            }
+                        }
+                    }
+                } else {
+                    Button("Copy Pairing Link") {
+                        justPaired = nil
+                        Task {
+                            await hub.beginPairing()
+                            if let window = hub.pairing {
+                                copy(window.link.url.absoluteString)
+                                linkCopied = true
+                            }
+                        }
+                    }
+                    .disabled(hub.tailnetAddress == nil || hub.problem != nil)
+                }
+                if let justPaired {
+                    Label("\(justPaired) paired.", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                if let problem = hub.problem {
+                    Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                } else if let address = hub.tailnetAddress {
+                    Text("Other Macs reach this one over Tailscale at \(address):\(hub.port).")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Tailscale isn't running on this Mac.", systemImage: "network.slash")
+                        .foregroundStyle(.orange)
+                }
+            } header: {
+                Text("Let another Mac pair with this one")
+            } footer: {
+                Text("Copies a one-time link. On the other Mac open Settings → Macs and click Paste and Pair within two minutes.")
             }
             Section("Paired Macs") {
                 if remote.connections.isEmpty {
@@ -48,6 +108,7 @@ struct MacsSettings: View {
         }
         .formStyle(.grouped)
         .onAppear {
+            hub.refreshAddress()
             remote.retain()
             if link.isEmpty, let text = NSPasteboard.general.string(forType: .string),
                text.hasPrefix("tether://pair") {
@@ -55,6 +116,14 @@ struct MacsSettings: View {
             }
         }
         .onDisappear { remote.release() }
+        .onChange(of: hub.devices.count) { old, new in
+            if hub.pairing != nil, new > old { justPaired = hub.devices.last?.name }
+        }
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     @ViewBuilder
