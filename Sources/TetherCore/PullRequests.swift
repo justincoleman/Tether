@@ -156,13 +156,14 @@ public struct GitHubCLI: Sendable {
         env["GH_NO_UPDATE_NOTIFIER"] = "1"
         env["NO_COLOR"] = "1"
         env["GIT_OPTIONAL_LOCKS"] = "0"
+        let environment = env
         let path = self.path
         let limit = timeout
         let output: GitOutput = try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 continuation.resume(with: Result {
                     try GitRunner.runBlocking(executable: path, arguments: args, directory: directory,
-                                              environment: env, timeout: limit, allowedExitCodes: [0, 1])
+                                              environment: environment, timeout: limit, allowedExitCodes: [0, 1])
                 })
             }
         }
