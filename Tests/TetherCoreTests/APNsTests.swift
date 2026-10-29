@@ -12,7 +12,7 @@ import TetherProtocol
     }
 
     @Test func jwtHasHeaderClaimsAndBase64URLSignature() throws {
-        let token = APNsJWT.make(teamId: "98M33X9Q96", keyId: "ABC123DEFG",
+        let token = APNsJWT.make(teamId: "ABCDE12345", keyId: "ABC123DEFG",
                                  issuedAt: Date(timeIntervalSince1970: 1_700_000_000)) { _ in Data([0xFB, 0xFF, 0xFE]) }
         let parts = token.split(separator: ".").map(String.init)
         #expect(parts.count == 3)
@@ -22,7 +22,7 @@ import TetherProtocol
             return String(decoding: Data(base64Encoded: b)!, as: UTF8.self)
         }
         #expect(decode(parts[0]) == #"{"alg":"ES256","kid":"ABC123DEFG"}"#)
-        #expect(decode(parts[1]) == #"{"iss":"98M33X9Q96","iat":1700000000}"#)
+        #expect(decode(parts[1]) == #"{"iss":"ABCDE12345","iat":1700000000}"#)
         #expect(parts[2] == "-__-") // no padding, URL-safe alphabet
     }
 

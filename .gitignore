@@ -10,3 +10,12 @@ Apps/*/GhosttyKit.xcframework
 Vendor/
 .ghostty-source
 Apps/project.source.yml
+
+# Secrets and signing material: never commit
+*.p8
+*.p12
+*.pem
+*.cer
+*.mobileprovision
+.env
+.env.*
