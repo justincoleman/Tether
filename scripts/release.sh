@@ -33,6 +33,9 @@ if [ "$PUBLISH" = 1 ]; then
   [ -n "$(git branch -r --contains HEAD)" ] || die "Push $(git rev-parse --short HEAD) first; the release tag points at it."
   gh repo view "$RELEASES_REPO" >/dev/null 2>&1 \
     || die "Can't see $RELEASES_REPO. Create it on GitHub (public, with a README so it has a branch) and run gh auth login."
+  # A new repo with no commits passes `gh repo view` but rejects releases ("Repository is empty").
+  gh api "repos/$RELEASES_REPO/commits?per_page=1" >/dev/null 2>&1 \
+    || die "$RELEASES_REPO has no commits yet. Add a README on GitHub (or push one), then run again."
   if gh release view "$TAG" --repo "$RELEASES_REPO" >/dev/null 2>&1; then die "$TAG is already released. Bump MARKETING_VERSION."; fi
 fi
 
