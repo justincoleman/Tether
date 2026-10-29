@@ -281,6 +281,9 @@ private struct ProjectRow: View {
                 }
             }
             Spacer(minLength: 4)
+            if let start = model.turnStart(of: model.panes(for: project.id)) {
+                RunningTime(start: start)
+            }
             StatusBadge(state: state)
         }
         .padding(.horizontal, 8)
@@ -387,6 +390,9 @@ private struct WorktreeRow: View {
                     .help("Merged into the base branch. Hover to remove.")
             } else if panes.isEmpty {
                 Text("no tab").font(.caption2).foregroundStyle(theme.secondaryText)
+            }
+            if let start = model.turnStart(of: panes) {
+                RunningTime(start: start)
             }
             StatusBadge(state: state).scaleEffect(0.8)
         }

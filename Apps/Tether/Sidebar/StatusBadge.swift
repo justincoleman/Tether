@@ -1,4 +1,5 @@
 import SwiftUI
+import TetherCore
 import TetherProtocol
 
 /// Per-project status: drifting sparkles while Claude works, a pulsing blue
@@ -83,5 +84,20 @@ private struct PulsingDot: View {
             .onAppear {
                 withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { pulsing = true }
             }
+    }
+}
+
+/// How long Claude has been on the current turn, ticking each second.
+struct RunningTime: View {
+    @Environment(\.theme) private var theme
+    let start: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            Text(ElapsedTime.short(since: start, now: context.date))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(theme.secondaryText)
+        }
+        .help("Time since Claude started this turn")
     }
 }

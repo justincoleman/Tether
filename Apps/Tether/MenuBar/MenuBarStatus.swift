@@ -66,7 +66,7 @@ struct MenuBarMenu: View {
             }
         case .working:
             guard let started = model.turnStartedAt[pane.id] else { return "Working" }
-            return "Working, \(Self.elapsed(since: started))"
+            return "Working, \(ElapsedTime.short(since: started))"
         case .done: return "Finished"
         case .error: return "Stopped with an error"
         case .idle, .detached: return "Idle"
@@ -82,16 +82,6 @@ struct MenuBarMenu: View {
         case .error: return "exclamationmark.triangle"
         case .idle, .detached: return "circle.dotted"
         }
-    }
-
-    /// "40s", "3m", "1h 5m". The menu is redrawn when it opens, so this
-    /// doesn't need to tick.
-    static func elapsed(since start: Date, now: Date = Date()) -> String {
-        let seconds = max(0, Int(now.timeIntervalSince(start)))
-        if seconds < 60 { return "\(seconds)s" }
-        let minutes = seconds / 60
-        if minutes < 60 { return "\(minutes)m" }
-        return "\(minutes / 60)h \(minutes % 60)m"
     }
 
     /// The menu bar item works while another app is frontmost, so the
