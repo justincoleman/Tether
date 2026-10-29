@@ -227,8 +227,19 @@ public actor TranscriptFeed {
         self.settingsFile = settingsFile
     }
 
+    /// The newest mode record seen since `takeMode` was last called.
+    private var seenMode: String?
+
+    /// The permission mode Claude last announced in the transcript, once.
+    public func takeMode() -> String? {
+        defer { seenMode = nil }
+        return seenMode
+    }
+
     public func poll() -> [MirrorEvent] {
-        let events = tail.readNewLines().flatMap(TranscriptParser.events(fromLine:))
+        let lines = tail.readNewLines()
+        if let mode = lines.compactMap(TranscriptSignals.permissionMode).last { seenMode = mode }
+        let events = lines.flatMap(TranscriptParser.events(fromLine:))
         guard events.contains(where: { if case .usage = $0 { true } else { false } }) else { return events }
         // Read on each batch with usage, so a /model switch shows on the next reply.
         let model = ContextWindow.configuredModel(settings: try? Data(contentsOf: settingsFile))

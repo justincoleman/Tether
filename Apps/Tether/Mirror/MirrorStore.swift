@@ -16,6 +16,8 @@ final class MirrorStore {
     @ObservationIgnored private var logs: [SessionID: [MirrorEvent]] = [:]
     /// New events as they arrive, for the companion server.
     @ObservationIgnored var onEvents: ((SessionID, [MirrorEvent]) -> Void)?
+    /// A mode record the transcript wrote, e.g. after Shift-Tab.
+    @ObservationIgnored var onMode: ((SessionID, String) -> Void)?
     /// How often transcripts are read. The app slows it when nobody is looking.
     @ObservationIgnored var pollInterval: Duration = .milliseconds(500)
 
@@ -51,6 +53,7 @@ final class MirrorStore {
             let feed = TranscriptFeed(path: transcriptPath)
             while !Task.isCancelled {
                 let events = await feed.poll()
+                if let mode = await feed.takeMode() { self?.onMode?(id, mode) }
                 if !events.isEmpty {
                     guard let self else { return }
                     var model = self.models[id] ?? TranscriptModel()

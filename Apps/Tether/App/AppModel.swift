@@ -130,6 +130,11 @@ final class AppModel {
                 }
             }
         }
+        mirror.onMode = { [weak self] sessionId, mode in
+            guard let self, let pane = self.pane(forSession: sessionId), self.paneModes[pane] != mode else { return }
+            self.paneModes[pane] = mode
+            self.companion.setNeedsSnapshot()
+        }
         mirror.onEvents = { [weak self] sessionId, events in
             self?.companion.publish(events, sessionId: sessionId)
             self?.companion.setNeedsSnapshot() // previews
@@ -875,6 +880,26 @@ final class AppModel {
         }
         chatByDefault = chat
         UserDefaults.standard.set(chat, forKey: "chatByDefault")
+    }
+
+    /// Presses Shift-Tab until the tab reports `target` as its permission mode.
+    /// Claude Code cycles its modes in an order that depends on its settings, so
+    /// this watches for the transcript's mode record after each press instead
+    /// of counting. Returns false when a press changes nothing.
+    func setPermissionMode(_ target: String, forPane paneId: PaneID) async -> Bool {
+        for _ in 0..<6 {
+            guard let pane = panes[paneId], pane.isClaude else { return false }
+            let before = paneModes[paneId]
+            if before == target { return true }
+            guard pane.cycleMode() else { return false }
+            var waited = 0
+            while paneModes[paneId] == before, waited < 20 {
+                try? await Task.sleep(for: .milliseconds(100))
+                waited += 1
+            }
+            if paneModes[paneId] == before { return false }
+        }
+        return paneModes[paneId] == target
     }
 
     /// Esc, as if pressed in the terminal: stops Claude's current turn.

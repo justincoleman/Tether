@@ -67,6 +67,23 @@ public struct TranscriptTail: Sendable {
 public enum TranscriptSignals {
     static let interruptPrefix = "[Request interrupted by user"
 
+    /// The permission mode a transcript record announces, if it is a mode record.
+    /// Claude Code writes `{"type":"mode","mode":...}` (older builds
+    /// `{"type":"permission-mode","permissionMode":...}`) when the mode changes.
+    public static func permissionMode(_ line: String) -> String? {
+        guard line.contains("mode"),
+              let record = try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8)),
+              let type = record["type"]?.stringValue else { return nil }
+        let value: String?
+        switch type {
+        case "mode": value = record["mode"]?.stringValue
+        case "permission-mode": value = record["permissionMode"]?.stringValue
+        default: return nil
+        }
+        guard let value, !value.isEmpty else { return nil }
+        return value == "normal" ? "default" : value
+    }
+
     /// True for the user-role record Claude Code writes when the user presses
     /// Esc. Only user records count, so Claude quoting the marker does not.
     public static func isUserInterrupt(_ line: String) -> Bool {

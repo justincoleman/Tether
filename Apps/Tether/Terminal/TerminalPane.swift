@@ -43,6 +43,10 @@ final class TerminalPane: Identifiable {
         return terminal.sendKey(.enter)
     }
 
+    /// Shift-Tab, which moves Claude Code to its next permission mode.
+    @discardableResult
+    func cycleMode() -> Bool { terminal.sendKey(.tab, modifiers: .shift) }
+
     /// Return, which takes the highlighted answer of a dialog.
     @discardableResult
     func confirm() -> Bool { terminal.sendKey(.enter) }

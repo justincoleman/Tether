@@ -13,7 +13,7 @@ Claude Code 2.1.308. Code: `Sources/TetherCore/TranscriptParser.swift`,
 ## Records Tether reads
 
 One JSON object per line. Only `type` `user` and `assistant` are read; every
-other type is skipped (`attachment`, `system`, `mode`, `last-prompt`,
+other type is skipped (`attachment`, `system`, `last-prompt`,
 `queue-operation`, `cost-state`, `tools-used`, `custom-title`, `agent-name`,
 `atis-latch`, and anything new).
 
@@ -125,3 +125,12 @@ python3 -c "import json,sys,collections; c=collections.Counter(json.loads(l).get
   `ToolStep.isStopped` matches these so the chat says "Stopped", not "Failed". The
   strings are taken from memory of Claude Code output, not a captured fixture: confirm
   against a real denied command and adjust `isStopped` if they differ.
+
+## Mode records
+
+`{"type":"mode","mode":"<permission mode>"}` (older builds: `{"type":"permission-mode","permissionMode":...}`)
+is read by `TranscriptSignals.permissionMode` and kept as the tab's mode (`AppModel.paneModes`), so a
+Shift-Tab in the terminal shows without waiting for the next hook. The chat's mode menu presses Shift-Tab and
+waits for this record after each press (`AppModel.setPermissionMode`). Unverified: that Claude Code writes the
+record at the moment of the change, and the exact field names; if a switch fails with "didn't confirm", check
+a transcript for what Claude writes after Shift-Tab and fix the parser.
