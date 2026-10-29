@@ -4,8 +4,8 @@ import SwiftUI
 import TetherCore
 import UniformTypeIdentifiers
 
-/// Settings → iPhone: pair a phone (QR code) or another Mac (the link under
-/// it), see and revoke paired devices.
+/// Settings → iPhone: pair a phone (QR code), see and revoke paired devices.
+/// Pairing another Mac is under Settings → Macs.
 struct PhoneSettings: View {
     @Environment(AppModel.self) private var model
     @State private var justPaired: String?
@@ -19,9 +19,9 @@ struct PhoneSettings: View {
                     .foregroundStyle(.green)
             }
             if let pairing = hub.pairing {
-                PairingCard(window: pairing, address: hub.tailnetAddress.map { "\($0):\(hub.port)" }) { hub.cancelPairing() }
+                PairingCard(window: pairing) { hub.cancelPairing() }
             } else {
-                Button("Pair iPhone or Mac…") {
+                Button("Pair iPhone…") {
                     justPaired = nil
                     Task { await hub.beginPairing() }
                 }
@@ -80,7 +80,6 @@ struct PhoneSettings: View {
 
 private struct PairingCard: View {
     let window: CompanionHub.PairingWindow
-    let address: String?
     let cancel: () -> Void
 
     var body: some View {
@@ -94,10 +93,7 @@ private struct PairingCard: View {
                     .background(.white, in: RoundedRectangle(cornerRadius: 8))
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text("iPhone: scan this with the Tether app or the Camera.")
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Another Mac: click Copy Link, then on that Mac open Tether → Settings → Macs and click Paste and Pair. "
-                     + "It needs Tailscale and must reach \(address ?? "this Mac").")
+                Text("Scan with the iPhone's Camera or the Tether app.")
                     .fixedSize(horizontal: false, vertical: true)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let left = max(0, Int(window.expires.timeIntervalSince(context.date)))
@@ -105,16 +101,7 @@ private struct PairingCard: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                Text(window.link.url.absoluteString)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .lineLimit(3)
                 HStack {
-                    Button("Copy Link") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(window.link.url.absoluteString, forType: .string)
-                    }
                     Button("Done", action: cancel)
                 }
             }

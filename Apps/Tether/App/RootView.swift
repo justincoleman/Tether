@@ -42,6 +42,9 @@ struct RootView: View {
         .ignoresSafeArea(.container, edges: .top)
         .animation(.snappy(duration: 0.2), value: showSidebar)
         .animation(.snappy(duration: 0.2), value: inspectorShown)
+        // Paired Macs show up as chips in the sidebar, so keep them connected.
+        .onAppear { model.remote.retain() }
+        .onDisappear { model.remote.release() }
         .confirmationDialog("Close this tab?", isPresented: Binding(get: { model.pendingClose != nil },
                                                                     set: { if !$0 { model.pendingClose = nil } }),
                             titleVisibility: .visible) {
@@ -62,11 +65,15 @@ struct RootView: View {
 
     /// Changes and Files follow the selected tab, so the Overview hides them
     /// without turning the setting off.
-    private var inspectorShown: Bool { model.showInspector && !model.showOverview }
+    private var inspectorShown: Bool {
+        model.showInspector && !model.showOverview && model.remote.selectedMacId == nil
+    }
 
     @ViewBuilder
     private var detail: some View {
-        if model.showOverview {
+        if let connection = model.remote.selectedConnection {
+            RemoteDetailView(connection: connection, showSidebar: $showSidebar)
+        } else if model.showOverview {
             OverviewView(showSidebar: $showSidebar)
         } else if let id = model.selectedProjectId,
            let project = model.projects.first(where: { $0.id == id }) {
@@ -108,44 +115,53 @@ struct SidebarView: View {
             .padding(.trailing, 8)
             .frame(height: ChromeMetrics.headerHeight)
 
-            OverviewButton()
-                .padding(.horizontal, 8)
+            MacChips()
                 .padding(.top, 4)
 
-            HStack {
-                Text("Projects")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.secondaryText)
-                Spacer()
-                Button { model.addProjectRequested = true } label: {
-                    Image(systemName: "plus").font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.secondaryText)
-                .help("Add project (⇧⌘N)")
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
+            if let connection = model.remote.selectedConnection {
+                RemoteProjectList(connection: connection)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    OverviewButton()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
 
-            // A List rather than a stack for its native drag-to-reorder; rows draw
-            // their own selection, so List selection stays off.
-            List {
-                ForEach(model.projects) { project in
-                    ProjectRow(project: project,
-                               selected: !model.showOverview && model.selectedProjectId == project.id)
-                        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-                .onMove { from, to in
-                    var ids = model.projects.map(\.id)
-                    ids.move(fromOffsets: from, toOffset: to)
-                    Task { await model.reorderProjects(ids) }
+                    HStack {
+                        Text("Projects")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(theme.secondaryText)
+                        Spacer()
+                        Button { model.addProjectRequested = true } label: {
+                            Image(systemName: "plus").font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(theme.secondaryText)
+                        .help("Add project (⇧⌘N)")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 6)
+
+                    // A List rather than a stack for its native drag-to-reorder; rows draw
+                    // their own selection, so List selection stays off.
+                    List {
+                        ForEach(model.projects) { project in
+                            ProjectRow(project: project,
+                                       selected: !model.showOverview && model.selectedProjectId == project.id)
+                                .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                        .onMove { from, to in
+                            var ids = model.projects.map(\.id)
+                            ids.move(fromOffsets: from, toOffset: to)
+                            Task { await model.reorderProjects(ids) }
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
 
             if let message = model.hookStatusMessage {
                 Label(message, systemImage: "exclamationmark.triangle")

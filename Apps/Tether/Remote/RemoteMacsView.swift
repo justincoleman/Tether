@@ -95,7 +95,7 @@ private struct MacHeader: View {
         .confirmationDialog("Forget \(connection.mac.name)?", isPresented: $confirmRemove) {
             Button("Forget", role: .destructive, action: remove)
         } message: {
-            Text("To pair again, copy a new link from its Settings → iPhone tab. To revoke this Mac there too, remove it from its paired devices.")
+            Text("To pair again, copy a new link from its Settings → Macs tab. To revoke this Mac there too, remove it from its paired devices.")
         }
     }
 
@@ -141,11 +141,16 @@ private struct RemoteSessionRow: View {
 
 /// One remote tab: its conversation, any permission it's waiting on, and a
 /// compose box. Messages queue on the other Mac like the phone's do.
-private struct RemoteSessionView: View {
+struct RemoteSessionView: View {
     @Environment(\.theme) private var theme
     let connection: MacConnection
     let paneId: PaneID
     @State private var text = ""
+
+    init(connection: MacConnection, paneId: PaneID) {
+        self.connection = connection
+        self.paneId = paneId
+    }
 
     private var session: SessionSummary? {
         connection.snapshot?.sessions.first { $0.id == paneId }
