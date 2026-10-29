@@ -111,6 +111,7 @@ struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @Binding var showSidebar: Bool
 
     var body: some View {
@@ -184,7 +185,8 @@ struct SidebarView: View {
 
             if let update = model.updater.available {
                 Button {
-                    UpdatePrompt.confirmInstall(update, updater: model.updater)
+                    UserDefaults.standard.set("updates", forKey: "settingsTab")
+                    openSettings()
                 } label: {
                     Label("Tether \(update.version.description) is available", systemImage: "arrow.down.circle")
                         .font(.caption)

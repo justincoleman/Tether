@@ -55,3 +55,27 @@ import Testing
         #expect(tail.readNewLines().isEmpty)
     }
 }
+
+@Suite struct PermissionModeRecordTests {
+    @Test func modeRecordsGiveTheMode() {
+        #expect(TranscriptSignals.permissionMode(#"{"type":"mode","mode":"plan","sessionId":"s"}"#) == "plan")
+        #expect(TranscriptSignals.permissionMode(#"{"type":"permission-mode","permissionMode":"acceptEdits","sessionId":"s"}"#) == "acceptEdits")
+        #expect(TranscriptSignals.permissionMode(#"{"type":"mode","mode":"normal"}"#) == "default")
+    }
+
+    @Test func otherRecordsAreNotModes() {
+        #expect(TranscriptSignals.permissionMode(#"{"type":"user","uuid":"u","message":{"content":"set the mode to plan"}}"#) == nil)
+        #expect(TranscriptSignals.permissionMode(#"{"type":"mode"}"#) == nil)
+        #expect(TranscriptSignals.permissionMode("not json mode") == nil)
+    }
+
+    @Test func feedReportsTheNewestModeOnce() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mode-\(UUID().uuidString).jsonl")
+        let lines = [#"{"type":"mode","mode":"acceptEdits"}"#, #"{"type":"mode","mode":"plan"}"#]
+        try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: url)
+        let feed = TranscriptFeed(path: url.path)
+        _ = await feed.poll()
+        #expect(await feed.takeMode() == "plan")
+        #expect(await feed.takeMode() == nil)
+    }
+}

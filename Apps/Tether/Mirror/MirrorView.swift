@@ -18,6 +18,10 @@ struct MirrorView: View {
             HStack(spacing: 8) {
                 Text("Chat").font(.headline)
                 StatusBadge(state: state)
+                if let paneId, sessionId != nil, state != .detached {
+                    ChatModeMenu(paneId: paneId)
+                    ChatModelMenu(paneId: paneId)
+                }
                 Spacer()
                 if let limits = model.usageLimits.flatMap({ SavedLimits.current($0, now: Date()) }) {
                     PlanUsageMeters(limits: limits)
@@ -75,6 +79,87 @@ struct MirrorView: View {
     }
 
     static let columnWidth: CGFloat = 820
+}
+
+/// The tab's permission mode, switched the way the keyboard does: Shift-Tab
+/// until Claude Code lands on the choice.
+private struct ChatModeMenu: View {
+    @Environment(AppModel.self) private var model
+    let paneId: PaneID
+    @State private var switching = false
+    @State private var failed = false
+
+    var body: some View {
+        let current = model.paneModes[paneId]
+        Menu {
+            ForEach(PermissionModeName.launchable, id: \.self) { mode in
+                Button { switchTo(mode) } label: {
+                    if mode == current {
+                        Label(PermissionModeName.label(mode), systemImage: "checkmark")
+                    } else {
+                        Text(PermissionModeName.label(mode))
+                    }
+                }
+            }
+        } label: {
+            Label(current.map(PermissionModeName.label) ?? "Mode", systemImage: current.map(PermissionModeName.symbol) ?? "shield")
+                .font(.caption)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(switching)
+        .help("Permission mode. Presses ⇧⇥ in Claude until it lands on your choice.")
+        .alert("Couldn't switch mode", isPresented: $failed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Claude Code didn't confirm the change. That mode may not be enabled for this tab; press ⇧⇥ in the terminal to see which are.")
+        }
+    }
+
+    private func switchTo(_ mode: String) {
+        switching = true
+        Task {
+            let ok = await model.setPermissionMode(mode, forPane: paneId)
+            switching = false
+            failed = !ok
+        }
+    }
+}
+
+/// The tab's model, switched with `/model`, queued behind a turn in progress.
+private struct ChatModelMenu: View {
+    @Environment(AppModel.self) private var model
+    let paneId: PaneID
+    @State private var askingOther = false
+    @State private var custom = ""
+
+    var body: some View {
+        let status = model.paneStatus[paneId]
+        Menu {
+            Picker("Model", selection: Binding(get: { ModelPreset.matching(status?.modelId) },
+                                               set: { if let alias = $0 { model.setModel(alias, forPane: paneId) } })) {
+                ForEach(ModelPreset.all) { preset in
+                    Text(preset.label).tag(Optional(preset.alias))
+                }
+            }
+            Button("Other…") { askingOther = true }
+        } label: {
+            Label(status?.modelName ?? "Model", systemImage: "cpu").font(.caption)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Model. Sent as /model, after the current turn if Claude is working.")
+        .alert("Switch model", isPresented: $askingOther) {
+            TextField("Alias or model id", text: $custom)
+            Button("Switch") {
+                model.setModel(custom, forPane: paneId)
+                custom = ""
+            }
+            Button("Cancel", role: .cancel) { custom = "" }
+        } message: {
+            Text("An alias like opus, or a full model id.")
+        }
+    }
 }
 
 private struct ComposeBar: View {
