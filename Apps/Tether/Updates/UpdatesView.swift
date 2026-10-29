@@ -2,63 +2,58 @@ import AppKit
 import SwiftUI
 import TetherCore
 
-/// Settings → Updates: status, a check button, and the GitHub token for the
-/// private repo's releases.
+/// Settings → Updates: the running version, a check button and the switch
+/// for automatic checks.
 struct UpdatesSettings: View {
     @Environment(AppModel.self) private var model
     @AppStorage("checkForUpdates") private var checkForUpdates = true
-    @State private var token = ""
-    @State private var tokenSaved = Updater.savedToken() != nil
 
     var body: some View {
         let updater = model.updater
         Form {
-            LabeledContent("This version", value: updater.currentVersion.description)
+            Section {
+                HStack(spacing: 14) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 56, height: 56)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Tether").font(.title2.weight(.semibold))
+                        Text(updater.canInstall ? "Version \(updater.currentVersion.description)"
+                                                : "Version \(updater.currentVersion.description) (development build)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
             if updater.canInstall {
-                Toggle("Check for updates automatically", isOn: $checkForUpdates)
-                    .onChange(of: checkForUpdates) { _, on in
-                        if on { updater.startAutomaticChecks() } else { updater.stopAutomaticChecks() }
-                    }
-                HStack {
-                    Button("Check Now") { Task { await updater.check() } }
-                        .disabled(updater.status == .checking || updater.status == .installing)
-                    UpdateStatusText(updater: updater)
-                }
-                if let update = updater.available {
-                    Button("Install \(update.version.description) and Relaunch") {
-                        UpdatePrompt.confirmInstall(update, updater: updater)
-                    }
-                }
-                Section("GitHub access") {
-                    SecureField(tokenSaved ? "Saved. Paste a new one to replace it." : "Token with read access to the repo",
-                                text: $token)
-                    HStack {
-                        Button("Save Token") {
-                            Updater.saveToken(token)
-                            token = ""
-                            tokenSaved = Updater.savedToken() != nil
+                Section {
+                    Toggle("Check for updates automatically", isOn: $checkForUpdates)
+                        .onChange(of: checkForUpdates) { _, on in
+                            if on { updater.startAutomaticChecks() } else { updater.stopAutomaticChecks() }
                         }
-                        .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty)
-                        if tokenSaved {
-                            Button("Remove") {
-                                Updater.saveToken("")
-                                tokenSaved = false
-                            }
+                    LabeledContent {
+                        Button("Check Now") { Task { await updater.check() } }
+                            .disabled(updater.status == .checking || updater.status == .installing)
+                    } label: {
+                        UpdateStatusText(updater: updater)
+                    }
+                    if let update = updater.available {
+                        Button("Install \(update.version.description) and Relaunch") {
+                            UpdatePrompt.confirmInstall(update, updater: updater)
                         }
                     }
-                    Text("The repo is private, so reading its releases needs a token. Without one, Tether uses gh auth token "
-                         + "if the GitHub CLI is signed in. A fine-grained token with Contents: read on the repo is enough.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                } footer: {
+                    Text("Checks every six hours and asks before installing.")
                 }
             } else {
-                Text("This is a development build, so it doesn't update itself. Update with git pull && make dev. "
-                     + "Builds made by scripts/release.sh are signed and check GitHub for new releases.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Section {
+                    Text("This is a development build, so it doesn't update itself. Update with git pull && make dev. "
+                         + "Builds made by make release are signed and check for new releases.")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .padding()
+        .formStyle(.grouped)
     }
 }
 
@@ -68,17 +63,17 @@ struct UpdateStatusText: View {
     var body: some View {
         switch updater.status {
         case .idle:
-            EmptyView()
+            Text("Not checked yet.").foregroundStyle(.secondary)
         case .checking:
             ProgressView().controlSize(.small)
         case .upToDate:
-            Text("Tether is up to date.").font(.caption).foregroundStyle(.secondary)
+            Label("Tether is up to date.", systemImage: "checkmark.circle").foregroundStyle(.secondary)
         case .available(let update):
-            Text("Tether \(update.version.description) is available.").font(.caption)
+            Text("Tether \(update.version.description) is available.")
         case .installing:
-            Text("Downloading…").font(.caption).foregroundStyle(.secondary)
+            Text("Downloading…").foregroundStyle(.secondary)
         case .failed(let message):
-            Text(message).font(.caption).foregroundStyle(.red)
+            Text(message).foregroundStyle(.red)
         }
     }
 }

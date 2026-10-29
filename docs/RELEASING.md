@@ -46,9 +46,8 @@ their own every six hours).
 
 - Lists `GET /repos/justincoleman/Tether-releases/releases`. The repo is
   public, so no login is needed (the unauthenticated limit of 60 requests an
-  hour per address is far above one check every six hours). A token saved in
-  Settings → Updates, or `gh auth token`, is sent if present; a bad token
-  answers 401 even for a public repo.
+  hour per address is far above one check every six hours). Tether sends no
+  token, so a stale one can't break the check.
 - Takes the newest release that isn't a draft or pre-release, whose tag
   (`v0.4.0`) is above the running version, and that has a `Tether-*.zip`.
 - Downloads it through the API (`Accept: application/octet-stream`),

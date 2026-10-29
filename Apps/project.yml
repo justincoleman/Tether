@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    MARKETING_VERSION: "0.10.0"
+    MARKETING_VERSION: "0.10.1"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
 packages:
@@ -35,6 +35,8 @@ targets:
       path: Tether/Resources/Info.plist
       properties:
         CFBundleDisplayName: Tether
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
         CFBundleIconName: AppIcon
         CFBundleIconFile: Tether
@@ -67,6 +69,8 @@ targets:
       path: TetherPhone/Resources/Info.plist
       properties:
         CFBundleDisplayName: Tether
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSCameraUsageDescription: Tether scans a QR code shown by your Mac to pair.
@@ -92,6 +96,8 @@ targets:
       path: TetherWidgets/Info.plist
       properties:
         CFBundleDisplayName: Tether
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
