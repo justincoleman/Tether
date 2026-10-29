@@ -19,6 +19,9 @@ struct MirrorView: View {
                 Text("Chat").font(.headline)
                 StatusBadge(state: state)
                 Spacer()
+                if let limits = model.usageLimits.flatMap({ SavedLimits.current($0, now: Date()) }) {
+                    PlanUsageMeters(limits: limits)
+                }
                 if let usage = transcript?.usage {
                     ContextMeter(usage: usage.reported(window: paneId.flatMap { model.paneStatus[$0]?.contextWindow }))
                 }
@@ -227,6 +230,41 @@ private struct StepsView: View {
         case "TodoWrite": "checklist"
         default: "wrench.and.screwdriver"
         }
+    }
+}
+
+/// The plan's 5-hour and 7-day usage as two small bars, from the status
+/// line's report. Nothing shows until Claude Code has reported them.
+struct PlanUsageMeters: View {
+    @Environment(\.theme) private var theme
+    let limits: UsageLimits
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let limit = limits.fiveHour { meter("5h", name: "5-hour", limit) }
+            if let limit = limits.sevenDay { meter("7d", name: "7-day", limit) }
+        }
+    }
+
+    private func meter(_ label: String, name: String, _ limit: UsageLimit) -> some View {
+        let used = min(max(limit.usedPercent, 0), 100)
+        let width: CGFloat = 34
+        return HStack(spacing: 5) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            Capsule()
+                .fill(theme.border)
+                .frame(width: width, height: 4)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(used >= 90 ? theme.red : theme.claude)
+                        .frame(width: width * used / 100, height: 4)
+                }
+            Text("\(Int(used.rounded()))%")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .help("\(name) plan usage: \(Int(used.rounded()))%"
+              + (limit.resetsAt.map { ". Resets \($0.formatted(.relative(presentation: .named)))." } ?? "."))
     }
 }
 
