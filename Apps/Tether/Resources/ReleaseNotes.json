@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.10.7",
+    "date": "2026-10-29",
+    "summary": "Tether 0.10.7 tucks Mac connection problems out of the way.",
+    "highlights": [
+      {
+        "title": "A quieter notice for another Mac.",
+        "body": "When a paired Mac needs an update or can't be reached, a small card at the bottom of the sidebar says why, instead of text above its projects. Close it with the x."
+      }
+    ]
+  },
+  {
     "version": "0.10.6",
     "date": "2026-10-29",
     "summary": "Tether 0.10.6 adds History and Changes for a paired Mac.",

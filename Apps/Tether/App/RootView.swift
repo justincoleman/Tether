@@ -171,6 +171,10 @@ struct SidebarView: View {
                 }
             }
 
+            if let connection = model.remote.selectedConnection {
+                MacNoticeCard(connection: connection)
+            }
+
             if let message = model.hookStatusMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
