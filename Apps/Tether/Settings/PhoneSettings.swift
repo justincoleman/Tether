@@ -8,15 +8,23 @@ import UniformTypeIdentifiers
 /// it), see and revoke paired devices.
 struct PhoneSettings: View {
     @Environment(AppModel.self) private var model
+    @State private var justPaired: String?
 
     var body: some View {
         let hub = model.companion
         VStack(alignment: .leading, spacing: 14) {
             status(hub)
+            if let justPaired {
+                Label("\(justPaired) paired.", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
             if let pairing = hub.pairing {
-                PairingCard(window: pairing) { hub.cancelPairing() }
+                PairingCard(window: pairing, address: hub.tailnetAddress.map { "\($0):\(hub.port)" }) { hub.cancelPairing() }
             } else {
-                Button("Pair iPhone or Mac…") { Task { await hub.beginPairing() } }
+                Button("Pair iPhone or Mac…") {
+                    justPaired = nil
+                    Task { await hub.beginPairing() }
+                }
                     .disabled(hub.tailnetAddress == nil || hub.problem != nil)
             }
             Divider()
@@ -50,6 +58,9 @@ struct PhoneSettings: View {
         }
         .padding()
         .onAppear { hub.refreshAddress() }
+        .onChange(of: hub.devices.count) { old, new in
+            if hub.pairing != nil, new > old { justPaired = hub.devices.last?.name }
+        }
     }
 
     @ViewBuilder
@@ -69,6 +80,7 @@ struct PhoneSettings: View {
 
 private struct PairingCard: View {
     let window: CompanionHub.PairingWindow
+    let address: String?
     let cancel: () -> Void
 
     var body: some View {
@@ -82,7 +94,10 @@ private struct PairingCard: View {
                     .background(.white, in: RoundedRectangle(cornerRadius: 8))
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text("Scan with the iPhone's Camera or the Tether app. On another Mac, paste the link in Window → Remote Macs.")
+                Text("iPhone: scan this with the Tether app or the Camera.")
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Another Mac: click Copy Link, then on that Mac open Tether → Settings → Macs and click Paste and Pair. "
+                     + "It needs Tailscale and must reach \(address ?? "this Mac").")
                     .fixedSize(horizontal: false, vertical: true)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let left = max(0, Int(window.expires.timeIntervalSince(context.date)))
