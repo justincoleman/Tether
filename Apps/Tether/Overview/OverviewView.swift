@@ -257,8 +257,12 @@ private struct OverviewCard: View {
         let deletions = snapshot?.deletions ?? 0
         let started = model.turnStartedAt[pane.id]
         let queued = model.queuedCounts[pane.id] ?? 0
-        if additions > 0 || deletions > 0 || started != nil || queued > 0 {
+        let pr = model.pullRequest(forPath: model.worktreePath(forPane: pane.id) ?? project.path)
+        if additions > 0 || deletions > 0 || started != nil || queued > 0 || pr != nil {
             HStack(spacing: 10) {
+                if let pr {
+                    PullRequestBadge(status: pr)
+                }
                 if additions > 0 {
                     Text("+\(additions.formatted())").foregroundStyle(theme.green)
                 }

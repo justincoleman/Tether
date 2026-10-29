@@ -85,8 +85,11 @@ public struct GitRunner: Sendable {
         return env
     }
 
-    static func runBlocking(arguments: [String], directory: String, environment: [String: String],
-                            timeout: TimeInterval, allowedExitCodes: Set<Int32>) throws -> GitOutput {
+    /// `executable` is a name looked up on PATH or an absolute path; other
+    /// command-line tools (`gh`) share this process handling.
+    static func runBlocking(executable: String = "git", arguments: [String], directory: String,
+                            environment: [String: String], timeout: TimeInterval,
+                            allowedExitCodes: Set<Int32>) throws -> GitOutput {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw GitError.launchFailed("folder not found: \(directory)")
@@ -95,7 +98,7 @@ public struct GitRunner: Sendable {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git"] + arguments
+        process.arguments = [executable] + arguments
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
         process.environment = environment
         let stdout = Pipe()

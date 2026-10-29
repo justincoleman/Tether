@@ -68,6 +68,31 @@ git 2.43 output (`GitParsingTests`):
 
 The sidebar shows each project's current branch from the same snapshots.
 
+## Pull requests and checks
+
+`PullRequestStore` asks the GitHub CLI about every worktree whose branch isn't
+its project's base: `gh pr view <branch> --json
+number,title,url,state,isDraft,statusCheckRollup`, run in the worktree with
+`GH_PROMPT_DISABLED=1`. `gh` is optional. It is found at `/opt/homebrew/bin`,
+`/usr/local/bin` or `/usr/bin`, because apps opened from the Dock don't get the
+login shell's PATH. Without it, or with any error (signed out, offline, not a
+GitHub remote), no badge is shown. "no pull requests found" is the normal
+answer for a branch with no PR.
+
+- **Parsing** (`PullRequestParser`, tested in `PullRequestTests`): a `CheckRun`
+  passes on SUCCESS, NEUTRAL or SKIPPED, is pending until COMPLETED, and fails
+  on anything else. A `StatusContext` passes on SUCCESS, is pending on PENDING
+  or EXPECTED, and fails otherwise. Any failure makes the whole PR failing, then
+  anything pending makes it pending. The fixture follows gh 2.x's documented
+  shape. Replace it with captured output the first time gh changes it.
+- **Timing** (`PullRequestPolicy`): 20 s while checks run, 90 s otherwise, and
+  10 minutes once merged or closed. At least 5 minutes while Tether is in the
+  background, and 3× slower in Low Power Mode. The end of a Claude turn asks
+  again on the next 10 s pass, since that turn may have pushed or opened the PR.
+- The badge (`#12` with a check, cross or clock) sits next to the branch in the
+  sidebar and in the Overview, and clicking it opens the PR. A merged PR marks
+  its worktree as merged even when git can't tell (squash merges).
+
 ## Diff viewer and review comments
 
 Opening a file covers the terminal area (the tab strip stays; picking a tab
