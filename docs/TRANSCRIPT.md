@@ -60,7 +60,7 @@ docs/HOOKS.md) over this guess whenever it has reported.
 | `<command-name>/x</command-name>…<command-args>y</command-args>` | your message `/x y` |
 | Other text starting with `<` (`<local-command-stdout>`, caveats, reminders) | skipped |
 | `image` block | `[image]` appended to your message |
-| `tool_result` (`tool_use_id`, `content` string or list, `is_error`) | result on the matching step: first non-empty line, 300 chars |
+| `tool_result` (`tool_use_id`, `content` string or list, `is_error`) | result on the matching step: the last 6 non-empty lines, 300 chars each (views show the first line for tools other than Bash) |
 
 ## Formatting
 
@@ -110,3 +110,18 @@ after a Claude Code update, compare a fresh transcript against this file:
 F=$(ls -t ~/.claude/projects/*/*.jsonl | head -1)
 python3 -c "import json,sys,collections; c=collections.Counter(json.loads(l).get('type') for l in open(sys.argv[1])); print(c)" "$F"
 ```
+
+
+## Tool detail and stopped calls
+
+- `tool_use` for `Read`, `Edit`, `MultiEdit`, `Write` and `NotebookEdit` also yields a
+  `toolDetail` event (protocol 17): the absolute `file_path`/`notebook_path`, and for
+  edits the lines removed and added with the common leading and trailing lines
+  trimmed (24 lines max per side, 200 chars each). `Write` and `NotebookEdit` list the
+  new content as added lines. The Mac chat opens the file when it is inside the tab's folder.
+- A denied or interrupted call arrives as an error `tool_result` whose text starts with
+  `[Request interrupted by user`, `The user rejected`, or contains
+  `doesn't want to proceed with this tool use`, or is `Permission to use … denied`.
+  `ToolStep.isStopped` matches these so the chat says "Stopped", not "Failed". The
+  strings are taken from memory of Claude Code output, not a captured fixture: confirm
+  against a real denied command and adjust `isStopped` if they differ.

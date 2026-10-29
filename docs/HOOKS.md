@@ -205,3 +205,30 @@ curl -s -X POST "http://127.0.0.1:<port>/tether/hook" \
 
 The second should return `200` with an empty body: a wrong token is ignored,
 never an error that could disrupt a session.
+
+## Questions (AskUserQuestion)
+
+PermissionRequest fires for Claude's `AskUserQuestion` tool with
+`tool_input.questions = [{header, question, multiSelect, options: [{label, description}]}]`
+(captured from Claude Code 2026-10-29). When there is exactly one question and it is not
+`multiSelect`, `AskUserQuestion.prompt` turns it into a card on the Mac (chat and terminal view),
+the phone and paired Macs. Picking an option, or typing an answer, replies with
+`decision: {behavior: "allow", updatedInput: {...tool_input, answers: {<question>: <answer>}}}`
+(`PermissionDecision.allowWithInput`). That `answers` shape is the one Claude's SDK `canUseTool` uses;
+if a Claude Code update ignores it the tool would run with no answer, so "Ask in Terminal" stays on the
+card. Several questions, or multi-select, keep the plain permission card. Bare Return never answers one.
+
+## Folder trust
+
+Claude Code asks "Do you trust the files in this folder?" before it starts in a folder it
+hasn't opened, and no hook fires until that is answered. `AppModel.scheduleTrustCheck` looks at
+a new Claude tab 2.5 s and 6 s after launch: if no hook has reported a session and
+`FolderTrust.isTrusted` (reads `~/.claude.json`, `projects[path].hasTrustDialogAccepted`, the
+folder or any parent) says the folder is unknown, it adds a `PendingPermission` with tool name
+`TrustFolder`. The Mac card, the phone and paired Macs show it like a permission.
+
+- Trust sends Return to the tab, Don't Trust sends Esc, Ask in Terminal dismisses the card.
+  Tether never writes the config or trusts a folder itself.
+- The first hook for the tab removes the card (it was answered in the terminal).
+- An unreadable or missing `~/.claude.json` counts as trusted: no card is better than a wrong one.
+- Return and Esc in an empty chat box answer ordinary permissions but never this one.

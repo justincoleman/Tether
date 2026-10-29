@@ -255,6 +255,8 @@ final class CompanionHub {
             client.send(.sendResult(paneId: paneId, outcome: outcome))
         case .permissionDecision(let requestId, let allow):
             model.resolvePermission(requestId, allow ? .allow : .deny(message: "Denied from iPhone."))
+        case .answerQuestion(let requestId, let answer):
+            model.answerQuestion(requestId, answer: answer)
         case .startSession(let requestId, let projectId, let branch, let prompt, let permissionMode):
             Task {
                 do {

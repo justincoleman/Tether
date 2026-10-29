@@ -8,7 +8,6 @@ struct TetherApp: App {
     @State private var model = AppModel()
     @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
     @AppStorage("showSidebar") private var showSidebar = true
-    @AppStorage("showChat") private var showChat = false
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
     @Environment(\.openWindow) private var openWindow
 
@@ -97,7 +96,9 @@ struct TetherApp: App {
                 Button(showSidebar ? "Hide Sidebar" : "Show Sidebar") { showSidebar.toggle() }
                     .keyboardShortcut("s", modifiers: [.command, .control])
                 Divider()
-                Button(showChat ? "Show Terminal" : "Show Chat") { showChat.toggle() }
+                Button(model.selectedPaneId.map { model.showsChat($0) } == true ? "Show as Terminal" : "Show as Chat") {
+                    model.toggleChat()
+                }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
                 Divider()
                 Button("Changes") { model.toggleInspector(.changes) }

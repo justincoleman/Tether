@@ -51,6 +51,16 @@ struct AppearanceSettings: View {
             Text("Looks for .tether/icon.png, then an Xcode AppIcon, then a favicon or logo in the project folder.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Picker("New Claude tabs open as", selection: Binding(
+                get: { model.chatByDefault }, set: { model.setChatByDefault($0) })) {
+                Text("Terminal").tag(false)
+                Text("Chat").tag(true)
+            }
+            .pickerStyle(.radioGroup)
+            Text("Each tab can be switched from the buttons in the tab bar or View > Show as Chat. "
+                 + "Claude keeps running in the terminal either way.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Toggle("Show Tether in the menu bar", isOn: $showMenuBarExtra)
             Text("Lists every Claude tab and what it's doing, with a count of the ones waiting on you.")
                 .font(.caption)

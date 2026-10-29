@@ -70,7 +70,7 @@ struct SessionView: View {
             }
             if let permission {
                 Button { answering = permission } label: {
-                    Label("Claude wants to \(permission.title.lowercased())", systemImage: "hand.raised.fill")
+                    Label(permission.heading, systemImage: "hand.raised.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -411,10 +411,11 @@ private struct PhoneSteps: View {
                         }
                         Text(step.summary).font(.caption.monospaced()).lineLimit(3)
                         if let result = step.result, !result.isEmpty {
-                            Text(result)
+                            let isCommand = step.name == "Bash"
+                            Text(isCommand ? result : (step.resultFirstLine ?? result))
                                 .font(.caption2.monospaced())
-                                .foregroundStyle(step.isError ? Color.red : Color.secondary)
-                                .lineLimit(3)
+                                .foregroundStyle(step.isError && !step.isStopped ? Color.red : Color.secondary)
+                                .lineLimit(isCommand ? 6 : 2)
                         }
                     }
                 }
@@ -438,8 +439,30 @@ struct PermissionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        if let question = request.question {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    QuestionOptionsView(question: question) { answer in
+                        connection.answer(request.id, answer: answer)
+                        dismiss()
+                    }
+                    Button("Skip", role: .destructive) {
+                        connection.decide(request.id, allow: false)
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                }
+                .padding()
+            }
+        } else {
+            permissionBody
+        }
+    }
+
+    private var permissionBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Claude wants to \(request.title.lowercased())", systemImage: "hand.raised.fill")
+            Label(request.heading, systemImage: "hand.raised.fill")
                 .font(.headline)
             Text(request.toolName).font(.caption.monospaced()).foregroundStyle(.secondary)
             if !request.detail.isEmpty {
@@ -454,13 +477,13 @@ struct PermissionSheet: View {
             }
             Spacer(minLength: 0)
             HStack {
-                Button("Deny", role: .destructive) {
+                Button(request.isFolderTrust ? "Don't Trust" : "Deny", role: .destructive) {
                     connection.decide(request.id, allow: false)
                     dismiss()
                 }
                 .buttonStyle(.bordered)
                 .frame(maxWidth: .infinity)
-                Button("Allow") {
+                Button(request.isFolderTrust ? "Trust Folder" : "Allow") {
                     connection.decide(request.id, allow: true)
                     dismiss()
                 }

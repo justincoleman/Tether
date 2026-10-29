@@ -11,7 +11,6 @@ struct TerminalTabsView: View {
     @Environment(\.theme) private var theme
     let project: Project
     @Binding var showSidebar: Bool
-    @AppStorage("showChat") private var showChat = false
 
     var body: some View {
         let panes = model.panes(for: project.id)
@@ -19,7 +18,7 @@ struct TerminalTabsView: View {
             || model.openFileTarget?.projectId == project.id
         let selectedPane = panes.first { $0.id == model.selectedPaneId }
         // Chat replaces the terminal only for Claude tabs; shells have no conversation.
-        let chatShown = showChat && selectedPane?.isClaude == true
+        let chatShown = selectedPane.map { model.showsChat($0.id) } ?? false
         let card = RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius)
         VStack(spacing: 0) {
             TabStrip(project: project, panes: panes, showSidebar: $showSidebar)
@@ -41,7 +40,7 @@ struct TerminalTabsView: View {
             .overlay(card.strokeBorder(theme.border.opacity(0.6), lineWidth: 0.5))
             .overlay(alignment: .bottom) {
                 // Added after the diff so a permission prompt stays on top of it.
-                if let paneId = model.selectedPaneId,
+                if let paneId = model.selectedPaneId, !chatShown,
                    let request = model.pendingPermissions.first(where: { $0.paneId == paneId }) {
                     PermissionPromptView(request: request)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -208,7 +207,6 @@ private struct TabStrip: View {
     let project: Project
     let panes: [TerminalPane]
     @Binding var showSidebar: Bool
-    @AppStorage("showChat") private var showChat = false
     @State private var showNewAgent = false
     @State private var showHistory = false
     @State private var editingShortcuts = false
@@ -263,7 +261,12 @@ private struct TabStrip: View {
                 }
             }
             Spacer(minLength: 8)
-            ViewModeToggle(showChat: $showChat, chatAvailable: selectedIsClaude)
+            ViewModeToggle(
+                showChat: Binding(get: { model.selectedPaneId.map { model.showsChat($0) } ?? false },
+                                  set: { chat in
+                                      if let id = model.selectedPaneId { model.setChat(chat, forPane: id) }
+                                  }),
+                chatAvailable: selectedIsClaude)
                 .padding(.trailing, 4)
             ToolbarPill(title: "Claude", systemImage: "sparkles", iconColor: theme.claude,
                         help: "New Claude tab (⌘T)") {
@@ -356,9 +359,9 @@ private struct ViewModeToggle: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            segment(chat: false, systemImage: "apple.terminal", help: "Terminal (⇧⌘M)")
+            segment(chat: false, systemImage: "apple.terminal", help: "Terminal for this tab (⇧⌘M)")
             segment(chat: true, systemImage: "bubble.left.and.text.bubble.right",
-                    help: chatAvailable ? "Chat (⇧⌘M)" : "Chat is for Claude tabs")
+                    help: chatAvailable ? "Chat for this tab (⇧⌘M)" : "Chat is for Claude tabs")
                 .disabled(!chatAvailable)
         }
         .padding(2)

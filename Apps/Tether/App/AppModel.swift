@@ -76,6 +76,11 @@ final class AppModel {
     private(set) var openDiffTarget: OpenDiff?
     /// A file from the Files panel open over the terminal, if any.
     private(set) var openFileTarget: OpenFile?
+    /// Whether new Claude tabs open as a chat rather than a terminal.
+    private(set) var chatByDefault: Bool = UserDefaults.standard.object(forKey: "chatByDefault") as? Bool
+        ?? UserDefaults.standard.bool(forKey: "showChat")
+    /// Tabs whose view differs from what the default would give them.
+    private var chatOverrides: [PaneID: Bool] = [:]
     /// Comments collected on diffs, waiting to be sent to Claude as one message.
     private(set) var reviewComments: [ProjectID: [ReviewComment]] = [:]
 
@@ -784,6 +789,18 @@ final class AppModel {
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
+    /// Shows a file Claude touched, given as an absolute path. Files outside
+    /// the tab's folder are not opened.
+    func openFile(absolutePath: String) {
+        if let relative = relativePath(ofAbsolute: absolutePath) { openFile(relative) }
+    }
+
+    func relativePath(ofAbsolute path: String) -> String? {
+        guard let root = selectedWorktreePath else { return nil }
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        return path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : nil
+    }
+
     func closeFile() {
         openFileTarget = nil
     }
@@ -832,12 +849,109 @@ final class AppModel {
         return panes(for: project).first(where: isClaude)?.id
     }
 
+    // MARK: Chat or terminal
+
+    /// Whether this tab shows its chat instead of its terminal.
+    func showsChat(_ paneId: PaneID) -> Bool {
+        guard panes[paneId]?.isClaude == true else { return false }
+        return chatOverrides[paneId] ?? chatByDefault
+    }
+
+    func setChat(_ chat: Bool, forPane paneId: PaneID) {
+        chatOverrides[paneId] = chat
+    }
+
+    /// Switches the selected Claude tab between its terminal and its chat.
+    func toggleChat() {
+        guard let id = selectedPaneId, panes[id]?.isClaude == true else { return }
+        setChat(!showsChat(id), forPane: id)
+    }
+
+    /// Changes what new Claude tabs open in. Tabs already open keep their view.
+    func setChatByDefault(_ chat: Bool) {
+        guard chat != chatByDefault else { return }
+        for (id, pane) in panes where pane.isClaude && chatOverrides[id] == nil {
+            chatOverrides[id] = chatByDefault
+        }
+        chatByDefault = chat
+        UserDefaults.standard.set(chat, forKey: "chatByDefault")
+    }
+
+    /// Esc, as if pressed in the terminal: stops Claude's current turn.
+    func interrupt(pane paneId: PaneID) {
+        panes[paneId]?.interrupt()
+    }
+
     // MARK: Permissions
 
+    func pendingPermission(forPane paneId: PaneID) -> PendingPermission? {
+        pendingPermissions.first { $0.paneId == paneId }
+    }
+
     func resolvePermission(_ id: UUID, _ decision: PermissionDecision) {
+        let request = pendingPermissions.first { $0.id == id }
         pendingPermissions.removeAll { $0.id == id }
         companion.setNeedsSnapshot()
+        if let request, request.toolName == TrustFolder.toolName {
+            answerTrust(request, decision)
+            return
+        }
         Task { await self.broker.resolve(id, decision) }
+    }
+
+    /// Answers a question Claude asked with options: the choice goes back to
+    /// Claude Code as the tool's answer, so no terminal dialog is needed.
+    func answerQuestion(_ id: UUID, answer: String) {
+        guard let request = pendingPermissions.first(where: { $0.id == id }),
+              request.toolName == AskUserQuestion.toolName,
+              let prompt = AskUserQuestion.prompt(from: request.toolInput) else { return }
+        let input = AskUserQuestion.updatedInput(request.toolInput, question: prompt.question, answer: answer)
+        resolvePermission(id, .allowWithInput(input))
+    }
+
+    // MARK: Folder trust
+
+    /// Tabs whose trust question the user left to the terminal.
+    private var trustLeftToTerminal: Set<PaneID> = []
+
+    /// Claude Code asks about an unfamiliar folder before it starts, and no
+    /// hook fires until it is answered. A tab that has shown no session after
+    /// a moment, in a folder `~/.claude.json` doesn't list, is sitting at that
+    /// question: show it as a card so a phone or another Mac can answer too.
+    private func scheduleTrustCheck(paneId: PaneID, path: String) {
+        Task { [weak self] in
+            for delay in [2.5, 6.0] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, self.panes[paneId] != nil else { return }
+                self.checkTrust(paneId: paneId, path: path)
+            }
+        }
+    }
+
+    private func checkTrust(paneId: PaneID, path: String) {
+        guard hookServer != nil, let pane = panes[paneId], pane.isClaude, !pane.hasExited,
+              paneStates[paneId] == nil, !trustLeftToTerminal.contains(paneId),
+              !pendingPermissions.contains(where: { $0.paneId == paneId }) else { return }
+        let config = try? Data(contentsOf: FolderTrust.configFile)
+        guard !FolderTrust.isTrusted(path, config: config) else { return }
+        let request = PendingPermission(sessionId: launchSessions[paneId] ?? "", paneId: paneId,
+                                        toolName: TrustFolder.toolName,
+                                        toolInput: .object(["path": .string(path)]), suggestions: nil)
+        pendingPermissions.append(request)
+        companion.permissionRequested(phoneSummary(of: request), projectName: projectName(forPane: paneId))
+        requestAttention()
+        companion.setNeedsSnapshot()
+    }
+
+    /// Passes the answer to Claude's own dialog. Tether never trusts a folder
+    /// itself: Return takes "Yes, I trust this folder", Esc declines.
+    private func answerTrust(_ request: PendingPermission, _ decision: PermissionDecision) {
+        guard let paneId = request.paneId, let pane = panes[paneId] else { return }
+        switch decision {
+        case .allow, .allowAlways, .allowWithInput: pane.confirm()
+        case .deny: pane.interrupt()
+        case .askInTerminal: trustLeftToTerminal.insert(paneId)
+        }
     }
 
     // MARK: Hook events
@@ -849,6 +963,11 @@ final class AppModel {
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
             paneAttention[paneId] = session.attention
+            if pendingPermissions.contains(where: { $0.paneId == paneId && $0.toolName == TrustFolder.toolName }) {
+                // Claude started, so the folder question was answered in the terminal.
+                pendingPermissions.removeAll { $0.paneId == paneId && $0.toolName == TrustFolder.toolName }
+                companion.setNeedsSnapshot()
+            }
             updateTurnStart(paneId, previous: previous, state: session.state)
             if let mode = session.permissionMode { paneModes[paneId] = mode }
             if let old = sessionId(forPane: paneId), old != session.id {
@@ -1079,6 +1198,9 @@ final class AppModel {
             launchSessions[d.id] = launchSession
             mirror.track(sessionId: launchSession, path: nil)
         }
+        if let worktree, case .claude = d.kind {
+            scheduleTrustCheck(paneId: d.id, path: worktree.path)
+        }
         companion.setNeedsSnapshot()
     }
 
@@ -1100,6 +1222,7 @@ final class AppModel {
         recordedSessions[id] = nil
         launchSessions[id] = nil
         pendingPermissions.removeAll { $0.paneId == id }
+        trustLeftToTerminal.remove(id)
         Task { _ = await self.broker.cancelAll(paneId: id) }
         if selectedPaneId == id {
             // Closing half of a split leaves the other half selected.
@@ -1284,8 +1407,11 @@ extension AppModel {
 extension AppModel {
     func phoneSummary(of request: PendingPermission) -> PermissionRequested {
         let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
+        let question = request.toolName == AskUserQuestion.toolName
+            ? AskUserQuestion.prompt(from: request.toolInput) : nil
         return PermissionRequested(id: request.id, paneId: request.paneId, sessionId: request.sessionId,
-                                   toolName: request.toolName, title: summary.title, detail: summary.detail)
+                                   toolName: request.toolName, title: summary.title, detail: summary.detail,
+                                   question: question)
     }
 
     func projectName(forPane paneId: PaneID?) -> String {

@@ -6,6 +6,8 @@ public enum MirrorEvent: Codable, Hashable, Sendable {
     case assistantText(id: String, text: String, at: Date)
     case toolUse(id: String, name: String, summary: String, at: Date)
     case toolResult(id: String, toolUseId: String, summary: String, isError: Bool, at: Date)
+    /// What a tool call touched: its file and, for edits, the lines taken out and put in.
+    case toolDetail(toolUseId: String, file: String?, removed: [String], added: [String], at: Date)
     case usage(ContextUsage, at: Date)
     /// A muted system line, e.g. "Interrupted".
     case notice(id: String, text: String, at: Date)
@@ -20,6 +22,25 @@ public struct Hello: Codable, Hashable, Sendable {
         self.protocolVersion = protocolVersion
         self.appVersion = appVersion
         self.deviceName = deviceName
+    }
+}
+
+/// Claude Code's "Do you trust the files in this folder?" question, shown
+/// through the same card as a permission so the phone can answer it too.
+/// It is not a hook: Tether reads `~/.claude.json` (see `FolderTrust`) and
+/// passes the user's answer to the terminal as a key press.
+public enum TrustFolder {
+    public static let toolName = "TrustFolder"
+}
+
+extension PermissionRequested {
+    public var isFolderTrust: Bool { toolName == TrustFolder.toolName }
+
+    /// "Claude wants to run a command", or the folder-trust question.
+    public var heading: String {
+        if isFolderTrust { return "Do you trust the files in this folder?" }
+        if let question { return question.question }
+        return "Claude wants to \(title.lowercased())"
     }
 }
 
@@ -73,6 +94,32 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+/// A multiple-choice question from Claude's AskUserQuestion tool, as a card.
+/// Only single questions with single answers are shown this way; anything
+/// else stays a permission card with "Ask in Terminal".
+public struct QuestionPrompt: Codable, Hashable, Sendable {
+    public struct Option: Codable, Hashable, Sendable {
+        public var label: String
+        public var description: String
+
+        public init(label: String, description: String = "") {
+            self.label = label
+            self.description = description
+        }
+    }
+
+    /// The short chip above the question, e.g. "Color".
+    public var header: String
+    public var question: String
+    public var options: [Option]
+
+    public init(header: String, question: String, options: [Option]) {
+        self.header = header
+        self.question = question
+        self.options = options
+    }
+}
+
 public struct PermissionRequested: Codable, Hashable, Sendable, Identifiable {
     public var id: UUID
     public var paneId: PaneID?
@@ -82,9 +129,12 @@ public struct PermissionRequested: Codable, Hashable, Sendable, Identifiable {
     public var title: String
     /// The command, path or input, already formatted for display.
     public var detail: String
+    /// Set for a question Claude asks with options, so a card can offer them.
+    public var question: QuestionPrompt?
 
     public init(id: UUID, paneId: PaneID?, sessionId: SessionID, toolName: String,
-                title: String, detail: String) {
+                title: String, detail: String, question: QuestionPrompt? = nil) {
+        self.question = question
         self.id = id
         self.paneId = paneId
         self.sessionId = sessionId
@@ -242,6 +292,8 @@ public enum PhoneMessage: Codable, Sendable {
     case subscribe(sessionId: SessionID?)
     case sendMessage(paneId: PaneID, text: String)
     case permissionDecision(requestId: UUID, allow: Bool)
+    /// Answers a `PermissionRequested.question` with one option's label, or free text.
+    case answerQuestion(requestId: UUID, answer: String)
     /// Opens a Claude tab in the project, on a new worktree branch when
     /// `branch` is set, starting on `prompt` when it isn't empty, in
     /// `permissionMode` when set (otherwise the user's configured default).

@@ -1,5 +1,32 @@
 [
   {
+    "version": "0.20.0",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.0 brings the chat view up to a full alternative to the terminal, and lets you answer Claude's questions from anywhere.",
+    "highlights": [
+      {
+        "title": "Chat or terminal, per tab.",
+        "body": "Switch a Claude tab between its terminal and its chat with the buttons in the tab bar or View > Show as Chat (⇧⌘M). Settings > Appearance picks which one new Claude tabs open in. Claude keeps running in the terminal either way."
+      },
+      {
+        "title": "See what Claude did.",
+        "body": "In the chat, files Claude read or edited open when you click them, edits show the lines that changed, and commands show whether they worked, were stopped or failed, with the last lines they printed."
+      },
+      {
+        "title": "Stop, and what Claude is doing.",
+        "body": "Above the message box the chat shows what Claude is doing, how long the turn has run, and a Stop button. Permission cards sit right above the message box too: with it empty, Return allows and Esc denies."
+      },
+      {
+        "title": "Answer Claude's questions anywhere.",
+        "body": "When Claude asks you to pick from options, they appear as a card on the Mac, the iPhone and a paired Mac, with a field for an answer of your own. Questions with several parts or multiple choices still go to the terminal."
+      },
+      {
+        "title": "Trust a new folder from your phone.",
+        "body": "When Claude starts in a folder it hasn't opened before, it asks whether you trust it before doing anything else. That question now shows as a card you can answer from the Mac, your iPhone or another Mac. Tether only passes your answer along; it never trusts a folder for you. Rebuild the iPhone app to get the new cards."
+      }
+    ]
+  },
+  {
     "version": "0.10.9",
     "date": "2026-10-29",
     "summary": "Tether 0.10.9 shows plan usage in the chat.",

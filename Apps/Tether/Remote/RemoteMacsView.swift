@@ -201,7 +201,8 @@ struct RemoteSessionView: View {
                     .frame(maxHeight: .infinity)
             }
             if let permission {
-                PermissionBar(request: permission) { allow in connection.decide(permission.id, allow: allow) }
+                PermissionBar(request: permission, decide: { allow in connection.decide(permission.id, allow: allow) },
+                              answer: { connection.answer(permission.id, answer: $0) })
             }
             if session != nil {
                 compose
@@ -315,10 +316,21 @@ private struct PermissionBar: View {
     @Environment(\.theme) private var theme
     let request: PermissionRequested
     let decide: (Bool) -> Void
+    let answer: (String) -> Void
 
     var body: some View {
+        if let question = request.question {
+            QuestionOptionsView(question: question, answer: answer)
+                .padding(12)
+                .background(theme.elevated)
+        } else {
+            permissionBody
+        }
+    }
+
+    private var permissionBody: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Claude wants to \(request.title.lowercased())", systemImage: "hand.raised.fill")
+            Label(request.heading, systemImage: "hand.raised.fill")
                 .font(.headline)
                 .foregroundStyle(theme.blue)
             if !request.detail.isEmpty {
@@ -335,8 +347,8 @@ private struct PermissionBar: View {
             HStack {
                 Text(request.toolName).font(.caption.monospaced()).foregroundStyle(theme.secondaryText)
                 Spacer()
-                Button("Deny") { decide(false) }
-                Button("Allow") { decide(true) }
+                Button(request.isFolderTrust ? "Don't Trust" : "Deny") { decide(false) }
+                Button(request.isFolderTrust ? "Trust Folder" : "Allow") { decide(true) }
                     .buttonStyle(.borderedProminent)
             }
         }

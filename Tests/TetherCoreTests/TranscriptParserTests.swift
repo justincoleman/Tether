@@ -14,6 +14,9 @@ enum Fixture {
     static let toolUse2 = #"{"type":"assistant","uuid":"a3","isSidechain":false,"timestamp":"2026-10-28T13:22:05.000Z","message":{"id":"msg_1","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Read","input":{"file_path":"/p/Sources/A.swift"}}]}}"#
     static let toolResultError = #"{"type":"user","uuid":"u5","isSidechain":false,"timestamp":"2026-10-28T13:22:06.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","is_error":true,"content":"\nerror: 1 test failed\nmore"}]}}"#
     static let toolResultList = #"{"type":"user","uuid":"u6","isSidechain":false,"timestamp":"2026-10-28T13:22:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_2","content":[{"type":"text","text":"import Foundation"}]}]}}"#
+    static let editUse = #"{"type":"assistant","uuid":"a6","isSidechain":false,"timestamp":"2026-10-28T13:22:12.000Z","message":{"id":"msg_3","role":"assistant","content":[{"type":"tool_use","id":"toolu_3","name":"Edit","input":{"file_path":"/p/Sources/A.swift","old_string":"let a = 1\nlet b = 2\nlet c = 3","new_string":"let a = 1\nlet b = 20\nlet c = 3"}}]}}"#
+    static let bashLong = #"{"type":"user","uuid":"u9","isSidechain":false,"timestamp":"2026-10-28T13:22:13.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"one\ntwo\nthree\nfour\nfive\nsix\nseven\n\neight"}]}}"#
+    static let denied = #"{"type":"user","uuid":"u10","isSidechain":false,"timestamp":"2026-10-28T13:22:14.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","is_error":true,"content":"The user doesn't want to proceed with this tool use. The tool use was rejected."}]}}"#
     static let reply = #"{"type":"assistant","uuid":"a4","isSidechain":false,"timestamp":"2026-10-28T13:22:08.000Z","message":{"id":"msg_2","role":"assistant","content":[{"type":"text","text":"Fixed. Want me to open a PR?"}]}}"#
     static let interrupt = #"{"type":"user","uuid":"u7","isSidechain":false,"timestamp":"2026-10-28T13:22:09.000Z","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#
     static let sidechain = #"{"type":"assistant","uuid":"a5","isSidechain":true,"timestamp":"2026-10-28T13:22:10.000Z","message":{"role":"assistant","content":[{"type":"text","text":"subagent chatter"}]}}"#
@@ -99,16 +102,65 @@ enum Fixture {
         #expect(summary == "swift test")
     }
 
-    @Test func toolResultTakesFirstNonEmptyLine() {
+    @Test func toolResultKeepsTheLastLines() {
         guard case .toolResult(_, let useId, let summary, let isError, _)? = parse(Fixture.toolResultError).first
         else { Issue.record("shape"); return }
         #expect(useId == "toolu_1")
-        #expect(summary == "error: 1 test failed")
+        #expect(summary == "error: 1 test failed\nmore")
         #expect(isError)
         guard case .toolResult(_, _, let listSummary, let listError, _)? = parse(Fixture.toolResultList).first
         else { Issue.record("shape"); return }
         #expect(listSummary == "import Foundation")
         #expect(!listError)
+    }
+
+    @Test func longOutputKeepsTheLastSixLines() {
+        guard case .toolResult(_, _, let summary, _, _)? = parse(Fixture.bashLong).first
+        else { Issue.record("shape"); return }
+        #expect(summary == "three\nfour\nfive\nsix\nseven\neight")
+    }
+
+    @Test func editShowsOnlyTheChangedLines() {
+        let events = parse(Fixture.editUse)
+        #expect(events.count == 2)
+        guard case .toolDetail(let id, let file, let removed, let added, _) = events[1]
+        else { Issue.record("shape"); return }
+        #expect(id == "toolu_3")
+        #expect(file == "/p/Sources/A.swift")
+        #expect(removed == ["let b = 2"])
+        #expect(added == ["let b = 20"])
+    }
+
+    @Test func readCarriesItsFile() {
+        let events = parse(Fixture.toolUse2)
+        guard case .toolDetail(_, let file, let removed, let added, _)? = events.last
+        else { Issue.record("shape"); return }
+        #expect(file == "/p/Sources/A.swift")
+        #expect(removed.isEmpty && added.isEmpty)
+    }
+
+    @Test func bashHasNoDetail() {
+        #expect(parse(Fixture.toolUse).count == 2) // tool use and usage
+        #expect(!parse(Fixture.toolUse).contains { if case .toolDetail = $0 { true } else { false } })
+    }
+
+    @Test func deniedCallReadsAsStopped() {
+        var m = TranscriptModel()
+        m.apply(parse(Fixture.toolUse) + parse(Fixture.denied))
+        guard case .steps(_, let steps)? = m.items.last else { Issue.record("shape"); return }
+        #expect(steps[0].isStopped)
+        var failed = TranscriptModel()
+        failed.apply(parse(Fixture.toolUse) + parse(Fixture.toolResultError))
+        guard case .steps(_, let f)? = failed.items.last else { Issue.record("shape"); return }
+        #expect(!f[0].isStopped)
+    }
+
+    @Test func detailLandsOnItsStep() {
+        var m = TranscriptModel()
+        m.apply(parse(Fixture.editUse))
+        guard case .steps(_, let steps)? = m.items.last else { Issue.record("shape"); return }
+        #expect(steps[0].file == "/p/Sources/A.swift")
+        #expect(steps[0].added == ["let b = 20"])
     }
 
     @Test func interruptBecomesNotice() {
@@ -135,7 +187,7 @@ enum Fixture {
         #expect(m.items.count == 6)
         guard case .steps(_, let steps) = m.items[3] else { Issue.record("expected steps"); return }
         #expect(steps.map(\.name) == ["Bash", "Read"])
-        #expect(steps[0].isError && steps[0].result == "error: 1 test failed")
+        #expect(steps[0].isError && steps[0].result == "error: 1 test failed\nmore")
         #expect(steps[1].result == "import Foundation" && !steps[1].isRunning)
         #expect(m.usage?.inputTokens == 174_012)
     }
