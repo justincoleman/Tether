@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.10.4",
+    "date": "2026-10-29",
+    "summary": "Tether 0.10.4 lets you start Claude tabs on a paired Mac.",
+    "highlights": [
+      {
+        "title": "New tab on another Mac.",
+        "body": "With a paired Mac selected in the sidebar, click + beside its projects, or right-click a project and choose New Claude Tab…. Pick the project, optionally a new branch (the other Mac makes the worktree), say what Claude should do, and the tab opens here."
+      }
+    ]
+  },
+  {
     "version": "0.10.3",
     "date": "2026-10-29",
     "summary": "Tether 0.10.3 shows a paired Mac's projects in the sidebar.",
