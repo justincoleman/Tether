@@ -230,6 +230,9 @@ struct RemoteSessionView: View {
                         .foregroundStyle(theme.secondaryText)
                 }
             }
+            if let limits = connection.snapshot?.limits {
+                PlanUsageMeters(limits: limits)
+            }
             if let usage = transcript?.usage {
                 ContextMeter(usage: usage.reported(window: session?.status?.contextWindow))
             }
