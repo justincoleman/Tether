@@ -55,3 +55,11 @@ import Testing
         #expect(ChromePalette.avatarIndex(for: "x", count: 0) == 0)
     }
 }
+
+@Suite struct RGBHexTests {
+    @Test func hexRoundTrips() {
+        #expect(RGB(hex: "#282c34")!.hexString == "#282c34")
+        #expect(RGB(hex: "ffffff")!.hexString == "#ffffff")
+        #expect(RGB(0, 0, 0).hexString == "#000000")
+    }
+}

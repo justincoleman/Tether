@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.20.1",
+    "date": "2026-10-29",
+    "summary": "Tether 0.20.1 puts Stop, edits and your terminal's colors on the iPhone, and adds mode and model switching to the chat.",
+    "highlights": [
+      {
+        "title": "Stop from your phone or another Mac.",
+        "body": "While Claude is working, the iPhone and a paired Mac's chat show a Stop button that stops the turn on the Mac. Commands you stopped or denied read \"Stopped\", not \"Failed\"."
+      },
+      {
+        "title": "Edits and commands on the iPhone.",
+        "body": "The phone now shows the file Claude touched, the lines an edit changed, and whether each command worked, with the last lines it printed. This needs the new iPhone build."
+      },
+      {
+        "title": "Your phone in your Mac's colors.",
+        "body": "The iPhone app can take on the background and text colors of your Ghostty theme, light or dark. Turn it off from the phone's menu with Use Mac's Colors."
+      },
+      {
+        "title": "Mode and model from the chat.",
+        "body": "The chat header has a mode menu and a model menu, so you can switch without going back to the terminal. The sidebar's update button now opens Settings > Updates."
+      }
+    ]
+  },
+  {
     "version": "0.20.0",
     "date": "2026-10-29",
     "summary": "Tether 0.20.0 brings the chat view up to a full alternative to the terminal, and lets you answer Claude's questions from anywhere.",

@@ -17,6 +17,12 @@ struct OverviewView: View {
     @State private var newTask: NewTaskTarget?
     @State private var reordering: MacConnection?
     @State private var closeRequest: CloseRequest?
+    @AppStorage("useMacColors") private var useMacColors = true
+
+    /// The first paired Mac that reports its colors.
+    private var macTheme: MacTheme? {
+        store.connections.lazy.compactMap { $0.snapshot?.theme }.first
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -34,6 +40,7 @@ struct OverviewView: View {
                     list
                 }
             }
+            .macColors(macTheme)
             .navigationTitle("Tether")
             .navigationDestination(for: SessionRoute.self) { route in
                 if let connection = store.connection(route.macId) {
@@ -132,6 +139,7 @@ struct OverviewView: View {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Button("Pair a Mac", systemImage: "qrcode.viewfinder") { showPairing = true }
+                Toggle("Use Mac's Colors", systemImage: "paintpalette", isOn: $useMacColors)
                 ForEach(store.connections) { connection in
                     Button("Remove \(connection.mac.name)", systemImage: "trash", role: .destructive) {
                         store.remove(connection.id)

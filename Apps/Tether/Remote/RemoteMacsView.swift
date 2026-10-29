@@ -181,7 +181,7 @@ struct RemoteSessionView: View {
                                 TranscriptItemView(item: item).id(item.id)
                             }
                             if session?.state == .working {
-                                ProgressView().controlSize(.small).id("working")
+                                WorkingRow { connection.interrupt(paneId) }.id("working")
                             }
                         }
                         .padding(16)

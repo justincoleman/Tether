@@ -290,6 +290,11 @@ final class MacConnection: Identifiable {
         snapshot?.permissions.removeAll { $0.id == requestId }
     }
 
+    /// Stops Claude's current turn in that tab.
+    func interrupt(_ paneId: PaneID) {
+        channel?.send(PhoneMessage.interrupt(paneId: paneId))
+    }
+
     func answer(_ requestId: UUID, answer: String) {
         channel?.send(PhoneMessage.answerQuestion(requestId: requestId, answer: answer))
         snapshot?.permissions.removeAll { $0.id == requestId }

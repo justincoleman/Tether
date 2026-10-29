@@ -253,6 +253,8 @@ final class CompanionHub {
             case .failed: "failed"
             }
             client.send(.sendResult(paneId: paneId, outcome: outcome))
+        case .interrupt(let paneId):
+            model.interrupt(pane: paneId)
         case .permissionDecision(let requestId, let allow):
             model.resolvePermission(requestId, allow ? .allow : .deny(message: "Denied from iPhone."))
         case .answerQuestion(let requestId, let answer):

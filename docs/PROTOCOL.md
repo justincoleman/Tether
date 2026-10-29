@@ -137,6 +137,12 @@ and ends activities itself from each snapshot (`LiveActivities.reconcile`).
 edits, the changed lines. `toolResult.summary` now holds the last six lines of the output rather than
 the first. Phones on an older build cannot decode `toolDetail`; rebuild both apps together.
 
+## Protocol 19
+
+`Snapshot.theme` (`MacTheme`: `#rrggbb` background and foreground of the Mac's Ghostty config) lets the phone wear
+the terminal's colors; light or dark follows from the background. `PhoneMessage.interrupt(paneId:)` stops that
+tab's current turn (the Mac presses Esc). The phone's "Use Mac's Colors" switch is local (`useMacColors`).
+
 ## Protocol 18
 
 `PermissionRequested.question` (`QuestionPrompt`) carries a multiple-choice question from Claude;

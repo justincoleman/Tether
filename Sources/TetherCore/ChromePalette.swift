@@ -18,6 +18,12 @@ public struct RGB: Sendable, Hashable {
         self.init(Double((v >> 16) & 0xFF) / 255, Double((v >> 8) & 0xFF) / 255, Double(v & 0xFF) / 255)
     }
 
+    /// `#rrggbb`.
+    public var hexString: String {
+        func byte(_ c: Double) -> Int { Int((min(max(c, 0), 1) * 255).rounded()) }
+        return String(format: "#%02x%02x%02x", byte(r), byte(g), byte(b))
+    }
+
     /// Linear blend: `t == 0` is self, `t == 1` is `other`.
     public func mixed(with other: RGB, _ t: Double) -> RGB {
         RGB(r + (other.r - r) * t, g + (other.g - g) * t, b + (other.b - b) * t)
