@@ -44,6 +44,9 @@ struct ChangesView: View {
         Group {
             if let snapshot, let path {
                 SnapshotView(snapshot: snapshot, path: path)
+            } else if error == GitError.notARepository.description {
+                ContentUnavailableView("Not a git repository", systemImage: "folder",
+                                       description: Text("Changes show up here once this folder is a git repository. Its files are in the Files tab."))
             } else if let error {
                 ContentUnavailableView("Can't read changes", systemImage: "exclamationmark.triangle",
                                        description: Text(error))
