@@ -30,6 +30,9 @@ public struct ToolStep: Hashable, Sendable, Identifiable {
 
     public var isRunning: Bool { result == nil }
 
+    /// A subagent call (`Agent`, or `Task` in older Claude Code).
+    public var isAgent: Bool { name == "Agent" || name == "Task" }
+
     /// The user interrupted or denied this call. Claude Code records that as an
     /// error result, but it is not a failure of the command.
     public var isStopped: Bool {
@@ -118,6 +121,14 @@ public struct TranscriptModel: Sendable, Equatable {
 }
 
 extension TranscriptModel {
+    /// Subagents started and not yet finished, oldest first.
+    public var runningAgents: [ToolStep] {
+        items.flatMap { item -> [ToolStep] in
+            guard case .steps(_, let steps) = item else { return [] }
+            return steps.filter { $0.isAgent && $0.isRunning }
+        }
+    }
+
     /// Tool steps since the last user message: the current turn's progress.
     public var stepsInCurrentTurn: Int {
         var count = 0

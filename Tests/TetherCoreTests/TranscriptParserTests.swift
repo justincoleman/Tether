@@ -231,3 +231,48 @@ enum Fixture {
         #expect(TranscriptParser.events(fromLine: line).isEmpty)
     }
 }
+
+/// Background agents and commands, from a Claude Code 2.1.308 capture (2026-10-30).
+@Suite struct BackgroundTaskTests {
+    static let agentUse = #"{"type":"assistant","uuid":"b1","isSidechain":false,"timestamp":"2026-10-30T01:17:02.000Z","message":{"id":"m","role":"assistant","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"toolu_A","name":"Agent","input":{"description":"Count README lines","subagent_type":"explorer","prompt":"Count the lines in README.md."},"caller":{"type":"direct"}}]}}"#
+    static let agentLaunched = #"{"type":"user","uuid":"b2","isSidechain":false,"timestamp":"2026-10-30T01:17:02.500Z","message":{"role":"user","content":[{"tool_use_id":"toolu_A","type":"tool_result","content":[{"type":"text","text":"Async agent launched successfully. (This tool result is internal metadata.)\nagentId: a76dc4a3205905f4d (internal ID)\noutput_file: /private/tmp/x.output"}]}]}}"#
+    static let handback = #"{"type":"user","uuid":"b3","isSidechain":false,"isMeta":true,"timestamp":"2026-10-30T01:17:10.000Z","origin":{"kind":"peer","from":"a76dc4a3205905f4d","handback":true},"message":{"role":"user","content":"Another Claude session sent a message:\n<agent-message from=\"a76dc4a3205905f4d\">\n  11 lines.\n</agent-message>"}}"#
+    static let agentFinished = #"{"type":"user","uuid":"b4","isSidechain":false,"timestamp":"2026-10-30T01:17:10.500Z","origin":{"kind":"task-notification"},"promptSource":"system","message":{"role":"user","content":"<task-notification>\n<task-id>a76dc4a3205905f4d</task-id>\n<tool-use-id>toolu_A</tool-use-id>\n<output-file>/private/tmp/x.output</output-file>\n<status>completed</status>\n<summary>Agent \"Count README lines\" finished</summary>\n<usage><subagent_tokens>13917</subagent_tokens><tool_uses>3</tool_uses><duration_ms>8018</duration_ms></usage>\n</task-notification>"}}"#
+    static let queuedFinish = #"{"type":"attachment","uuid":"b5","isSidechain":false,"timestamp":"2026-10-30T01:17:23.000Z","attachment":{"type":"queued_command","prompt":"<task-notification>\n<task-id>a1994d3995b02972b</task-id>\n<tool-use-id>toolu_B</tool-use-id>\n<status>completed</status>\n<summary>Agent \"List files in folder\" finished</summary>\n</task-notification>"}}"#
+    static let bashLaunched = #"{"type":"user","uuid":"b6","isSidechain":false,"timestamp":"2026-10-30T01:18:18.000Z","message":{"role":"user","content":[{"tool_use_id":"toolu_C","type":"tool_result","content":"Command running in background with ID: bpk5f12p1. Output is being written to: /private/tmp/bpk5f12p1.output.","is_error":false}]}}"#
+    static let bashFinished = #"{"type":"user","uuid":"b7","isSidechain":false,"timestamp":"2026-10-30T01:18:38.000Z","origin":{"kind":"task-notification"},"message":{"role":"user","content":"<task-notification>\n<task-id>bpk5f12p1</task-id>\n<tool-use-id>toolu_C</tool-use-id>\n<status>completed</status>\n<summary>Background command \"Wait 20 seconds then print a marker\" completed (exit code 1)</summary>\n</task-notification>"}}"#
+
+    @Test func launchLeavesTheStepRunningUntilTheNotification() {
+        #expect(TranscriptParser.events(fromLine: Self.agentLaunched).isEmpty)
+        #expect(TranscriptParser.events(fromLine: Self.handback).isEmpty)
+        var model = TranscriptModel()
+        model.apply([Self.agentUse, Self.agentLaunched, Self.handback].flatMap(TranscriptParser.events(fromLine:)))
+        guard case .steps(_, let running)? = model.items.last else { Issue.record("no steps"); return }
+        #expect(running.first?.name == "Agent" && running.first?.summary == "Count README lines")
+        #expect(running.first?.isRunning == true)
+
+        model.apply(TranscriptParser.events(fromLine: Self.agentFinished))
+        guard case .steps(_, let done)? = model.items.dropLast().last else { Issue.record("no steps"); return }
+        #expect(done.first?.result == "Agent \"Count README lines\" finished")
+        #expect(done.first?.isError == false)
+        guard case .notice(_, let text, _)? = model.items.last else { Issue.record("no notice"); return }
+        #expect(text == "Agent \"Count README lines\" finished")
+    }
+
+    @Test func queuedNotificationsShowOnce() {
+        let events = TranscriptParser.events(fromLine: Self.queuedFinish)
+        var model = TranscriptModel()
+        model.apply(events)
+        model.apply(events)
+        #expect(model.items.count == 1)
+        #expect(events.contains { if case .toolResult(_, "toolu_B", _, false, _) = $0 { true } else { false } })
+    }
+
+    @Test func backgroundCommandReportsItsExitCode() {
+        #expect(TranscriptParser.events(fromLine: Self.bashLaunched).isEmpty)
+        let failed = TranscriptParser.events(fromLine: Self.bashFinished).contains {
+            if case .toolResult(_, "toolu_C", _, true, _) = $0 { true } else { false }
+        }
+        #expect(failed)
+    }
+}

@@ -61,6 +61,35 @@ docs/HOOKS.md) over this guess whenever it has reported.
 | Other text starting with `<` (`<local-command-stdout>`, caveats, reminders) | skipped |
 | `image` block | `[image]` appended to your message |
 | `tool_result` (`tool_use_id`, `content` string or list, `is_error`) | result on the matching step: the last 6 non-empty lines, 300 chars each (views show the first line for tools other than Bash) |
+| `tool_result` starting `Async agent launched successfully` or `Command running in background with ID:` | skipped: the step stays running until its task notification |
+| Text starting `<task-notification>` | a notice with the `<summary>` (e.g. `Agent "Count README lines" finished`, `Background command "…" completed (exit code 0)`), plus a result on the step named by `<tool-use-id>`: an error when `<status>` isn't `completed` or the exit code isn't 0 |
+
+### Background agents and commands
+
+Captured from Claude Code 2.1.308 on 2026-10-30. An `Agent` tool call carries
+`input.description` and `input.subagent_type`. With a background agent (and
+`Bash` with `run_in_background`), the immediate `tool_result` is plumbing
+("Async agent launched successfully … agentId: <id> …"). When the task ends,
+Claude Code writes the `<task-notification>` text as a `user` record
+(`origin.kind: "task-notification"`) or, if Claude was busy, as an
+`attachment` of type `queued_command` with the same text in `prompt`. Both are
+read; ids built from `<task-id>` and `<status>` keep the notice from showing
+twice. The agent's report arrives as an `isMeta` user record ("Another Claude
+session sent a message: <agent-message …>", `origin.handback: true`), skipped
+like other meta records.
+
+Each subagent's own turns go to `<session id>/subagents/agent-<agentId>.jsonl`
+(every record `isSidechain: true` with `agentId`), next to a `.meta.json` with
+`agentType`, `description`, `toolUseId` and `finished`. Tether doesn't read
+these yet. `system` records of subtype `turn_duration` carry
+`pendingBackgroundAgentCount`.
+
+The chat shows each `Agent`/`Task` step as a card outside the folded steps
+(`ToolStep.isAgent`), and agents still running in a row above the message
+box (`TranscriptModel.runningAgents`).
+
+Claude Code's suggested next prompt (the faint text in an empty prompt) is not
+written to the transcript.
 
 ## Formatting
 
