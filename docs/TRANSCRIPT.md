@@ -95,7 +95,11 @@ screen instead, the one place it does (`PromptSuggestion` in TetherCore,
 of the viewport. It reads only for a tab showing its chat, where nothing can
 have been typed into the terminal, a moment after a turn ends, and drops the
 suggestion when a turn starts, a message is sent, or the tab shows its terminal.
-Captured on Claude Code 2.1.308.
+Captured on Claude Code 2.1.308. The Mac sends it to phones and paired Macs as
+`SessionSummary.suggestion` (protocol 25) and resends the snapshot when it
+appears or clears; the phone shows it as a tap-to-fill chip above the message
+box and a paired Mac as the placeholder (Tab or Right Arrow takes it). It is
+nil for a tab showing its terminal on the Mac.
 
 ## Formatting
 

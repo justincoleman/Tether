@@ -88,10 +88,15 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     /// The agent in the tab. Nil from a Mac older than protocol 21, which
     /// only had Claude tabs.
     public var agent: AgentKind?
+    /// Claude Code's suggested next prompt, while the tab is idle with its
+    /// chat showing on the Mac. Nil otherwise, and from a Mac older than 25.
+    public var suggestion: String?
 
     public init(id: PaneID, projectId: ProjectID, sessionId: SessionID?, title: String,
                 state: SessionState, attention: AttentionReason?, queued: Int, preview: String? = nil,
-                permissionMode: String? = nil, status: SessionStatus? = nil, agent: AgentKind? = nil) {
+                permissionMode: String? = nil, status: SessionStatus? = nil, agent: AgentKind? = nil,
+                suggestion: String? = nil) {
+        self.suggestion = suggestion
         self.id = id
         self.projectId = projectId
         self.sessionId = sessionId

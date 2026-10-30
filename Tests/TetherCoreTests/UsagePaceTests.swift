@@ -96,3 +96,21 @@ import TetherProtocol
         #expect(UsageLimit(usedPercent: 1, resetsAt: nil).timeLeftText(now: now) == nil)
     }
 }
+
+@Suite struct SessionSuggestionTests {
+    @Test func suggestionRoundTripsAndIsNilFromAnOlderMac() throws {
+        func decode(_ session: SessionSummary) throws -> SessionSummary {
+            let snapshot = Snapshot(macName: "m", projects: [], sessions: [session], permissions: [])
+            let data = try WireCodec.encoder().encode(MacMessage.snapshot(snapshot))
+            guard case .snapshot(let decoded) = try WireCodec.decoder().decode(MacMessage.self, from: data),
+                  let first = decoded.sessions.first else { throw CocoaError(.coderReadCorrupt) }
+            return first
+        }
+        let base = SessionSummary(id: UUID(), projectId: UUID(), sessionId: "s", title: "t",
+                                  state: .idle, attention: nil, queued: 0)
+        var withSuggestion = base
+        withSuggestion.suggestion = "run the tests"
+        #expect(try decode(withSuggestion).suggestion == "run the tests")
+        #expect(try decode(base).suggestion == nil)
+    }
+}

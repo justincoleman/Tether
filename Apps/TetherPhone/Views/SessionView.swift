@@ -225,6 +225,28 @@ struct SessionView: View {
                     .foregroundStyle(theme.secondaryText)
                     .padding(.horizontal, 4)
             }
+            if let suggestion {
+                Button { text.wrappedValue = suggestion } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles").foregroundStyle(theme.claude)
+                        Text(suggestion)
+                            .foregroundStyle(theme.text)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(theme.border.opacity(0.7)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Suggested message: \(suggestion)")
+                .accessibilityHint("Puts it in the message box")
+                .transition(.opacity)
+            }
             if let photo {
                 ZStack(alignment: .topTrailing) {
                     Image(uiImage: photo.thumbnail)
@@ -292,6 +314,14 @@ struct SessionView: View {
         guard canSend else { return }
         connection.sendDraft(to: paneId)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// Claude Code's suggested next message, offered while the box is empty
+    /// and the tab is idle. Tapping it fills the box; you still press send.
+    private var suggestion: String? {
+        guard let text = session?.suggestion, !text.isEmpty, draft.text.isEmpty, draft.image == nil,
+              session?.state != .working, session?.state != .needsInput else { return nil }
+        return text
     }
 
     private var canSend: Bool {
