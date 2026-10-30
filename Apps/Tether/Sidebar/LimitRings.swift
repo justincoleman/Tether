@@ -37,7 +37,7 @@ struct LimitRings: View {
                                         Text(row.short)
                                             .font(.callout.weight(.semibold))
                                             .foregroundStyle(theme.text)
-                                        if let left = Self.timeLeft(row.limit, now: now) {
+                                        if let left = row.limit.timeLeftText(now: now) {
                                             Text(left)
                                                 .font(.caption)
                                                 .foregroundStyle(theme.secondaryText)
@@ -50,6 +50,12 @@ struct LimitRings: View {
                     }
                     // Dimmed once the reading is old: the numbers may have moved.
                     .opacity(stale && !hovering ? 0.5 : 1)
+                    if hovering, showPace {
+                        Text("Tick: how far through the window you are")
+                            .font(.caption2)
+                            .foregroundStyle(theme.secondaryText)
+                            .transition(.opacity)
+                    }
                     if hovering, let reportedAt {
                         Text(stale ? "Last reading \(UsageAge.text(since: reportedAt, now: now))"
                                    : "Updated \(UsageAge.text(since: reportedAt, now: now))")
@@ -86,16 +92,6 @@ struct LimitRings: View {
         if let limit = limits.fiveHour { rows.append(Row(title: "5-hour", short: "5h", window: .fiveHour, limit: limit)) }
         if let limit = limits.sevenDay { rows.append(Row(title: "Weekly", short: "Week", window: .sevenDay, limit: limit)) }
         return rows
-    }
-
-    /// "3h 34m", "1d 7h"; nil without a reset time or once it has passed.
-    static func timeLeft(_ limit: UsageLimit, now: Date) -> String? {
-        guard let resetsAt = limit.resetsAt else { return nil }
-        let minutes = Int(resetsAt.timeIntervalSince(now) / 60)
-        guard minutes > 0 else { return nil }
-        if minutes >= 24 * 60 { return "\(minutes / 1440)d \(minutes % 1440 / 60)h" }
-        if minutes >= 60 { return "\(minutes / 60)h \(minutes % 60)m" }
-        return "\(minutes)m"
     }
 
     static func summary(_ row: Row) -> String {

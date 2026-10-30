@@ -237,13 +237,24 @@ struct NeedsYouCard: View {
     }
 }
 
-/// The 5-hour and weekly plan limits side by side, like Claude Code's bars.
+/// The 5-hour and weekly plan limits as two rings, like the Mac sidebar's:
+/// small and colored at rest, and a tap opens them into percent, name, time to
+/// reset and how fresh the reading is. A tick on each ring marks how far into
+/// its window you are.
 struct UsageCard: View {
     @Environment(\.phoneTheme) private var theme
     let limits: UsageLimits
     /// When the Mac's status line last reported them, if it says.
     var updatedAt: Date?
     var macName: String?
+    @State private var expanded = false
+
+    private struct Row {
+        var title: String
+        var short: String
+        var window: UsageWindow
+        var limit: UsageLimit
+    }
 
     var body: some View {
         // Re-evaluated each minute: a window can end, and the reading ages,
@@ -252,11 +263,50 @@ struct UsageCard: View {
             let now = context.date
             let live = limits.live(at: now)
             let stale = updatedAt.map { UsageAge.isStale(since: $0, now: now) } ?? false
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(spacing: expanded ? 12 : 0) {
                 HStack(spacing: 6) {
                     Image(systemName: "gauge.with.dots.needle.33percent")
                     Text(macName.map { "Plan usage · \($0)" } ?? "Plan usage")
-                    Spacer(minLength: 4)
+                    Spacer(minLength: 8)
+                    if let live, !expanded {
+                        HStack(spacing: 10) {
+                            ForEach(rows(live), id: \.title) { row in ring(row, now: now, size: 26) }
+                        }
+                        .opacity(stale ? 0.5 : 1)
+                    } else if live == nil {
+                        Text("Reset").font(.caption2)
+                    }
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.secondaryText)
+                if expanded {
+                    if let live {
+                        HStack(alignment: .top, spacing: 0) {
+                            ForEach(rows(live), id: \.title) { row in
+                                VStack(spacing: 5) {
+                                    ring(row, now: now, size: 62)
+                                    Text(row.title).font(.subheadline.weight(.semibold)).foregroundStyle(theme.text)
+                                    if let left = row.limit.timeLeftText(now: now) {
+                                        Text("resets in \(left)").font(.caption).foregroundStyle(theme.secondaryText)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .opacity(stale ? 0.6 : 1)
+                    } else {
+                        Text("Those windows have reset. New numbers arrive with the next reply in a Claude tab on the Mac.")
+                            .font(.caption)
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    if live != nil {
+                        Text("The white tick marks how far through the window you are. Past it, you're using the limit faster than it refills.")
+                            .font(.caption2)
+                            .foregroundStyle(theme.tertiaryText)
+                    }
                     if let updatedAt {
                         Text(stale ? "Last reading \(UsageAge.text(since: updatedAt, now: now))"
                                    : "Updated \(UsageAge.text(since: updatedAt, now: now))")
@@ -264,53 +314,53 @@ struct UsageCard: View {
                             .foregroundStyle(stale ? theme.claude : theme.tertiaryText)
                     }
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.secondaryText)
-                if let live {
-                    HStack(alignment: .top, spacing: 18) {
-                        if let limit = live.fiveHour { meter("5-hour", limit) }
-                        if let limit = live.sevenDay { meter("Weekly", limit) }
-                    }
-                    .opacity(stale ? 0.6 : 1)
-                } else {
-                    Text("Those windows have reset. New numbers arrive with the next reply in a Claude tab on the Mac.")
-                        .font(.caption)
-                        .foregroundStyle(theme.secondaryText)
-                }
             }
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { expanded.toggle() }
+            .animation(.smooth(duration: 0.28), value: expanded)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(expanded ? "Collapse" : "Expand")
         }
     }
 
-    private func meter(_ label: String, _ limit: UsageLimit) -> some View {
-        let fraction = min(max(limit.usedPercent, 0), 100) / 100
-        let color = limit.usedPercent >= 90 ? theme.red : theme.claude
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(label).font(.subheadline).foregroundStyle(theme.text)
-                Spacer(minLength: 4)
-                Text("\(Int(limit.usedPercent.rounded()))%")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(limit.usedPercent >= 90 ? theme.red : theme.text)
+    private func rows(_ limits: UsageLimits) -> [Row] {
+        var rows: [Row] = []
+        if let limit = limits.fiveHour { rows.append(Row(title: "5-hour", short: "5h", window: .fiveHour, limit: limit)) }
+        if let limit = limits.sevenDay { rows.append(Row(title: "Weekly", short: "Week", window: .sevenDay, limit: limit)) }
+        return rows
+    }
+
+    /// Green within pace, orange once ahead of it, red from 90%.
+    private func ring(_ row: Row, now: Date, size: CGFloat) -> some View {
+        let used = row.limit.usedPercent
+        let fraction = min(max(used, 0), 100) / 100
+        let line: CGFloat = size > 40 ? 6 : 4
+        let ahead = row.limit.isAheadOfPace(in: row.window, now: now)
+        let tint = used >= 90 ? theme.red : ahead ? theme.claude : theme.green
+        return ZStack {
+            Circle().stroke(theme.border.opacity(0.7), lineWidth: line)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(tint, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            if let pace = row.limit.paceFraction(in: row.window, now: now) {
+                Capsule()
+                    .fill(theme.text)
+                    .frame(width: 1.5, height: line + 3)
+                    .offset(y: -size / 2 + line / 2)
+                    .rotationEffect(.degrees(pace * 360))
             }
-            Capsule()
-                .fill(theme.elevated)
-                .frame(height: 6)
-                .overlay(alignment: .leading) {
-                    GeometryReader { geo in
-                        Capsule().fill(color).frame(width: max(6, geo.size.width * fraction))
-                    }
-                }
-            if let reset = limit.resetsAt {
-                Text("Resets \(reset, format: .relative(presentation: .named))")
-                    .font(.caption2)
-                    .foregroundStyle(theme.tertiaryText)
-                    .lineLimit(1)
+            if size > 40 {
+                Text("\(Int(used.rounded()))%")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(theme.text)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .frame(width: size, height: size)
+        .accessibilityLabel("\(row.title) limit")
+        .accessibilityValue("\(Int(used.rounded())) percent used")
     }
 }
 
