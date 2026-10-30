@@ -128,6 +128,17 @@ private struct TerminalCard: View {
                         .frame(width: r.width, height: r.height)
                         .offset(x: r.minX, y: r.minY)
                 }
+                // Covers both the terminal and the chat: neither has anything to show.
+                if isActive && !overlayOpen {
+                    ForEach(panes) { pane in
+                        if let agent = model.missingTools[pane.id],
+                           let r = frame(of: pane.id, split: split, halves: halves, full: full) {
+                            MissingToolView(paneId: pane.id, agent: agent)
+                                .frame(width: r.width, height: r.height)
+                                .offset(x: r.minX, y: r.minY)
+                        }
+                    }
+                }
                 if let split, let halves, !overlayOpen {
                     divider(split: split, rect: halves.divider, size: geo.size)
                 }
