@@ -148,17 +148,17 @@ import TetherProtocol
         queue.enqueue("first", for: pane)
         queue.enqueue("second", for: pane)
         queue.enqueue("third", for: pane)
-        #expect(queue.replace(at: 1, expected: "second", with: " 2nd \n", for: pane))
+        do { let changed = queue.replace(at: 1, expected: "second", with: " 2nd \n", for: pane); #expect(changed) }
         #expect(queue.texts(for: pane) == ["first", "2nd", "third"])
         // The queue moved since the user looked: nothing changes.
-        #expect(!queue.replace(at: 1, expected: "second", with: "x", for: pane))
-        #expect(!queue.remove(at: 5, expected: "third", for: pane))
-        #expect(queue.remove(at: 0, expected: "first", for: pane))
+        do { let changed = queue.replace(at: 1, expected: "second", with: "x", for: pane); #expect(!changed) }
+        do { let changed = queue.remove(at: 5, expected: "third", for: pane); #expect(!changed) }
+        do { let changed = queue.remove(at: 0, expected: "first", for: pane); #expect(changed) }
         #expect(queue.texts(for: pane) == ["2nd", "third"])
         // Clearing a message's text removes it.
-        #expect(queue.replace(at: 0, expected: "2nd", with: "  ", for: pane))
+        do { let changed = queue.replace(at: 0, expected: "2nd", with: "  ", for: pane); #expect(changed) }
         #expect(queue.texts(for: pane) == ["third"])
-        #expect(queue.remove(at: 0, expected: "third", for: pane))
+        do { let changed = queue.remove(at: 0, expected: "third", for: pane); #expect(changed) }
         #expect(queue.count(for: pane) == 0)
     }
 
@@ -168,7 +168,7 @@ import TetherProtocol
         queue.enqueue("first", for: pane)
         queue.enqueue("second", for: pane)
         queue.enqueue("urgent", for: pane)
-        #expect(queue.sendNext(at: 2, expected: "urgent", for: pane))
+        do { let changed = queue.sendNext(at: 2, expected: "urgent", for: pane); #expect(changed) }
         #expect(queue.texts(for: pane) == ["urgent", "first", "second"])
         #expect(queue.nextIsSolo(for: pane))
         let next = queue.drain(for: pane)
