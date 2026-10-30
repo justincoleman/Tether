@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.30.3",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.3 gives every project a start page, and + opens it.",
+    "highlights": [
+      {
+        "title": "A start page for every project.",
+        "body": "A project with no tabs open shows its icon, big Start Claude and Start Codex buttons, Shell, Agent on a Branch, its dev server preview and shortcuts, and your last few conversations to pick back up in a click. A newly added project opens on it, so you choose Claude or Codex."
+      },
+      {
+        "title": "+ opens the start page.",
+        "body": "Instead of a small menu, + shows the start page in place of the current tab. Pick anything, click another tab or press Esc to close it. ⌘T still opens Claude right away, and ⌥⌘T Codex."
+      }
+    ]
+  },
+  {
     "version": "0.30.2",
     "date": "2026-10-30",
     "summary": "Tether 0.30.2 puts Codex next to Claude everywhere you start a tab, including on a paired Mac and the iPhone.",

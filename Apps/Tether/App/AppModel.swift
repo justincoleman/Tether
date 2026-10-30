@@ -69,6 +69,9 @@ final class AppModel {
     /// Right-hand panel, showing Changes, Files or Preview.
     var showInspector = false
     var inspectorTab: InspectorTab = .changes
+    /// The project whose + was pressed: its start page covers the current tab
+    /// until something is picked or another tab is clicked.
+    var newTabPage: ProjectID?
     /// Shortcut commands for every project, shown in the top bar.
     private(set) var quickActions: [QuickAction] = []
 
@@ -237,8 +240,8 @@ final class AppModel {
         do {
             let p = try await store.addProject(name: url.lastPathComponent, path: url.path)
             await reload()
+            // Its start page offers Claude, Codex and the rest.
             selectedProjectId = p.id
-            await openClaudePane(project: p)
         } catch {
             print("addProject failed: \(error)")
         }

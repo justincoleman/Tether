@@ -86,7 +86,7 @@ struct AppearanceSettings: View {
     }
 }
 
-/// SSH targets offered in the + menu, e.g. the always-on Mac mini. Not for
+/// SSH targets offered on the start page (+), e.g. the always-on Mac mini. Not for
 /// pairing another Mac: that is Settings → Macs.
 struct RemoteHostsSettings: View {
     @Environment(AppModel.self) private var model
