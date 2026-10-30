@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.30.9",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.9 tidies the Changes panel and puts New Agent on a Branch in the sidebar.",
+    "highlights": [
+      {
+        "title": "Changes, grouped by folder.",
+        "body": "Files in the Changes panel sit under their folder, with the project root first, so a long list reads like a tree. The branch name shortens in the middle, so the unpushed and behind counts are never cut off."
+      },
+      {
+        "title": "New Agent on a Branch, in the sidebar.",
+        "body": "Under the open project, a dashed New Agent on a Branch button starts a worktree on a new branch with its own Claude tab, without opening the + menu."
+      }
+    ]
+  },
+  {
     "version": "0.30.7",
     "date": "2026-10-30",
     "summary": "Tether 0.30.7 shows a paired Mac's own plan limits in the sidebar rings.",

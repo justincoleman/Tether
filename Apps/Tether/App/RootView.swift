@@ -333,6 +333,7 @@ private struct ProjectRow: View {
     let active: Bool
     let selected: Bool
     @State private var hovering = false
+    @State private var showNewAgent = false
     @AppStorage("useProjectIcons") private var useProjectIcons = true
     @State private var renaming = false
     @State private var newName = ""
@@ -346,7 +347,30 @@ private struct ProjectRow: View {
             ForEach(model.branchWorktrees(for: project.id)) { worktree in
                 WorktreeRow(worktree: worktree)
             }
+            if selected, active {
+                newAgentButton
+            }
         }
+        .sheet(isPresented: $showNewAgent) { NewAgentSheet(project: project) }
+    }
+
+    /// Under the open project, where branches already hang, so starting one is in reach.
+    private var newAgentButton: some View {
+        Button { showNewAgent = true } label: {
+            Label("New Agent on a Branch", systemImage: "plus")
+                .font(.caption)
+                .foregroundStyle(theme.secondaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(theme.border, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.leading, 28)
+        .help("A worktree on a new branch with its own Claude tab")
     }
 
     private var projectLine: some View {
