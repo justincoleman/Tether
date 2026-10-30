@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.30.16",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.16 makes tables in chat fit, and gives folders without git a calm message.",
+    "highlights": [
+      {
+        "title": "Tables use the full width of the chat.",
+        "body": "Short columns stay compact, long text wraps inside its column, rows no longer overlap, and a table only scrolls sideways when it has more columns than can fit. The same on the phone and on a paired Mac."
+      },
+      {
+        "title": "Folders without git look right.",
+        "body": "The Changes tab used to show a warning triangle and \"Can't read changes\" for a project that isn't a git repository. It now says so plainly and points to the Files tab."
+      }
+    ]
+  },
+  {
     "version": "0.30.15",
     "date": "2026-10-30",
     "summary": "Tether 0.30.15 finds Claude Code and Codex when Tether is opened from Finder or the Dock.",
