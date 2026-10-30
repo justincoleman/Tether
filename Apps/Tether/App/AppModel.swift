@@ -63,6 +63,8 @@ final class AppModel {
         }
     }
     var addProjectRequested = false
+    /// Set once at launch when this is a first run, so the window opens the welcome.
+    var needsWelcome = false
     /// The Overview grid replaces the tabs in the detail column. Picking a
     /// project, or opening or switching a tab, leaves it.
     var showOverview = false
@@ -1380,14 +1382,14 @@ final class AppModel {
         await reload()
         splits = await store.state.splits
         updater.startAutomaticChecks()
-        var descriptors = await store.state.panes
-        for project in projects where !descriptors.contains(where: { $0.projectId == project.id }) {
-            if let wt = await store.primaryWorktree(for: project.id) {
-                let d = PaneDescriptor(projectId: project.id,
-                                       kind: .claude(worktreeId: wt.id, resumeSessionId: nil),
-                                       title: "Claude")
-                try? await store.addPane(d)
-                descriptors.append(d)
+        // A project with no tabs shows its start page rather than starting Claude.
+        let descriptors = await store.state.panes
+        // Someone who already has projects has been through setup, in an older version.
+        if !UserDefaults.standard.bool(forKey: "welcomeSeen") {
+            if projects.isEmpty {
+                needsWelcome = true
+            } else {
+                UserDefaults.standard.set(true, forKey: "welcomeSeen")
             }
         }
         for (i, d) in descriptors.enumerated() {

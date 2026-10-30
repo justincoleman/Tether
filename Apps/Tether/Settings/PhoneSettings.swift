@@ -78,7 +78,7 @@ struct PhoneSettings: View {
     }
 }
 
-private struct PairingCard: View {
+struct PairingCard: View {
     let window: CompanionHub.PairingWindow
     let cancel: () -> Void
 

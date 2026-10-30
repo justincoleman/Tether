@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.30.4",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.4 adds a welcome that walks a new install through setup, and stops opening Claude in every project at launch.",
+    "highlights": [
+      {
+        "title": "A welcome for first launch.",
+        "body": "A new install walks you through checking your Mac's tools (Claude Code, Git, Codex, Tailscale), choosing whether new Claude tabs open as a terminal or a chat, matching your terminal theme, adding projects (suggested from folders you've already used Claude Code in), and pairing your iPhone. See it any time with Help > Welcome to Tether."
+      },
+      {
+        "title": "Projects start quietly.",
+        "body": "Tether no longer starts a Claude tab in every project at launch. A project with no tabs open shows its start page, so you pick Claude or Codex when you want one."
+      }
+    ]
+  },
+  {
     "version": "0.30.3",
     "date": "2026-10-30",
     "summary": "Tether 0.30.3 gives every project a start page, and + opens it.",
