@@ -24,6 +24,17 @@ extension UsageLimit {
         return min(max(1 - remaining / window.length, 0), 1)
     }
 
+    /// "3h 34m", "1d 7h", "12m": the time until reset. Nil without a reset
+    /// time or once it has passed.
+    public func timeLeftText(now: Date) -> String? {
+        guard let resetsAt else { return nil }
+        let minutes = Int(resetsAt.timeIntervalSince(now) / 60)
+        guard minutes > 0 else { return nil }
+        if minutes >= 24 * 60 { return "\(minutes / 1440)d \(minutes % 1440 / 60)h" }
+        if minutes >= 60 { return "\(minutes / 60)h \(minutes % 60)m" }
+        return "\(minutes)m"
+    }
+
     /// Used more of the window than the time that has passed, by more than a
     /// couple of points: at this rate the limit runs out before it refills.
     public func isAheadOfPace(in window: UsageWindow, now: Date) -> Bool {

@@ -80,3 +80,19 @@ import TetherProtocol
         #expect(oldDecoded.limitsAt == nil)
     }
 }
+
+@Suite struct UsageTimeLeftTests {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func timeLeftReadsInTheLargestTwoUnits() {
+        func left(_ seconds: TimeInterval) -> String? {
+            UsageLimit(usedPercent: 1, resetsAt: now.addingTimeInterval(seconds)).timeLeftText(now: now)
+        }
+        #expect(left(12 * 60 + 5) == "12m")
+        #expect(left(3 * 3600 + 34 * 60) == "3h 34m")
+        #expect(left(31 * 3600) == "1d 7h")
+        #expect(left(30) == nil)
+        #expect(left(-5) == nil)
+        #expect(UsageLimit(usedPercent: 1, resetsAt: nil).timeLeftText(now: now) == nil)
+    }
+}
