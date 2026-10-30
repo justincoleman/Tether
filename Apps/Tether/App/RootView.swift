@@ -206,6 +206,8 @@ struct SidebarView: View {
                 MacNoticeCard(connection: connection)
             }
 
+            LimitRings()
+
             if let message = model.hookStatusMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)

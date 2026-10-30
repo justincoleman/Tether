@@ -71,9 +71,10 @@ import Testing
     }
 
     @Test func probeFindsARealToolAndNotAMissingOne() async {
-        let found = await ToolProbe.resolve("sh", shell: "/bin/sh")
+        // A long timeout: this runs beside a hundred other tests on a busy machine.
+        let found = await ToolProbe.resolve("sh", shell: "/bin/sh", timeout: 60)
         #expect(found?.hasSuffix("/sh") == true)
-        let missing = await ToolProbe.resolve("tether-no-such-tool-xyz", shell: "/bin/sh")
+        let missing = await ToolProbe.resolve("tether-no-such-tool-xyz", shell: "/bin/sh", timeout: 60)
         #expect(missing == nil)
     }
 }

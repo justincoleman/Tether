@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.30.5",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.5 puts your Claude plan's limits in the sidebar, with a pace tick on each ring.",
+    "highlights": [
+      {
+        "title": "Plan limits in the sidebar.",
+        "body": "Two small rings at the bottom of the sidebar show how much of your 5-hour and weekly limits you've used. A tick on each ring marks how far into that window you are: if the ring has passed its tick, you're using the limit faster than it refills. Hover for the percentages and reset times, click for the detail."
+      },
+      {
+        "title": "Turn them off if you like.",
+        "body": "Settings > Appearance has switches for the rings and for the ticks. Your own status line keeps working as before."
+      }
+    ]
+  },
+  {
     "version": "0.30.4",
     "date": "2026-10-30",
     "summary": "Tether 0.30.4 adds a welcome that walks a new install through setup, and stops opening Claude in every project at launch.",
