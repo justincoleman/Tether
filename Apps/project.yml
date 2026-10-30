@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    MARKETING_VERSION: "0.20.13"
+    MARKETING_VERSION: "0.20.14"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
 packages:
@@ -31,6 +31,9 @@ targets:
         product: TetherProtocol
       - package: libghostty-spm
         product: GhosttyTerminal
+      # The C API, for TerminalScreen's one read of the prompt line.
+      - package: libghostty-spm
+        product: GhosttyKit
     info:
       path: Tether/Resources/Info.plist
       properties:

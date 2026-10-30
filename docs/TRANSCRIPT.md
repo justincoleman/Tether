@@ -89,7 +89,13 @@ The chat shows each `Agent`/`Task` step as a card outside the folded steps
 box (`TranscriptModel.runningAgents`).
 
 Claude Code's suggested next prompt (the faint text in an empty prompt) is not
-written to the transcript.
+written to the transcript or the status line JSON. Tether reads it off the
+screen instead, the one place it does (`PromptSuggestion` in TetherCore,
+`TerminalScreen` in the app): the `❯` line between two `─` rules at the bottom
+of the viewport. It reads only for a tab showing its chat, where nothing can
+have been typed into the terminal, a moment after a turn ends, and drops the
+suggestion when a turn starts, a message is sent, or the tab shows its terminal.
+Captured on Claude Code 2.1.308.
 
 ## Formatting
 

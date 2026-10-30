@@ -109,4 +109,6 @@ structural. Work proceeds in the numbered phases there.
   AppKit/UIKit/SwiftUI so it keeps testing on Linux CI.
 - Bump `ProtocolVersion.current` whenever a type in `TetherProtocol` changes shape.
 - Never scrape the terminal for state. Session state comes from hooks and
-  the transcript (PLAN.md 3.2).
+  the transcript (PLAN.md 3.2). The one exception is Claude Code's suggested
+  next prompt (`PromptSuggestion`, `TerminalScreen`): only the prompt box, only
+  in chat view right after a turn ends. Don't extend it to anything else.

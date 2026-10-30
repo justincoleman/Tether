@@ -184,7 +184,8 @@ treated as needing input.
 (assistant text, user text, tool_use, tool_result, usage). This is what the
 phone chat view and the Mac's native mirror view render. Hooks give us edges
 (start/stop/needs input) with low latency; the transcript gives us content.
-Neither needs the TUI to be scraped.
+Neither needs the TUI to be scraped. (One narrow exception: the suggested next
+prompt, which Claude Code shows only on screen; see `docs/TRANSCRIPT.md`.)
 
 Observed record shapes and the parsing rules are in `docs/TRANSCRIPT.md`.
 The JSONL format is not a public contract. Parser must be tolerant: unknown

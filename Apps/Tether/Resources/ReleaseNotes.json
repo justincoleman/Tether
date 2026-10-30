@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.20.14",
+    "date": "2026-10-30",
+    "summary": "Tether 0.20.14 offers Claude's suggested next message in the chat view.",
+    "highlights": [
+      {
+        "title": "Claude's suggestion, in the chat.",
+        "body": "When Claude finishes and suggests what to say next, the suggestion shows faintly in the empty message box. Press Tab or Right Arrow to take it, edit it if you like, then Return to send."
+      }
+    ]
+  },
+  {
     "version": "0.20.13",
     "date": "2026-10-30",
     "summary": "Tether 0.20.13 shows Claude's subagents and background commands in the chat view.",

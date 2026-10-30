@@ -57,6 +57,13 @@ final class TerminalPane: Identifiable {
     @discardableResult
     func interrupt() -> Bool { terminal.sendKey(.escape) }
 
+    /// Claude Code's faint suggested prompt, read off the screen. Only ask
+    /// when nothing can have been typed into the terminal (see PromptSuggestion).
+    func promptSuggestion() -> String? {
+        guard isClaude else { return nil }
+        return TerminalScreen.bottomText(of: terminal).flatMap(PromptSuggestion.extract(viewport:))
+    }
+
     var isClaude: Bool {
         if case .claude = descriptor.kind { return true }
         return false
