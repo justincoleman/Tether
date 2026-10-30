@@ -9,19 +9,24 @@ struct SessionView: View {
     @Environment(PhoneStore.self) private var store
     let connection: MacConnection
     let paneId: PaneID
-    @State private var text = ""
     @State private var answering: PermissionRequested?
     @State private var confirmClose = false
     @State private var askingModel = false
     @State private var customModel = ""
     @State private var showingChanges = false
     @State private var photoItem: PhotosPickerItem?
-    @State private var photo: PhotoReply?
     @State private var loadingPhoto = false
+    @State private var photoTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
     /// A tab started from the phone shows up in the next snapshot, a moment later.
     @State private var waitedForTab = false
     @AppStorage("useMacColors") private var useMacColors = true
+
+    private var draft: CompanionDraft { connection.messageDrafts[paneId] ?? CompanionDraft() }
+    private var text: Binding<String> {
+        Binding(get: { draft.text }, set: { connection.messageDrafts[paneId, default: CompanionDraft()].text = $0 })
+    }
+    @State private var photo: PhotoReply?
 
     /// What `.macColors` puts in the environment, for this view's own controls.
     private var theme: PhoneTheme {
@@ -149,6 +154,9 @@ struct SessionView: View {
         }
         .onAppear { store.visiblePaneId = paneId }
         .onDisappear {
+            photoTask?.cancel()
+            loadingPhoto = false
+            photoItem = nil
             connection.subscribe(nil)
             if store.visiblePaneId == paneId { store.visiblePaneId = nil }
         }
@@ -167,6 +175,10 @@ struct SessionView: View {
             ChangesSheet(connection: connection, paneId: paneId)
         }
         .onChange(of: photoItem) { loadPhoto() }
+        .onChange(of: draft.image, initial: true) { _, image in
+            photo = image.flatMap(PhotoReply.init(jpeg:))
+            if image == nil, !loadingPhoto { photoItem = nil }
+        }
         .sheet(item: $answering) { request in
             PermissionSheet(connection: connection, request: request)
                 .presentationDetents([.medium, .large])
@@ -221,7 +233,7 @@ struct SessionView: View {
                         .frame(width: 64, height: 64)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     Button {
-                        self.photo = nil
+                        connection.messageDrafts[paneId]?.image = nil
                         photoItem = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -230,6 +242,7 @@ struct SessionView: View {
                     }
                     .offset(x: 6, y: -6)
                     .accessibilityLabel("Remove photo")
+                    .disabled(draft.isSending)
                 }
                 .padding(.top, 6)
             } else if loadingPhoto {
@@ -244,11 +257,12 @@ struct SessionView: View {
                         .background(theme.card, in: Circle())
                         .overlay(Circle().strokeBorder(theme.border.opacity(0.7)))
                 }
-                .disabled(connection.status != .online || session?.state == .detached)
+                .disabled(draft.isSending || connection.status != .online || session?.state == .detached)
                 .accessibilityLabel("Attach a photo")
                 HStack(alignment: .bottom, spacing: 4) {
-                    TextField(photo == nil ? "Message Claude" : "Add a note (optional)", text: $text, axis: .vertical)
+                    TextField(photo == nil ? "Message Claude" : "Add a note (optional)", text: text, axis: .vertical)
                         .lineLimit(1...6)
+                        .disabled(draft.isSending)
                         .foregroundStyle(theme.text)
                         .padding(.leading, 14)
                         .padding(.vertical, 9)
@@ -275,38 +289,40 @@ struct SessionView: View {
     }
 
     private func send() {
-        if let photo {
-            connection.sendImage(photo.jpeg, text: text, to: paneId)
-        } else {
-            connection.send(text, to: paneId)
-        }
+        guard canSend else { return }
+        connection.sendDraft(to: paneId)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        text = ""
-        photo = nil
-        photoItem = nil
     }
 
     private var canSend: Bool {
         connection.status == .online && session?.state != .detached
-            && (photo != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            && !draft.isSending && !loadingPhoto
+            && (draft.image != nil || !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     private func loadPhoto() {
+        photoTask?.cancel()
         guard let item = photoItem else { return }
         loadingPhoto = true
-        photo = nil
-        Task {
+        connection.messageDrafts[paneId, default: CompanionDraft()].image = nil
+        photoTask = Task {
             let data = try? await item.loadTransferable(type: Data.self)
             let reply = await Task.detached { data.flatMap(PhotoReply.init(data:)) }.value
             // Another pick replaced this one while it loaded.
-            guard photoItem == item else { return }
+            guard !Task.isCancelled, photoItem == item else { return }
             loadingPhoto = false
-            photo = reply
+            connection.messageDrafts[paneId, default: CompanionDraft()].image = reply?.jpeg
             if reply == nil { photoItem = nil }
         }
     }
 
     private var composeNote: String? {
+        if draft.isSending { return "Waiting for the Mac to confirm…" }
+        switch draft.outcome {
+        case "unconfirmed"?: return "Delivery wasn't confirmed. Your draft is kept. Check the Mac before sending again."
+        case "failed"?: return "The Mac couldn't send that. Your draft is kept."
+        default: break
+        }
         switch connection.sendResults[paneId] {
         case "queued"?: return "Queued. The Mac sends it when Claude is ready."
         case "failed"?: return "The Mac couldn't send that."
@@ -328,6 +344,12 @@ private struct PhotoReply: Sendable {
     let thumbnail: UIImage
 
     static let maxSide: CGFloat = 2048
+
+    init?(jpeg: Data) {
+        guard let image = UIImage(data: jpeg) else { return nil }
+        self.jpeg = jpeg
+        self.thumbnail = image.preparingThumbnail(of: CGSize(width: 128, height: 128 * image.size.height / max(image.size.width, 1))) ?? image
+    }
 
     init?(data: Data) {
         guard let image = UIImage(data: data) else { return nil }

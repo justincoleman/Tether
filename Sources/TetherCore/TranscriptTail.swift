@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Splits appended bytes into complete JSONL lines, holding a partial last line
 /// until its newline arrives.
@@ -26,6 +31,32 @@ public struct JSONLLineBuffer: Sendable {
 public struct TranscriptTail: Sendable {
     public let path: String
     private var offset: UInt64
+    private var identity: FileIdentity?
+
+    private struct FileIdentity: Equatable, Sendable {
+        let device: UInt64
+        let inode: UInt64
+    }
+
+    /// Metadata belongs to the opened file, not a path that may be atomically
+    /// replaced between checking its size and opening it.
+    private struct FileState {
+        let identity: FileIdentity
+        let size: UInt64
+
+        init?(_ handle: FileHandle) {
+            var info = stat()
+            guard fstat(handle.fileDescriptor, &info) == 0 else { return nil }
+            identity = FileIdentity(device: UInt64(info.st_dev), inode: UInt64(info.st_ino))
+            size = UInt64(max(0, info.st_size))
+        }
+
+        init?(path: String) {
+            guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+            defer { try? handle.close() }
+            self.init(handle)
+        }
+    }
     private var buffer = JSONLLineBuffer()
     /// The first read began mid-file, so everything up to its first newline is
     /// the end of a line that started before it.
@@ -36,14 +67,18 @@ public struct TranscriptTail: Sendable {
     /// Starts at the current end of the file unless `fromStart` is set.
     public init(path: String, fromStart: Bool = false) {
         self.path = path
-        self.offset = fromStart ? 0 : Self.fileSize(path) ?? 0
+        let state = FileState(path: path)
+        self.identity = state?.identity
+        self.offset = fromStart ? 0 : state?.size ?? 0
     }
 
     /// Starts at most `lastBytes` before the end of the file, so a transcript of
     /// hundreds of megabytes opens with its recent records only.
     public init(path: String, lastBytes: UInt64) {
         self.path = path
-        let size = Self.fileSize(path) ?? 0
+        let state = FileState(path: path)
+        self.identity = state?.identity
+        let size = state?.size ?? 0
         if size > lastBytes {
             offset = size - lastBytes
             skipsPartialFirstLine = true
@@ -54,13 +89,17 @@ public struct TranscriptTail: Sendable {
     }
 
     public mutating func readNewLines() -> [String] {
-        guard let size = Self.fileSize(path) else { return [] }
-        if size < offset { // rewritten or truncated
+        guard let handle = FileHandle(forReadingAtPath: path) else { return [] }
+        defer { try? handle.close() }
+        guard let state = FileState(handle) else { return [] }
+        if identity != state.identity || state.size < offset {
             offset = 0
             buffer = JSONLLineBuffer()
+            skipsPartialFirstLine = false
+            skippedEarlier = false
         }
-        guard size > offset, let handle = FileHandle(forReadingAtPath: path) else { return [] }
-        defer { try? handle.close() }
+        identity = state.identity
+        guard state.size > offset else { return [] }
         do {
             try handle.seek(toOffset: offset)
             var data = try handle.readToEnd() ?? Data()

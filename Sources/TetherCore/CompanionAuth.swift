@@ -1,5 +1,10 @@
 import Foundation
 import TetherProtocol
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 
 /// A phone allowed to connect. The token is its long-lived bearer secret.
 public struct PairedDevice: Codable, Hashable, Sendable, Identifiable {
@@ -65,20 +70,22 @@ public actor CompanionAuth {
 
     /// Redeems the current code for a new device. Nil when the code is wrong,
     /// expired or already used.
-    public func pair(code: String, deviceName: String) -> (device: PairedDevice, token: String)? {
+    public func pair(code: String, deviceName: String) throws -> (device: PairedDevice, token: String)? {
         guard var p = pending, now() < p.expires else { pending = nil; return nil }
         guard Self.constantTimeEqual(code.uppercased(), p.code) else {
             p.failures += 1
             pending = p.failures >= Self.maxAttempts ? nil : p
             return nil
         }
-        pending = nil
         let token = Self.randomHex(bytes: 32)
         let name = deviceName.trimmingCharacters(in: .whitespacesAndNewlines)
         let device = PairedDevice(id: UUID(), name: name.isEmpty ? "iPhone" : name,
                                   token: token, pairedAt: now(), lastSeen: now())
-        state.devices.append(device)
-        save()
+        var updated = state
+        updated.devices.append(device)
+        try save(updated)
+        state = updated
+        pending = nil
         return (device, token)
     }
 
@@ -117,22 +124,45 @@ public actor CompanionAuth {
         if changed { save() }
     }
 
-    public func revoke(_ id: UUID) {
-        state.devices.removeAll { $0.id == id }
-        save()
+    /// A removal is effective only after it survives a restart.
+    public func revoke(_ id: UUID) throws {
+        var updated = state
+        updated.devices.removeAll { $0.id == id }
+        try save(updated)
+        state = updated
     }
 
+    /// Metadata updates are best effort; they never grant or revoke access.
     private func save() {
+        do { try save(state) }
+        catch { print("CompanionAuth: could not save metadata: \(error)") }
+    }
+
+    private func save(_ updated: State) throws {
         guard let fileURL else { return }
+        let directory = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let data = try JSONEncoder.companion.encode(updated)
+        let temporary = directory.appendingPathComponent(".companion-\(UUID()).tmp")
+        // Set permissions when opening, before any bearer secrets reach disk.
+        let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o600))
+        guard descriptor >= 0 else { throw Self.fileError() }
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         do {
-            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
-                                                    withIntermediateDirectories: true)
-            let data = try JSONEncoder.companion.encode(state)
-            try data.write(to: fileURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
         } catch {
-            print("CompanionAuth: could not save \(fileURL.path): \(error)")
+            try? handle.close()
+            throw error
         }
+        // Commit once: an earlier write/permission failure leaves the old file intact.
+        guard rename(temporary.path, fileURL.path) == 0 else { throw Self.fileError() }
+    }
+
+    private static func fileError() -> NSError {
+        NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
     }
 
     // MARK: Helpers

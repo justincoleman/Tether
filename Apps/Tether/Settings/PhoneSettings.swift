@@ -14,6 +14,11 @@ struct PhoneSettings: View {
         let hub = model.companion
         VStack(alignment: .leading, spacing: 14) {
             status(hub)
+            if let problem = hub.deviceProblem {
+                Label(problem, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let justPaired {
                 Label("\(justPaired) paired.", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)

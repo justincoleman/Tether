@@ -34,6 +34,9 @@ final class MacConnection: Identifiable {
     private(set) var projectIcons: [ProjectID: PlatformImage] = [:]
     /// Last answer to a sent message, per tab, e.g. "queued".
     private(set) var sendResults: [PaneID: String] = [:]
+    /// Compose state belongs to the connection so navigating away doesn't lose
+    /// an unacknowledged reply or its photo.
+    var messageDrafts: [PaneID: CompanionDraft] = [:]
 
     nonisolated var id: UUID { macIdForIdentity }
     private nonisolated let macIdForIdentity: UUID
@@ -109,6 +112,7 @@ final class MacConnection: Identifiable {
         wanted = false
         retry?.cancel()
         pinger?.cancel()
+        retainUnconfirmedDrafts()
         let old = channel
         channel = nil
         old?.close()
@@ -129,7 +133,33 @@ final class MacConnection: Identifiable {
 
     func send(_ text: String, to paneId: PaneID) {
         sendResults[paneId] = nil
-        channel?.send(PhoneMessage.sendMessage(paneId: paneId, text: text))
+        channel?.send(PhoneMessage.sendMessage(requestId: UUID(), paneId: paneId, text: text))
+    }
+
+    /// A compose reply clears only after the Mac says it was sent or queued.
+    /// Never retry automatically: a lost receipt may hide an accepted send.
+    func sendDraft(to paneId: PaneID) {
+        guard status == .online, let channel,
+              let requestId = messageDrafts[paneId]?.beginSending() else { return }
+        sendResults[paneId] = nil
+        let draft = messageDrafts[paneId]!
+        if let image = draft.image {
+            channel.send(PhoneMessage.sendImage(requestId: requestId, paneId: paneId, image: image, text: draft.text))
+        } else {
+            channel.send(PhoneMessage.sendMessage(requestId: requestId, paneId: paneId, text: draft.text))
+        }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            self?.messageDrafts[paneId]?.deliveryUnconfirmed(requestId: requestId)
+        }
+    }
+
+    private func retainUnconfirmedDrafts() {
+        for paneId in Array(messageDrafts.keys) {
+            if let id = messageDrafts[paneId]?.requestId {
+                messageDrafts[paneId]?.deliveryUnconfirmed(requestId: id)
+            }
+        }
     }
 
     /// Switches the tab's model: the Mac types `/model <model>`, queued like
@@ -181,7 +211,7 @@ final class MacConnection: Identifiable {
     /// A photo for Claude, with optional text. The answer arrives in `sendResults`.
     func sendImage(_ jpeg: Data, text: String, to paneId: PaneID) {
         sendResults[paneId] = nil
-        channel?.send(PhoneMessage.sendImage(paneId: paneId, image: jpeg, text: text))
+        channel?.send(PhoneMessage.sendImage(requestId: UUID(), paneId: paneId, image: jpeg, text: text))
     }
 
     /// The tab's Changes list, as the Mac's panel shows it.
@@ -363,8 +393,11 @@ final class MacConnection: Identifiable {
             var model = reset ? TranscriptModel() : (transcripts[sessionId] ?? TranscriptModel())
             model.apply(events)
             transcripts[sessionId] = model
-        case .sendResult(let paneId, let outcome):
+        case .sendResult(let paneId, let outcome, let requestId):
             sendResults[paneId] = outcome
+            if let requestId {
+                messageDrafts[paneId]?.complete(requestId: requestId, outcome: outcome)
+            }
         case .startResult(let requestId, let paneId, let error):
             finishStart(requestId, paneId.map(StartOutcome.started) ?? .failed(error ?? "The Mac couldn't start it."))
         case .changes(let requestId, _, _), .fileDiff(let requestId, _, _), .history(let requestId, _, _),
@@ -399,12 +432,14 @@ final class MacConnection: Identifiable {
         let old = channel
         channel = nil
         pinger?.cancel()
+        retainUnconfirmedDrafts()
         old?.close()
     }
 
     private func channelClosed(_ reason: String?) {
         channel = nil
         pinger?.cancel()
+        retainUnconfirmedDrafts()
         for id in Array(pendingStarts.keys) { finishStart(id, .failed("Lost the connection to \(mac.name).")) }
         for id in Array(pendingReplies.keys) { finishReply(id, nil) }
         switch status {

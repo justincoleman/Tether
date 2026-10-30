@@ -12,35 +12,75 @@ final class TestClock: @unchecked Sendable {
         URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("companion-\(UUID()).json")
     }
 
-    @Test func pairsOnceThenAuthenticates() async {
+    @Test func failedPairDoesNotGrantAccessOrConsumeCode() async throws {
+        let directory = tempFile().deletingPathExtension()
+        try Data("blocks directory creation".utf8).write(to: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("companion.json")
+        let auth = CompanionAuth(fileURL: url)
+        let (code, _) = await auth.issueCode()
+        await #expect(throws: (any Error).self) {
+            try await auth.pair(code: code, deviceName: "Phone")
+        }
+        #expect(await auth.devices.isEmpty)
+        try FileManager.default.removeItem(at: directory)
+        let paired = try #require(try await auth.pair(code: code, deviceName: "Phone"))
+        #expect(await CompanionAuth(fileURL: url).authenticate(token: paired.token) != nil)
+    }
+
+    @Test func failedRevokeKeepsDeviceUntilItCanBeSaved() async throws {
+        let directory = tempFile().deletingPathExtension()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("companion.json")
+        let auth = CompanionAuth(fileURL: url)
+        let (code, _) = await auth.issueCode()
+        let paired = try #require(try await auth.pair(code: code, deviceName: "Phone"))
+        let saved = try Data(contentsOf: url)
+        try FileManager.default.removeItem(at: directory)
+        try Data("blocks directory creation".utf8).write(to: directory)
+        await #expect(throws: (any Error).self) {
+            try await auth.revoke(paired.device.id)
+        }
+        #expect(await auth.devices.contains { $0.id == paired.device.id })
+        try FileManager.default.removeItem(at: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try saved.write(to: url)
+        #expect(await CompanionAuth(fileURL: url).authenticate(token: paired.token) != nil)
+        try await auth.revoke(paired.device.id)
+        #expect(await auth.devices.isEmpty)
+        #expect(await CompanionAuth(fileURL: url).authenticate(token: paired.token) == nil)
+    }
+
+    @Test func pairsOnceThenAuthenticates() async throws {
         let auth = CompanionAuth(fileURL: nil)
         let (code, _) = await auth.issueCode()
         #expect(code.count == 8)
-        let first = await auth.pair(code: code.lowercased(), deviceName: "Justin's iPhone")
+        let first = try await auth.pair(code: code.lowercased(), deviceName: "Justin's iPhone")
         #expect(first?.device.name == "Justin's iPhone")
         #expect(first?.token.count == 64)
         // Single use.
-        #expect(await auth.pair(code: code, deviceName: "x") == nil)
+        #expect(try await auth.pair(code: code, deviceName: "x") == nil)
         let device = await auth.authenticate(token: first!.token)
         #expect(device?.id == first?.device.id)
         #expect(await auth.authenticate(token: "nope") == nil)
     }
 
-    @Test func codeExpires() async {
+    @Test func codeExpires() async throws {
         let clock = TestClock()
         let auth = CompanionAuth(fileURL: nil, now: { clock.t })
         let (code, _) = await auth.issueCode()
         clock.t += CompanionAuth.codeLifetime + 1
-        #expect(await auth.pair(code: code, deviceName: "x") == nil)
+        #expect(try await auth.pair(code: code, deviceName: "x") == nil)
     }
 
-    @Test func wrongGuessesBurnTheCode() async {
+    @Test func wrongGuessesBurnTheCode() async throws {
         let auth = CompanionAuth(fileURL: nil)
         let (code, _) = await auth.issueCode()
         for _ in 0..<CompanionAuth.maxAttempts {
-            #expect(await auth.pair(code: "WRONGWRO", deviceName: "x") == nil)
+            #expect(try await auth.pair(code: "WRONGWRO", deviceName: "x") == nil)
         }
-        #expect(await auth.pair(code: code, deviceName: "x") == nil)
+        #expect(try await auth.pair(code: code, deviceName: "x") == nil)
     }
 
     @Test func pushRegistrationPersistsAndOldFilesStillLoad() async throws {
@@ -63,17 +103,19 @@ final class TestClock: @unchecked Sendable {
         #expect(await reloaded.devices.first?.activityTokens == nil)
     }
 
-    @Test func persistsDevicesAndRevokes() async {
+    @Test func persistsDevicesAndRevokes() async throws {
         let url = tempFile()
         let auth = CompanionAuth(fileURL: url)
         let macId = await auth.macId
         let (code, _) = await auth.issueCode()
-        let paired = await auth.pair(code: code, deviceName: "Phone")!
+        let paired = try await auth.pair(code: code, deviceName: "Phone")!
 
         let reloaded = CompanionAuth(fileURL: url)
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
         #expect(await reloaded.macId == macId)
         #expect(await reloaded.authenticate(token: paired.token) != nil)
-        await reloaded.revoke(paired.device.id)
+        try await reloaded.revoke(paired.device.id)
         #expect(await reloaded.authenticate(token: paired.token) == nil)
         #expect(await CompanionAuth(fileURL: url).devices.isEmpty)
     }

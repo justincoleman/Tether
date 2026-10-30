@@ -40,6 +40,8 @@ final class CompanionHub {
     private(set) var devices: [PairedDevice] = []
     private(set) var connectedDeviceIds: Set<UUID> = []
     private(set) var pairing: PairingWindow?
+    /// Pairing or removal could not be saved; shown beside the device controls.
+    private(set) var deviceProblem: String?
 
     let macName = Host.current().localizedName ?? "Mac"
     let port = CompanionServer.defaultPort
@@ -90,6 +92,7 @@ final class CompanionHub {
 
     /// Opens a two-minute pairing window and returns the link the QR encodes.
     func beginPairing() async {
+        deviceProblem = nil
         refreshAddress()
         guard let host = tailnetAddress else { return }
         let (code, expires) = await auth.issueCode()
@@ -104,11 +107,18 @@ final class CompanionHub {
 
     func revoke(_ id: UUID) {
         Task {
-            await auth.revoke(id)
-            devices = await auth.devices
-            for client in clients.values where client.device?.id == id {
-                client.send(.authFailed(reason: "\(macName) removed this iPhone. Pair again to reconnect."))
-                client.channel.close()
+            do {
+                try await auth.revoke(id)
+                deviceProblem = nil
+                devices = await auth.devices
+                for client in clients.values where client.device?.id == id {
+                    client.device = nil
+                    client.send(.authFailed(reason: "\(macName) removed this iPhone. Pair again to reconnect."))
+                    client.channel.close()
+                }
+                updateConnected()
+            } catch {
+                deviceProblem = "Couldn't save the removal. This device is still paired. Check the Mac's storage and try again."
             }
         }
     }
@@ -179,18 +189,26 @@ final class CompanionHub {
                 client.channel.close()
             }
         case .pair(let code):
-            guard let result = await auth.pair(code: code, deviceName: client.hello?.deviceName ?? "iPhone") else {
-                print("Companion: pairing code rejected")
-                client.send(.authFailed(reason: "That pairing code is wrong or expired. Show a new QR code on the Mac."))
+            do {
+                guard let result = try await auth.pair(code: code, deviceName: client.hello?.deviceName ?? "iPhone") else {
+                    print("Companion: pairing code rejected")
+                    client.send(.authFailed(reason: "That pairing code is wrong or expired. Show a new QR code on the Mac."))
+                    client.channel.close()
+                    return
+                }
+                client.device = result.device
+                pairing = nil
+                deviceProblem = nil
+                devices = await auth.devices
+                let macId = await auth.macId
+                client.send(.paired(macId: macId, macName: macName, token: result.token))
+                didAuthenticate(client)
+            } catch {
+                let reason = "The Mac couldn't save this pairing. Check the Mac's storage and scan the code again."
+                deviceProblem = reason
+                client.send(.authFailed(reason: reason))
                 client.channel.close()
-                return
             }
-            client.device = result.device
-            pairing = nil
-            devices = await auth.devices
-            let macId = await auth.macId
-            client.send(.paired(macId: macId, macName: macName, token: result.token))
-            didAuthenticate(client)
         case .authenticate(let token):
             guard let device = await auth.authenticate(token: token) else {
                 print("Companion: unknown token")
@@ -239,13 +257,13 @@ final class CompanionHub {
             if let sessionId {
                 client.send(.transcript(sessionId: sessionId, events: model.mirror.events(for: sessionId), reset: true))
             }
-        case .sendMessage(let paneId, let text):
+        case .sendMessage(let requestId, let paneId, let text):
             let outcome: String = switch model.sendOrQueue(text, toPane: paneId) {
             case .sent: "sent"
             case .queued: "queued"
             case .failed: "failed"
             }
-            client.send(.sendResult(paneId: paneId, outcome: outcome))
+            client.send(.sendResult(paneId: paneId, outcome: outcome, requestId: requestId))
         case .setModel(let paneId, let name):
             let outcome: String = switch model.setModel(name, forPane: paneId) {
             case .sent: "sent"
@@ -352,13 +370,13 @@ final class CompanionHub {
                     client.send(.startResult(requestId: requestId, paneId: nil, error: "\(error)"))
                 }
             }
-        case .sendImage(let paneId, let image, let text):
+        case .sendImage(let requestId, let paneId, let image, let text):
             let outcome: String = switch model.sendImage(image, text: text, toPane: paneId) {
             case .sent: "sent"
             case .queued: "queued"
             case .failed: "failed"
             }
-            client.send(.sendResult(paneId: paneId, outcome: outcome))
+            client.send(.sendResult(paneId: paneId, outcome: outcome, requestId: requestId))
         case .hello, .pair, .authenticate:
             break
         }

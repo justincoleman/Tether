@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 14).
+`ProtocolVersion.current` with any shape change (currently 23).
 
 Clients are the iPhone app and, since 0.10.0, another Mac's Remote Macs
 window (`Apps/Shared/MacConnection.swift`, shared by both). A Mac client
@@ -60,7 +60,7 @@ Mac → phone (`MacMessage`):
 | `snapshot(Snapshot)` | After auth, then on every state change (coalesced 100 ms, skipped if unchanged). Full state: Mac name, projects in sidebar order, Claude tabs in tab order (`SessionSummary`, keyed by pane id, with `preview`: the latest message on one line from `TranscriptModel.preview`, `permissionMode` from the last hook that reported one, and `status`: model, session cost and context window size from the status line), pending permissions, and `limits`: the 5-hour and weekly plan limits from the latest status line that reported them (nil for API-key accounts). See HOOKS.md, Status line. Also resent when new transcript events change a preview. |
 | `transcript(sessionId, events, reset)` | After `subscribe`: `reset: true` with history, then appends as the Mac's mirror reads new transcript records. Folded with `TranscriptModel`, same as the Mac. |
 | `projectIcons([ProjectIcon])` | Every project icon (128 px PNG found by `ProjectIconFinder`), sent after auth and whenever one changes or the Mac's "show project icons" setting flips. Absent project = letter tile. Not part of `snapshot`, which is resent on every change. |
-| `sendResult(paneId, outcome)` | `sent`, `queued` or `failed` for a `sendMessage`. |
+| `sendResult(paneId, outcome, requestId?)` | `sent`, `queued` or `failed` for a reply. Echoes the `sendMessage`/`sendImage` request ID; model changes use nil. |
 | `startResult(requestId, paneId?, error?)` | Answer to `startSession`: the new tab's pane id, or a message to show. |
 | `fileList(requestId, paths?, error?)` | Answer to `requestFileList`: the worktree's relative paths, as the Files panel lists them (`git ls-files` plus untracked, ignored files left out). |
 | `fileContent(requestId, file?, error?)` | Answer to `requestFile`: a `RemoteFile`, text (start of the file), image bytes, binary or unreadable. Only paths from the Mac's own file list are served. |
@@ -76,7 +76,7 @@ Phone → Mac (`PhoneMessage`):
 |---|---|
 | `hello`, `pair(code)`, `authenticate(token)` | See above. Anything else before auth closes the connection. |
 | `subscribe(sessionId?)` | Stream that session's transcript; nil stops. One per connection. |
-| `sendMessage(paneId, text)` | `AppModel.sendOrQueue`: typed now if Claude can take it, else queued (never into a permission prompt). |
+| `sendMessage(requestId, paneId, text)` | `AppModel.sendOrQueue`: typed now if Claude can take it, else queued (never into a permission prompt). |
 | `permissionDecision(requestId, allow)` | `allow` or `deny("Denied from iPhone.")`. First answer wins across Mac and phones. |
 | `startSession(requestId, projectId, branch?, prompt, permissionMode?, agent?)` | `AppModel.startSession`: a new Claude tab, launched as `claude "<prompt>"`, or a Codex tab (`codex "<prompt>"`) when `agent` is `codex`; a missing `agent` means Claude. Claude gets `--permission-mode` when given (only `default`, `acceptEdits`, `plan`, `auto`; anything else is ignored and the user's default applies). With `branch`, first a worktree on a new branch from `origin/<base>` (else `<base>`, else `HEAD`) under `~/Library/Application Support/Tether/Worktrees/<repo>/<branch-slug>` (`WorktreeCreator`). The Mac doesn't switch its own selected tab. The phone waits up to 90 s. |
 | `reorderProjects(ids)` | Saves the sidebar order; the next snapshot carries it. |
@@ -92,7 +92,7 @@ Phone → Mac (`PhoneMessage`):
 | `resumeSession(requestId, projectId, sessionId)` | Opens a past session in a Claude tab, or finds the tab already running it. Answered with `startResult`. |
 | `requestChanges(requestId, paneId)` | The Changes snapshot for the tab's worktree (or project folder). Answered with `changes`; the phone gives up after 20 s. |
 | `requestDiff(requestId, paneId, file)` | One file's diff. The Mac serves only a path that its current snapshot for that tab lists, so the phone can't read arbitrary files. Answered with `fileDiff`. |
-| `sendImage(paneId, image, text)` | A JPEG or PNG (base64 in JSON, at most 12 MB; the phone sends JPEG, at most 2048 px on the long side). The Mac checks the magic bytes, saves it as `~/Library/Application Support/Tether/Uploads/iphone-<time>-<id>.<ext>` (`ImageUpload`), and sends `text` plus `Image from my iPhone: <path>` through `sendOrQueue`, so Claude reads the file. Answered with `sendResult`. Only Claude tabs. |
+| `sendImage(requestId, paneId, image, text)` | A JPEG or PNG (base64 in JSON, at most 12 MB; the phone sends JPEG, at most 2048 px on the long side). The Mac checks the magic bytes, saves it as `~/Library/Application Support/Tether/Uploads/iphone-<time>-<id>.<ext>` (`ImageUpload`), and sends `text` plus `Image from my iPhone: <path>` through `sendOrQueue`, so Claude reads the file. Answered with `sendResult`. Only Claude tabs. |
 | `registerPush(PushRegistration)` | APNs device token, ActivityKit push-to-start token, bundle id, sandbox flag. Sent after every auth and when a token changes; stored on the paired device in `companion.json`. |
 | `registerActivity(paneId, token?)` | The update token of that tab's Live Activity, or nil when it ended. |
 
@@ -167,3 +167,21 @@ raw question as a permission.
 The folder-trust question travels as a `PermissionRequested` with `toolName == "TrustFolder"`
 (`TrustFolder.toolName`, `PermissionRequested.isFolderTrust`), answered with `permissionDecision`
 (allow = Trust). No version bump: older phones show it as "Claude wants to trust this folder".
+
+### Reply delivery
+
+Compose drafts (text and photo) live with `MacConnection`, including when the
+session view is closed. A send disables duplicate taps and clears the submitted
+content only after a matching request ID receives `sent` or `queued`. Rejected
+sends keep the draft. Disconnects and a 30-second receipt timeout also keep it
+and show “Delivery wasn't confirmed”; they never automatically resend, since the
+Mac may have accepted a message whose receipt was lost. Check the Mac before
+manually retrying an unconfirmed delivery. Drafts are in memory, not saved across
+an app restart. A receipt for an older request cannot clear a newer reply.
+
+### Pairing storage failures
+
+Pairing and removal succeed only after `companion.json` is atomically saved.
+A failed pairing leaves the unexpired code usable; a failed removal leaves the
+device paired and displays a retry error in Settings. Neither operation reports
+success when storage fails. Device metadata updates remain best effort.
