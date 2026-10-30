@@ -7,7 +7,7 @@ import TetherProtocol
 /// inside each ring, its name and the time until it resets. A tick on each ring
 /// marks how far into its window you are, so a ring past its tick is using the
 /// limit faster than it refills. Nothing shows until Claude Code has reported
-/// limits.
+/// limits. On a paired Mac they show that Mac's limits, not this one's.
 struct LimitRings: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
@@ -18,7 +18,9 @@ struct LimitRings: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             let now = context.date
-            if showRings, let limits = model.usageLimits.flatMap({ SavedLimits.current($0, now: now) }) {
+            // A paired Mac has its own account and its own limits.
+            let reported = model.remote.selectedConnection.map { $0.snapshot?.limits } ?? model.usageLimits
+            if showRings, let limits = reported.flatMap({ SavedLimits.current($0, now: now) }) {
                 let rows = Self.rows(limits)
                 HStack(spacing: hovering ? 28 : 14) {
                     ForEach(rows, id: \.title) { row in

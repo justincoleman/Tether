@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.30.7",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.7 shows a paired Mac's own plan limits in the sidebar rings.",
+    "highlights": [
+      {
+        "title": "Limit rings on paired Macs.",
+        "body": "Select a paired Mac and the rings at the bottom of the sidebar now show that Mac's 5-hour and weekly limits, the same rings and hover card as on this Mac. Before, they kept showing this Mac's numbers."
+      }
+    ]
+  },
+  {
     "version": "0.30.6",
     "date": "2026-10-30",
     "summary": "Tether 0.30.6 redraws the plan limit rings: small and colored at rest, a detailed card on hover.",
