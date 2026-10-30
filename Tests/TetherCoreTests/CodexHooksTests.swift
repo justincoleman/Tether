@@ -27,7 +27,9 @@ import TetherProtocol
     @Test func permissionHookPrintsTheAnswerAndObservedHooksDoNot() {
         let permission = CodexHooks.permissionCommand()
         #expect(permission.contains(HookSettings.permissionPath))
-        #expect(!permission.contains(">/dev/null"))
+        // Only stderr is dropped: stdout carries the decision back to Codex.
+        #expect(!permission.contains(" >/dev/null"))
+        #expect(permission.hasSuffix(" 2>/dev/null || true"))
         #expect(permission.hasSuffix("|| true"))
         let observe = CodexHooks.observeCommand()
         #expect(observe.contains(HookSettings.hookPath))
