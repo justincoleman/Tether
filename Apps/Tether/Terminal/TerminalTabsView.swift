@@ -4,12 +4,13 @@ import TetherCore
 import TetherProtocol
 
 /// Header row (tabs and panel buttons) over a rounded card holding every
-/// pane of the selected project. Hidden panes keep their grid and
+/// pane of a project. Hidden panes keep their grid and
 /// scrollback; only rendering stops. A split shows two panes at once.
 struct TerminalTabsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     let project: Project
+    let isActive: Bool
     @Binding var showSidebar: Bool
 
     var body: some View {
@@ -22,7 +23,7 @@ struct TerminalTabsView: View {
         let card = RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius)
         VStack(spacing: 0) {
             TabStrip(project: project, panes: panes, showSidebar: $showSidebar)
-            TerminalCard(panes: panes, overlayOpen: overlayOpen, chatShown: chatShown)
+            TerminalCard(panes: panes, isActive: isActive, overlayOpen: overlayOpen, chatShown: chatShown)
             // The card is the terminal's own background, so this inset reads
             // as padding and the AppKit surface never needs clipping.
             .padding(.horizontal, 10)
@@ -59,6 +60,7 @@ private struct TerminalCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     let panes: [TerminalPane]
+    let isActive: Bool
     let overlayOpen: Bool
     let chatShown: Bool
     /// The divider position while it's being dragged.
@@ -84,7 +86,7 @@ private struct TerminalCard: View {
                     let rect = frame(of: pane.id, split: split, halves: halves, full: full)
                     // Hidden while a diff or a file covers the card, and while the
                     // chat covers this pane, so keystrokes and rendering go there.
-                    let shown = rect != nil && !overlayOpen && !(chatShown && pane.id == selectedId)
+                    let shown = isActive && rect != nil && !overlayOpen && !(chatShown && pane.id == selectedId)
                     let focused = shown && pane.id == selectedId
                     let r = rect ?? full
                     TerminalSurfaceView(context: pane.terminal)

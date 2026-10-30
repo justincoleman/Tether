@@ -84,7 +84,7 @@ final class AppModel {
     /// Tabs whose view differs from what the default would give them.
     private var chatOverrides: [PaneID: Bool] = [:]
     /// Comments collected on diffs, waiting to be sent to Claude as one message.
-    private(set) var reviewComments: [ProjectID: [ReviewComment]] = [:]
+    private(set) var reviewComments = ReviewDrafts()
 
     /// Live panes keyed by id. Descriptors persist in the store; this does not.
     private var panes: [PaneID: TerminalPane] = [:]
@@ -99,6 +99,7 @@ final class AppModel {
     /// The folder each Claude tab works in, for its Changes panel.
     private var paneWorktreePaths: [PaneID: String] = [:]
     private var promptQueue = PromptQueue()
+    @ObservationIgnored private let promptRetries = PromptRetryScheduler()
     /// The task a new Claude tab starts on, passed as `claude "<prompt>"`.
     private var initialPrompts: [PaneID: String] = [:]
     /// `--permission-mode` for a tab started from the phone. Not persisted:
@@ -713,12 +714,14 @@ final class AppModel {
         return sendOrQueue(text, toPane: paneId)
     }
 
-    private func scheduleFlushRetry(_ paneId: PaneID, attempt: Int = 1) {
-        guard attempt <= 5 else { return }
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard let self, self.promptQueue.count(for: paneId) > 0 else { return }
-            if !self.flushQueue(paneId) { self.scheduleFlushRetry(paneId, attempt: attempt + 1) }
+    private func scheduleFlushRetry(_ paneId: PaneID) {
+        promptRetries.schedule(for: paneId) { [weak self] in
+            guard let self, self.panes[paneId] != nil,
+                  self.promptQueue.count(for: paneId) > 0 else { return false }
+            self.flushQueue(paneId)
+            // A slash command can leave another command or prompt behind it.
+            // The current burst owns retries, including calls from flushQueue.
+            return self.promptQueue.count(for: paneId) > 0
         }
     }
 
@@ -820,42 +823,38 @@ final class AppModel {
         openFileTarget = nil
     }
 
-    func addReviewComment(_ comment: ReviewComment, project: ProjectID) {
-        reviewComments[project, default: []].append(comment)
+    func addReviewComment(_ comment: ReviewComment, scope: ReviewScope) {
+        reviewComments.add(comment, in: scope)
     }
 
-    func removeReviewComment(_ id: UUID, project: ProjectID) {
-        reviewComments[project]?.removeAll { $0.id == id }
-        if reviewComments[project]?.isEmpty == true { reviewComments[project] = nil }
+    func removeReviewComment(_ id: UUID, scope: ReviewScope) {
+        reviewComments.remove(id, in: scope)
     }
 
     enum ReviewSendResult { case sent, queued, noSession }
 
-    /// Sends the collected comments, plus an optional last one, to the
-    /// project's Claude tab as a single message, then returns to the terminal.
-    func sendReview(project: ProjectID, extra: ReviewComment?) -> ReviewSendResult {
-        var comments = reviewComments[project] ?? []
-        if let extra { comments.append(extra) }
-        let message = ReviewMessage.compose(comments)
-        guard !message.isEmpty, let paneId = claudePaneId(forProject: project) else { return .noSession }
-        let outcome = sendOrQueue(message, toPane: paneId)
-        guard outcome != .failed else { return .noSession }
-        reviewComments[project] = nil
+    /// Sends only to a live Claude tab in the reviewed worktree. Drafts remain
+    /// available when that worktree has no live session or delivery fails.
+    func sendReview(scope: ReviewScope, extra: ReviewComment?) -> ReviewSendResult {
+        let candidates = panes(for: scope.projectId).compactMap { pane -> ReviewDestination? in
+            guard pane.isClaude, let path = worktreePath(forPane: pane.id) else { return nil }
+            return ReviewDestination(id: pane.id,
+                                     scope: ReviewScope(projectId: pane.descriptor.projectId, worktreePath: path),
+                                     isLive: !pane.hasExited && paneStates[pane.id] != .detached)
+        }
+        var outcome: SendOutcome = .failed
+        // Keep the value local while the delivery closure updates the model's queue.
+        var drafts = reviewComments
+        let paneId = drafts.send(in: scope, extra: extra, candidates: candidates, selected: selectedPaneId) {
+            paneId, message in
+            outcome = sendOrQueue(message, toPane: paneId)
+            return outcome != .failed
+        }
+        guard let paneId else { return .noSession }
+        reviewComments = drafts
         closeOverlays()
         selectedPaneId = paneId
         return outcome == .sent ? .sent : .queued
-    }
-
-    private func claudePaneId(forProject project: ProjectID) -> PaneID? {
-        func isClaude(_ pane: TerminalPane) -> Bool {
-            if case .claude = pane.descriptor.kind { return true }
-            return false
-        }
-        if let selected = selectedPaneId, let pane = panes[selected],
-           pane.descriptor.projectId == project, isClaude(pane) {
-            return selected
-        }
-        return panes(for: project).first(where: isClaude)?.id
     }
 
     // MARK: Chat or terminal
@@ -1276,6 +1275,7 @@ final class AppModel {
         paneModes[id] = nil
         paneStatus[id] = nil
         paneWorktreePaths[id] = nil
+        promptRetries.cancel(id)
         promptQueue.clear(pane: id)
         queuedCounts[id] = nil
         queuedMessages[id] = nil

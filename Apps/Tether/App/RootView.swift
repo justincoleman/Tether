@@ -77,34 +77,40 @@ struct RootView: View {
         return !model.showOverview
     }
 
-    @ViewBuilder
+    private var activeLocalProject: ProjectID? {
+        model.remote.selectedConnection == nil && !model.showOverview ? model.selectedProjectId : nil
+    }
+
     private var detail: some View {
-        if let connection = model.remote.selectedConnection {
-            RemoteDetailView(connection: connection, showSidebar: $showSidebar)
-        } else if model.showOverview {
-            OverviewView(showSidebar: $showSidebar)
-        } else if let id = model.selectedProjectId,
-           let project = model.projects.first(where: { $0.id == id }) {
-            TerminalTabsView(project: project, showSidebar: $showSidebar)
-        } else {
-            VStack(spacing: 0) {
-                HStack {
-                    if !showSidebar {
-                        ChromeButton(systemImage: "sidebar.left", help: "Show sidebar (⌃⌘S)") { showSidebar = true }
+        ZStack {
+            PersistentTerminalStack(items: model.projects, selection: activeLocalProject) { project, active in
+                TerminalTabsView(project: project, isActive: active, showSidebar: $showSidebar)
+            }
+            if let connection = model.remote.selectedConnection {
+                RemoteDetailView(connection: connection, showSidebar: $showSidebar)
+            } else if model.showOverview {
+                OverviewView(showSidebar: $showSidebar)
+            } else if !model.projects.contains(where: { $0.id == model.selectedProjectId }) {
+                VStack(spacing: 0) {
+                    HStack {
+                        if !showSidebar {
+                            ChromeButton(systemImage: "sidebar.left", help: "Show sidebar (⌃⌘S)") { showSidebar = true }
+                        }
+                        Spacer()
                     }
-                    Spacer()
+                    .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
+                    .frame(height: ChromeMetrics.headerHeight)
+                    ContentUnavailableView("No project selected",
+                                           systemImage: "folder",
+                                           description: Text("Add a project with ⇧⌘N."))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(theme.surface, in: RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius))
+                        .padding(.bottom, 8)
                 }
-                .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
-                .frame(height: ChromeMetrics.headerHeight)
-                ContentUnavailableView("No project selected",
-                                       systemImage: "folder",
-                                       description: Text("Add a project with ⇧⌘N."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(theme.surface, in: RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius))
-                    .padding(.bottom, 8)
             }
         }
     }
+
 }
 
 struct SidebarView: View {
