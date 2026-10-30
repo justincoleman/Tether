@@ -280,6 +280,10 @@ private struct TabStrip: View {
                         help: "New Claude tab (⌘T)") {
                 Task { await model.openClaudePane(project: project) }
             }
+            ToolbarPill(title: "Codex", systemImage: "chevron.left.forwardslash.chevron.right",
+                        iconColor: theme.codex, help: "New Codex tab (⌥⌘T)") {
+                Task { await model.openCodexPane(project: project) }
+            }
             ToolbarPill(title: "History", systemImage: "clock.arrow.circlepath", help: "Past sessions") {
                 showHistory.toggle()
             }
@@ -401,11 +405,13 @@ struct ToolbarPill: View {
     }
 }
 
-/// "New Agent on a Branch": a worktree on a new branch with its own Claude tab.
+/// "New Agent on a Branch": a worktree on a new branch with its own Claude
+/// or Codex tab.
 struct NewAgentSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let project: Project
+    @State private var agent: AgentKind = .claude
     @State private var branch = ""
     @State private var prompt = ""
     @State private var error: String?
@@ -414,11 +420,12 @@ struct NewAgentSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New Agent on a Branch").font(.headline)
-            Text("Creates a worktree of \(project.name) on a new branch from \(project.baseBranch), with its own Claude tab.")
+            Text("Creates a worktree of \(project.name) on a new branch from \(project.baseBranch), with its own \(agent.displayName) tab.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            AgentPicker(agent: $agent)
             TextField("Branch, e.g. fix-login", text: $branch)
-            TextField("Task for Claude (optional)", text: $prompt, axis: .vertical)
+            TextField("Task for \(agent.displayName) (optional)", text: $prompt, axis: .vertical)
                 .lineLimit(3...8)
             if let error {
                 Text(error).font(.caption).foregroundStyle(.red)
@@ -442,13 +449,29 @@ struct NewAgentSheet: View {
         error = nil
         Task {
             do {
-                try await model.startSession(projectId: project.id, branch: branch, prompt: prompt, select: true)
+                try await model.startSession(projectId: project.id, branch: branch, prompt: prompt,
+                                             agent: agent, select: true)
                 dismiss()
             } catch {
                 self.error = "\(error)"
             }
             working = false
         }
+    }
+}
+
+/// Claude or Codex, for the sheets that start a tab.
+struct AgentPicker: View {
+    @Binding var agent: AgentKind
+
+    var body: some View {
+        Picker("Agent", selection: $agent) {
+            Text("Claude").tag(AgentKind.claude)
+            Text("Codex").tag(AgentKind.codex)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
     }
 }
 
