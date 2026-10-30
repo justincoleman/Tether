@@ -7,7 +7,9 @@ import Glibc
 #endif
 @testable import TetherCore
 
-@Suite struct CodexAppServerTests {
+// Each case owns external processes. Avoid launching every fixture alongside
+// the package's parallel git tests on small CI runners.
+@Suite(.serialized) struct CodexAppServerTests {
     // A local child speaking the actual newline-delimited RPC transport. No
     // Codex account, network, or model request is involved.
     private static let server = #"""
@@ -68,7 +70,7 @@ for line in sys.stdin:
         emit({'method':'replyObserved','params':m})
 """#
 
-    private func client(timeout: Duration = .seconds(2)) -> CodexAppServer {
+    private func client(timeout: Duration = .seconds(30)) -> CodexAppServer {
         CodexAppServer(configuration: .init(
             workingDirectory: FileManager.default.temporaryDirectory.path,
             clientVersion: "test-version",
@@ -232,7 +234,7 @@ while True:
     }
 
     @Test func unansweredRequestsTimeOutAndStopTheConnection() async throws {
-        let c = client(timeout: .seconds(1))
+        let c = client(timeout: .seconds(10))
         try await c.start()
         await #expect(throws: CodexAppServerError.self) { try await c.request("hang", params: .object([:])) }
         await #expect(throws: CodexAppServerError.self) { try await c.request("echo", params: .null) }
