@@ -326,11 +326,12 @@ public enum PhoneMessage: Codable, Sendable {
     case permissionDecision(requestId: UUID, allow: Bool)
     /// Answers a `PermissionRequested.question` with one option's label, or free text.
     case answerQuestion(requestId: UUID, answer: String)
-    /// Opens a Claude tab in the project, on a new worktree branch when
-    /// `branch` is set, starting on `prompt` when it isn't empty, in
-    /// `permissionMode` when set (otherwise the user's configured default).
+    /// Opens a Claude tab in the project (a Codex tab when `agent` is
+    /// `.codex`), on a new worktree branch when `branch` is set, starting on
+    /// `prompt` when it isn't empty, in `permissionMode` when set (otherwise
+    /// the user's configured default; Claude only).
     case startSession(requestId: UUID, projectId: ProjectID, branch: String?, prompt: String,
-                      permissionMode: String?)
+                      permissionMode: String?, agent: AgentKind?)
     /// Sidebar order, all of the Mac's project ids.
     case reorderProjects(ids: [ProjectID])
     /// Display name only; the folder is untouched.
