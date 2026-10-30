@@ -37,6 +37,8 @@ struct Theme {
     var blue: Color
     /// Claude's orange, for working sparkles and the user's chat bubbles.
     var claude = Color(red: 0.85, green: 0.47, blue: 0.34)
+    /// Marks Codex tabs, so they read apart from Claude's orange.
+    var codex = Color(red: 0.45, green: 0.62, blue: 0.95)
     var avatars: [Color]
     var avatarText: Color
 

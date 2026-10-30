@@ -3,12 +3,12 @@ import SwiftUI
 import TetherCore
 import TetherProtocol
 
-/// The menu bar icon, with the number of Claude tabs waiting on you.
+/// The menu bar icon, with the number of agent tabs waiting on you.
 struct MenuBarLabel: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let waiting = model.claudeTabs.filter { model.paneStates[$0.pane.id] == .needsInput && !$0.pane.hasExited }.count
+        let waiting = model.agentTabs.filter { model.paneStates[$0.pane.id] == .needsInput && !$0.pane.hasExited }.count
         HStack(spacing: 3) {
             Image("TetherMenuBar")
             if waiting > 0 {
@@ -25,9 +25,9 @@ struct MenuBarMenu: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let tabs = model.claudeTabs
+        let tabs = model.agentTabs
         if tabs.isEmpty {
-            Text("No Claude tabs")
+            Text("No Claude or Codex tabs")
         }
         ForEach(tabs, id: \.pane.id) { tab in
             Button {
@@ -49,7 +49,7 @@ struct MenuBarMenu: View {
             .keyboardShortcut("q")
     }
 
-    private func title(_ tab: AppModel.ClaudeTab) -> String {
+    private func title(_ tab: AppModel.AgentTab) -> String {
         let name = tab.showTitle ? "\(tab.project.name) · \(tab.pane.title)" : tab.project.name
         return "\(name) — \(status(tab.pane))"
     }

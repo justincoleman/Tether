@@ -18,7 +18,7 @@ public enum GhosttyConfig {
     /// before the menu bar sees it, so these are unbound for the embedded
     /// terminal. Appended last, so they win over the user's own config.
     public static let tetherKeys = [
-        "super+t", "super+shift+t", "super+w", "super+d", "super+shift+d", "super+shift+e",
+        "super+t", "super+alt+t", "super+shift+t", "super+w", "super+d", "super+shift+d", "super+shift+e",
         "super+shift+m", "super+shift+n", "super+shift+p", "super+[", "super+]", "super+shift+[", "super+shift+]",
         "ctrl+super+s",
     ] + (0...9).map { "super+\($0)" }

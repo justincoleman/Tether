@@ -462,6 +462,11 @@ private struct ThreadRow: View {
                         .font(.body.weight(.semibold))
                         .foregroundStyle(theme.text)
                         .lineLimit(1)
+                    if session.agent == .codex {
+                        Text("Codex")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(theme.secondaryText)
+                    }
                     if let mode = session.permissionMode {
                         PermissionModeTag(mode: mode)
                     }
@@ -473,7 +478,7 @@ private struct ThreadRow: View {
                             .lineLimit(1)
                     }
                 }
-                Text(session.preview ?? "No messages yet")
+                Text(session.preview ?? (session.agent == .codex ? "Codex tab: replies show on the Mac" : "No messages yet"))
                     .font(.subheadline)
                     .foregroundStyle(session.preview == nil ? theme.tertiaryText : theme.secondaryText)
                     .lineLimit(2)

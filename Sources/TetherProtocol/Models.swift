@@ -42,6 +42,20 @@ public struct Worktree: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+/// Which coding agent a tab runs. Claude Code is the original; Codex tabs
+/// share its hooks and state machine (docs/HOOKS.md, "Codex").
+public enum AgentKind: String, Codable, Hashable, Sendable {
+    case claude
+    case codex
+
+    public var displayName: String {
+        switch self {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        }
+    }
+}
+
 /// What the sidebar badge shows. See PLAN.md section 3.2 for the transitions.
 public enum SessionState: String, Codable, Hashable, Sendable {
     case idle

@@ -1,7 +1,7 @@
 import Foundation
 import TetherProtocol
 
-/// The subset of a Claude Code hook's JSON body that Tether consumes.
+/// The subset of a Claude Code or Codex hook's JSON body that Tether consumes.
 /// Unknown fields are ignored. See docs/HOOKS.md for the shapes.
 public struct HookPayload: Codable, Sendable, Hashable {
     public enum EventName: String, Codable, Sendable {
@@ -13,6 +13,8 @@ public struct HookPayload: Codable, Sendable, Hashable {
         case sessionEnd = "SessionEnd"
         case permissionRequest = "PermissionRequest"
         case postToolUse = "PostToolUse"
+        /// Codex only: a turn the user stopped with Esc.
+        case interrupt = "Interrupt"
     }
 
     public var sessionId: SessionID

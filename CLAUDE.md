@@ -67,6 +67,9 @@ structural. Work proceeds in the numbered phases there.
 - Hooks reach Claude only through `claude --settings <hooks.json>`. Never write
   to `~/.claude/settings.json`.
 - Logic belongs in `TetherCore` with tests; `Apps/Tether/Hooks/` only moves bytes.
+- Codex tabs use the same hook server through `-c hooks.*` overrides (`CodexHooks`).
+  Keep those arguments identical across launches: Codex trusts hooks by hash.
+  Never write `~/.codex/config.toml` or pass `--dangerously-bypass-hook-trust`.
 
 ## Transcript mirror
 - `docs/TRANSCRIPT.md` records the transcript shapes Tether relies on. Update

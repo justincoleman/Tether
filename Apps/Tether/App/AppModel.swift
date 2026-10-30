@@ -126,6 +126,8 @@ final class AppModel {
     let broker = PermissionBroker()
     private var hookServer: HookServer?
     private var hookSettingsPath: String?
+    /// The hook server's port, handed to Codex tabs through their environment.
+    private var hookPort: UInt16?
     /// Per-launch secret handed to every pty and echoed back by hooks.
     let launchToken = UUID().uuidString
 
@@ -281,6 +283,16 @@ final class AppModel {
         await open(d)
     }
 
+    /// A Codex tab in the project's folder. Codex reports to the same hook
+    /// server as Claude (docs/HOOKS.md, "Codex").
+    func openCodexPane(project: Project) async {
+        guard let wt = await store.primaryWorktree(for: project.id) else { return }
+        let d = PaneDescriptor(projectId: project.id,
+                               kind: .codex(worktreeId: wt.id, resumeSessionId: nil),
+                               title: "Codex")
+        await open(d)
+    }
+
     struct StartError: Error, CustomStringConvertible {
         var description: String
     }
@@ -334,10 +346,7 @@ final class AppModel {
     }
 
     func panes(onWorktree id: WorktreeID) -> [TerminalPane] {
-        paneOrder.compactMap { panes[$0] }.filter {
-            if case .claude(let wt, _) = $0.descriptor.kind { return wt == id }
-            return false
-        }
+        paneOrder.compactMap { panes[$0] }.filter { $0.descriptor.kind.worktreeId == id }
     }
 
     /// Nothing left on the branch that the base doesn't have: no commits
@@ -373,19 +382,19 @@ final class AppModel {
         selectedPaneId = d.id
     }
 
-    /// A Claude tab with its project, for the Overview and the menu bar.
-    struct ClaudeTab {
+    /// A Claude or Codex tab with its project, for the Overview and the menu bar.
+    struct AgentTab {
         var project: Project
         var pane: TerminalPane
-        /// The project has more than one Claude tab, so name this one.
+        /// The project has more than one agent tab, so name this one.
         var showTitle: Bool
     }
 
-    /// Every Claude tab, in sidebar and tab order.
-    var claudeTabs: [ClaudeTab] {
-        projects.flatMap { project -> [ClaudeTab] in
-            let tabs = panes(for: project.id).filter(\.isClaude)
-            return tabs.map { ClaudeTab(project: project, pane: $0, showTitle: tabs.count > 1) }
+    /// Every Claude and Codex tab, in sidebar and tab order.
+    var agentTabs: [AgentTab] {
+        projects.flatMap { project -> [AgentTab] in
+            let tabs = panes(for: project.id).filter(\.isAgent)
+            return tabs.map { AgentTab(project: project, pane: $0, showTitle: tabs.count > 1) }
         }
     }
 
@@ -517,7 +526,7 @@ final class AppModel {
     private func folder(of pane: TerminalPane) -> String {
         switch pane.descriptor.kind {
         case .shell(let cwd), .command(let cwd, _): return cwd
-        case .claude, .ssh:
+        case .claude, .codex, .ssh:
             return paneWorktreePaths[pane.id]
                 ?? projects.first { $0.id == pane.descriptor.projectId }?.path
                 ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -674,7 +683,7 @@ final class AppModel {
 
     /// Closes a tab, asking first if Claude is mid-turn or waiting on you.
     func requestClose(_ id: PaneID) {
-        if let pane = panes[id], case .claude = pane.descriptor.kind,
+        if let pane = panes[id], pane.isAgent,
            let state = paneStates[id], state == .working || state == .needsInput {
             pendingClose = id
         } else {
@@ -708,6 +717,11 @@ final class AppModel {
         Task { await openClaudePane(project: project) }
     }
 
+    func newCodexTabInSelectedProject() {
+        guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
+        Task { await openCodexPane(project: project) }
+    }
+
     func newShellTabInSelectedProject() {
         guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
         Task { await openShellPane(project: project) }
@@ -719,6 +733,10 @@ final class AppModel {
     }
 
     // MARK: Mirror
+
+    func agent(forPane paneId: PaneID?) -> AgentKind? {
+        paneId.flatMap { panes[$0]?.agent }
+    }
 
     func sessionId(forPane paneId: PaneID) -> SessionID? {
         recordedSessions[paneId] ?? launchSessions[paneId]
@@ -809,7 +827,8 @@ final class AppModel {
     /// queued like any message so it never lands mid-turn.
     @discardableResult
     func setModel(_ model: String, forPane paneId: PaneID) -> SendOutcome {
-        guard let text = ModelCommand.text(for: model) else { return .failed }
+        // Claude's aliases and /model menu; Codex's differ.
+        guard panes[paneId]?.isClaude == true, let text = ModelCommand.text(for: model) else { return .failed }
         return sendOrQueue(text, toPane: paneId)
     }
 
@@ -1155,10 +1174,13 @@ final class AppModel {
                 recordedSessions[paneId] = session.id
                 Task { try? await self.store.recordSession(session.id, forPane: paneId) }
             }
-            mirror.track(sessionId: session.id, path: session.transcriptPath)
+            // The chat reads Claude transcripts only; a Codex rollout is another format.
+            let isClaude = panes[paneId]?.isClaude == true
+            if isClaude { mirror.track(sessionId: session.id, path: session.transcriptPath) }
             recomputeProjectStates()
             notifyPhones(paneId: paneId, previous: previous, state: session.state, attention: session.attention)
-            updateInterruptWatcher(for: session)
+            // Codex has an Interrupt hook; Claude's Esc only shows in its transcript.
+            if isClaude { updateInterruptWatcher(for: session) }
             if session.state == .needsInput, previous != .needsInput { requestAttention() }
             flushQueue(paneId)
             if previous == .working, session.state != .working, let worktree = paneWorktreePaths[paneId] {
@@ -1304,6 +1326,7 @@ final class AppModel {
             try HookSettings.write(port: port, to: url, userStatusLine: statusLine)
             hookServer = server
             hookSettingsPath = url.path
+            hookPort = port
             hookStatusMessage = nil
         } catch {
             server.stop()
@@ -1366,6 +1389,10 @@ final class AppModel {
             } else {
                 launchSession = UUID().uuidString.lowercased()
             }
+        case .codex(let wtId, _):
+            // Codex has no --session-id: its thread id arrives with SessionStart.
+            worktree = await store.worktree(wtId)
+            if let worktree { paneWorktreePaths[d.id] = worktree.path }
         case .ssh(let hostId): host = await store.remoteHost(hostId)
         case .shell, .command: break
         }
@@ -1373,7 +1400,8 @@ final class AppModel {
                                          token: launchToken, hookSettingsPath: hookSettingsPath,
                                          newSessionId: launchSession,
                                          initialPrompt: initialPrompts.removeValue(forKey: d.id),
-                                         permissionMode: initialModes.removeValue(forKey: d.id))
+                                         permissionMode: initialModes.removeValue(forKey: d.id),
+                                         hookPort: hookPort)
         let pane = TerminalPane(descriptor: d, launch: launch, controller: TerminalHost.controller)
         pane.onExit = { [weak self] id in
             guard let self else { return }
@@ -1488,13 +1516,13 @@ extension AppModel {
         var sessions: [SessionSummary] = []
         for project in projects {
             for pane in panes(for: project.id) {
-                guard case .claude = pane.descriptor.kind else { continue }
+                guard let agent = pane.descriptor.kind.agent else { continue }
                 sessions.append(SessionSummary(
                     id: pane.id, projectId: project.id, sessionId: sessionId(forPane: pane.id),
                     title: pane.title, state: paneStates[pane.id] ?? .idle,
                     attention: paneAttention[pane.id], queued: queuedCounts[pane.id] ?? 0,
                     preview: mirror.model(for: sessionId(forPane: pane.id))?.preview(),
-                    permissionMode: paneModes[pane.id], status: paneStatus[pane.id]))
+                    permissionMode: paneModes[pane.id], status: paneStatus[pane.id], agent: agent))
             }
         }
         let permissions = pendingPermissions.map(phoneSummary(of:))
@@ -1516,7 +1544,7 @@ extension AppModel {
     /// The folder a tab's Changes panel shows.
     private func changesPath(forPane paneId: PaneID) -> String? {
         if let path = worktreePath(forPane: paneId) { return path }
-        guard let pane = claudeTabs.first(where: { $0.pane.id == paneId }) else { return nil }
+        guard let pane = agentTabs.first(where: { $0.pane.id == paneId }) else { return nil }
         return pane.project.path
     }
 
@@ -1591,7 +1619,7 @@ extension AppModel {
 
     /// Saves images pasted into the chat and sends Claude their paths with the text.
     func sendWithImages(_ text: String, images: [Data], toPane paneId: PaneID) -> SendOutcome {
-        guard claudeTabs.contains(where: { $0.pane.id == paneId }) else { return .failed }
+        guard agentTabs.contains(where: { $0.pane.id == paneId }) else { return .failed }
         do {
             let paths = try images.map { try ImageUpload.save($0, in: ImageUpload.defaultDirectory(), prefix: "mac") }
             return sendOrQueue(ImageUpload.prompt(text: text, imagePaths: paths), toPane: paneId)
@@ -1603,7 +1631,7 @@ extension AppModel {
 
     /// Saves a photo from the phone and sends Claude its path with the text.
     func sendImage(_ data: Data, text: String, toPane paneId: PaneID) -> SendOutcome {
-        guard claudeTabs.contains(where: { $0.pane.id == paneId }) else { return .failed }
+        guard agentTabs.contains(where: { $0.pane.id == paneId }) else { return .failed }
         do {
             let path = try ImageUpload.save(data, in: ImageUpload.defaultDirectory())
             return sendOrQueue(ImageUpload.prompt(text: text, imagePath: path), toPane: paneId)
@@ -1623,7 +1651,7 @@ extension AppModel {
             ? AskUserQuestion.prompt(from: request.toolInput) : nil
         return PermissionRequested(id: request.id, paneId: request.paneId, sessionId: request.sessionId,
                                    toolName: request.toolName, title: summary.title, detail: summary.detail,
-                                   question: question)
+                                   question: question, agent: agent(forPane: request.paneId))
     }
 
     func projectName(forPane paneId: PaneID?) -> String {

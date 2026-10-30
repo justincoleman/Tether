@@ -33,6 +33,34 @@ public enum PaneKind: Codable, Hashable, Sendable {
     case ssh(hostId: RemoteHostID)
     /// A quick action: runs `command` in `cwd`, then leaves a shell open there.
     case command(cwd: String, command: String)
+    /// OpenAI's Codex CLI in a worktree. `resumeSessionId` is the last thread seen there.
+    case codex(worktreeId: WorktreeID, resumeSessionId: SessionID?)
+
+    /// The coding agent the tab runs, or nil for shells, ssh and quick actions.
+    public var agent: AgentKind? {
+        switch self {
+        case .claude: AgentKind.claude
+        case .codex: AgentKind.codex
+        case .shell, .ssh, .command: nil
+        }
+    }
+
+    /// The worktree an agent tab works in.
+    public var worktreeId: WorktreeID? {
+        switch self {
+        case .claude(let wt, _), .codex(let wt, _): wt
+        case .shell, .ssh, .command: nil
+        }
+    }
+
+    /// The same agent tab, set to resume `sessionId` on its next launch.
+    public func resuming(_ sessionId: SessionID) -> PaneKind {
+        switch self {
+        case .claude(let wt, _): .claude(worktreeId: wt, resumeSessionId: sessionId)
+        case .codex(let wt, _): .codex(worktreeId: wt, resumeSessionId: sessionId)
+        case .shell, .ssh, .command: self
+        }
+    }
 }
 
 /// A project's shortcut command, e.g. `npm run dev`, shown in the top bar.

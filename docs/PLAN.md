@@ -38,8 +38,11 @@ iPhone app:
     queue until the current step finishes.
 11. Live Activity on the lock screen / Dynamic Island while a task runs.
 
-Non-goals for v1: Windows/Linux, Codex/Gemini agents, multi-user, cloud sync,
+Non-goals for v1: Windows/Linux, Gemini agents, multi-user, cloud sync,
 App Store distribution (notarized direct download is fine).
+
+Codex tabs were added in 0.30.0 (2026-10-30): status, approvals and Stop
+through Codex's hooks. See HOOKS.md, "Codex", for what is wired and what is not.
 
 ---
 
