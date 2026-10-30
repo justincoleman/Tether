@@ -185,3 +185,22 @@ The tail tracks the device and inode of its opened file. An atomic replacement (
 size or a larger size) or an observed truncation starts reading the new contents at byte zero and drops
 any buffered partial line or initial-window boundary from the old contents. Metadata and bytes are read
 from the same open file, so replacement between polls cannot apply an old offset to the new file.
+
+## Artifacts
+
+Claude Code's `Artifact` tool publishes an HTML or Markdown file as a private page on claude.ai. The docs
+(code.claude.com/docs/en/artifacts) give the tool name, that it prints a link like
+`https://claude.ai/code/artifact/<uuid>`, and that an update republishes to the same link. They don't give the
+tool's input schema or its result text, so this is built on those two facts and not yet checked against a real
+transcript.
+
+`TranscriptParser.toolDetail` keeps `input.file_path` as the step's `file` (the page's source file, usually in
+a temp folder). `ArtifactList` (TetherProtocol) finds the first `claude.ai/(code/)artifact/<id>` link in a
+non-error `Artifact` step's result (or summary, as a fallback), groups steps by link for a version count, and
+names a page from its file name. The Mac and paired-Mac Artifacts tab, the "Open page" button on the step in
+the chat, and the phone's Artifacts sheet all use it. It lists the open conversation only: nothing is read from
+other sessions. No wire type changed, since `ToolStep` already carries the result to the phone.
+
+To verify: publish a page in a Tether tab, then check the Artifacts tab shows it with an Open button, and look
+at the `Artifact` tool_result in the transcript JSONL. If the link isn't in it, fix `ArtifactList.pattern` and
+add a fixture to `ArtifactListTests`.

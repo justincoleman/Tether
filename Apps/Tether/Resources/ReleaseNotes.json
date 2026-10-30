@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.30.17",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.17 keeps track of the pages Claude publishes.",
+    "highlights": [
+      {
+        "title": "An Artifacts tab in the right panel.",
+        "body": "When Claude publishes a page for you (a dashboard, a mockup, a write-up), the Artifacts tab next to Changes, Files and Preview lists it for the open conversation, newest first, with its version count. Click one to open it in your browser, or use the link button to copy it. It works the same on a paired Mac."
+      },
+      {
+        "title": "An Open button in the chat.",
+        "body": "Whenever Claude publishes or updates a page, its step in the chat has an Open page button, so you don't have to dig the link out of a reply."
+      },
+      {
+        "title": "Artifacts on your iPhone.",
+        "body": "The ··· menu in a conversation has Artifacts too. Tap a page to open it in the Claude app or Safari, or press and hold to copy its link."
+      }
+    ]
+  },
+  {
     "version": "0.30.16",
     "date": "2026-10-30",
     "summary": "Tether 0.30.16 makes tables in chat fit, and gives folders without git a calm message.",

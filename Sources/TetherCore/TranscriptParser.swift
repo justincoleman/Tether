@@ -193,7 +193,7 @@ public enum TranscriptParser {
         var removed: [String] = []
         var added: [String] = []
         switch name {
-        case "Read":
+        case "Read", "Artifact":
             break
         case "Edit":
             (removed, added) = changedLines(old: str("old_string"), new: str("new_string"))

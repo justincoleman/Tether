@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TetherCore
 import TetherProtocol
@@ -759,6 +760,10 @@ private struct StepRow: View {
     let step: ToolStep
 
     private var isCommand: Bool { step.name == "Bash" }
+    /// The page link of a published Artifact.
+    private var artifactURL: URL? {
+        step.name == "Artifact" && !step.isError ? ArtifactList.url(in: step.result ?? step.summary) : nil
+    }
     /// A file tool's result ("File updated…", the file's text) is noise unless it went wrong.
     private var quietResult: Bool { step.file != nil && !step.isError }
 
@@ -773,6 +778,14 @@ private struct StepRow: View {
                     if isCommand, step.result != nil { outcome }
                 }
                 summary
+                if let url = artifactURL {
+                    Button { NSWorkspace.shared.open(url) } label: {
+                        Label("Open page", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(url.absoluteString)
+                }
                 if !step.removed.isEmpty || !step.added.isEmpty { changedLines }
                 if let result = step.result, !result.isEmpty, !quietResult {
                     Text(isCommand ? result : (step.resultFirstLine ?? result))
