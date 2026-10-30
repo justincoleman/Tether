@@ -13,6 +13,7 @@ final class TerminalPane: Identifiable {
     private(set) var title: String
     private(set) var hasExited = false
     var onExit: ((PaneID) -> Void)?
+    @ObservationIgnored private var focusTask: Task<Void, Never>?
 
     nonisolated var id: PaneID { descriptor.id }
 
@@ -61,7 +62,27 @@ final class TerminalPane: Identifiable {
         return false
     }
 
-    func focus() { terminal.requestFocus() }
+    func focus() {
+        focusTask?.cancel()
+        // Ghostty's requestFocus keeps an unconditional deferred request. Own
+        // this hop instead so navigation can cancel it before a hidden pane
+        // takes first responder. Briefly allow a newly mounted view to attach.
+        focusTask = Task { [weak self] in
+            await Task.yield()
+            for _ in 0..<5 {
+                guard let self, !Task.isCancelled, self.terminal.isSurfaceVisible else { return }
+                if self.terminal.attachedPlatformView?.acquireProgrammaticFocus() == true { return }
+                do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+            }
+        }
+    }
 
-    func setVisible(_ visible: Bool) { terminal.isSurfaceVisible = visible }
+    func setVisible(_ visible: Bool) {
+        terminal.isSurfaceVisible = visible
+        if !visible {
+            focusTask?.cancel()
+            focusTask = nil
+            TerminalFocus.resignIfOwned(by: terminal.attachedPlatformView)
+        }
+    }
 }

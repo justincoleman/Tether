@@ -578,3 +578,18 @@ sent together, and the send queue is in memory only, not persisted.*
 - Workbench, a comparable AppKit + libghostty workspace, useful for prior art: https://github.com/romanmt/workbench
 - Bench app page (reference product): https://github.com/mattbirchler/birchtree-productions/pull/18
 - Reference video: https://www.youtube.com/watch?v=PKlJqAvzFMk
+
+### Terminal lifetime across navigation
+
+Local project terminal hosts remain mounted in a persistent stack while another
+project, Overview, or a remote Mac is displayed. Inactive hosts keep valid
+layout dimensions so a phone-created pane can start without selecting its
+project locally. Hidden hosts disable rendering, interaction and accessibility,
+and release keyboard focus; closing a pane removes its host and ends its
+surface lifetime. `scripts/test-terminal-lifetime.sh` checks the native SwiftUI
+host lifetime and focus behavior without launching agent sessions.
+
+After building the Mac app, `scripts/test-ghostty-lifetime.sh` additionally
+launches isolated shell processes through the actual Ghostty wrapper and checks
+background startup, stable surface identity, and cancellation of deferred focus.
+It does not open Tether's saved workspace or start Claude sessions.

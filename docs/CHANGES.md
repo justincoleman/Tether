@@ -143,8 +143,14 @@ and a numbered list. Selections are described by their line numbers in the
 Both: shown as a `diff` block with `+`/`-` markers. The code fence grows when
 the code contains backticks.
 
-After sending, Tether returns to the Claude tab. Pending comments stay while
-you move between files, and are dropped when sent.
+After sending, Tether returns to the Claude tab. Pending comments belong to the
+project and worktree where they were written. They stay while you move between
+files in that worktree, and are dropped only when sent or queued successfully.
+Reviews go only to a running Claude tab in that same worktree, preferring the
+selected tab when it matches. Tabs in another worktree never receive the review.
+If no matching live tab exists (including an exited or detached tab), the diff
+stays open with its draft and pending comments intact, and asks you to open a
+Claude tab in that worktree.
 
 ## Sending while Claude is busy
 
@@ -165,3 +171,9 @@ only and is lost if Tether quits.
 
 `Session.attention` (permission, question, dialog) carries the reason a session
 is waiting; protocol version 3.
+
+A failed terminal write schedules at most five delayed retries, with one task
+per pane. Repeated scheduling joins that task instead of resetting its budget.
+Closing the pane cancels its task. Exhaustion leaves the message queued; a later
+ready hook or send can attempt delivery again. Slash commands remain separate
+from following messages during retries.

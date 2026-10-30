@@ -79,7 +79,10 @@ struct DiffViewer: View {
         model.changes.snapshots[target.worktreePath]?.files.first { $0.path == target.file.path } ?? target.file
     }
 
-    private var pending: [ReviewComment] { model.reviewComments[target.projectId] ?? [] }
+    private var reviewScope: ReviewScope {
+        ReviewScope(projectId: target.projectId, worktreePath: target.worktreePath)
+    }
+    private var pending: [ReviewComment] { model.reviewComments.comments(in: reviewScope) }
 
     private var trimmedInstruction: String {
         instruction.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -288,7 +291,7 @@ struct DiffViewer: View {
                     Text(comment.shortLabel).font(.caption.weight(.semibold))
                     Text(comment.instruction).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     Spacer()
-                    Button { model.removeReviewComment(comment.id, project: target.projectId) } label: {
+                    Button { model.removeReviewComment(comment.id, scope: reviewScope) } label: {
                         Image(systemName: "xmark").font(.caption2)
                     }
                     .buttonStyle(.plain)
@@ -312,7 +315,7 @@ struct DiffViewer: View {
 
     private func addComment() {
         guard let draft = draftComment, !trimmedInstruction.isEmpty else { return }
-        model.addReviewComment(draft, project: target.projectId)
+        model.addReviewComment(draft, scope: reviewScope)
         instruction = ""
         selection = nil
         anchorRow = nil
@@ -322,8 +325,8 @@ struct DiffViewer: View {
     private func send() {
         var extra: ReviewComment?
         if let draft = draftComment, !trimmedInstruction.isEmpty { extra = draft }
-        if model.sendReview(project: target.projectId, extra: extra) == .noSession {
-            sendError = "This project has no Claude tab. Open one with + and try again."
+        if model.sendReview(scope: reviewScope, extra: extra) == .noSession {
+            sendError = "This worktree has no running Claude tab. Open a Claude tab in this worktree and try again. Your comments are saved."
         }
     }
 
