@@ -12,7 +12,6 @@ struct MirrorView: View {
     let paneId: PaneID?
     /// Where the conversation is scrolled to, so Send and the jump button can go to the end.
     @State private var position = ScrollPosition(edge: .bottom)
-    @State private var atBottom = true
 
     var body: some View {
         let sessionId = paneId.flatMap { model.sessionId(forPane: $0) }
@@ -56,31 +55,7 @@ struct MirrorView: View {
                     .frame(maxWidth: Self.columnWidth)
                     .frame(maxWidth: .infinity)
                 }
-                // Follows the conversation while you're at the end; scroll up and it stays put.
-                .defaultScrollAnchor(.bottom)
-                .defaultScrollAnchor(.bottom, for: .sizeChanges)
-                .scrollPosition($position)
-                .onScrollGeometryChange(for: Bool.self) { geometry in
-                    geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 32
-                } action: { _, isAtBottom in
-                    atBottom = isAtBottom
-                }
-                .overlay(alignment: .bottom) {
-                    if !atBottom {
-                        Button { withAnimation { position.scrollTo(edge: .bottom) } } label: {
-                            Label("Jump to latest", systemImage: "arrow.down")
-                                .font(.caption.weight(.medium))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(theme.elevated, in: Capsule())
-                                .overlay(Capsule().strokeBorder(theme.border, lineWidth: 0.5))
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.bottom, 10)
-                        .transition(.opacity)
-                    }
-                }
-                .animation(.easeOut(duration: 0.15), value: atBottom)
+                .followsLatest($position)
             } else {
                 ContentUnavailableView(sessionId == nil ? "No Claude session" : "Nothing yet",
                                        systemImage: sessionId == nil ? "bubble.left.and.bubble.right" : "sparkle",
@@ -112,6 +87,50 @@ struct MirrorView: View {
     }
 
     static let columnWidth: CGFloat = 820
+}
+
+/// A chat's scrolling: it follows the conversation while you're at the end,
+/// stays put once you scroll up, and offers Jump to latest until you're back.
+/// Shared by this chat and a paired Mac's (RemoteSessionView).
+private struct FollowsLatest: ViewModifier {
+    @Environment(\.theme) private var theme
+    @Binding var position: ScrollPosition
+    @State private var atBottom = true
+
+    func body(content: Content) -> some View {
+        content
+            .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            .scrollPosition($position)
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 32
+            } action: { _, isAtBottom in
+                atBottom = isAtBottom
+            }
+            .overlay(alignment: .bottom) {
+                if !atBottom {
+                    Button { withAnimation { position.scrollTo(edge: .bottom) } } label: {
+                        Label("Jump to latest", systemImage: "arrow.down")
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(theme.elevated, in: Capsule())
+                            .overlay(Capsule().strokeBorder(theme.border, lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 10)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: atBottom)
+    }
+}
+
+extension View {
+    /// See FollowsLatest. `position` lets Send bring the chat back to the end.
+    func followsLatest(_ position: Binding<ScrollPosition>) -> some View {
+        modifier(FollowsLatest(position: position))
+    }
 }
 
 /// The tab's permission mode, switched the way the keyboard does: Shift-Tab
