@@ -164,7 +164,7 @@ struct StartPage: View {
 }
 
 /// One of the two big buttons.
-private struct StartButton: View {
+struct StartButton: View {
     @Environment(\.theme) private var theme
     let title: String
     let systemImage: String
@@ -183,9 +183,11 @@ private struct StartButton: View {
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(theme.text)
                 Spacer(minLength: 8)
-                Text(shortcut)
-                    .font(.callout)
-                    .foregroundStyle(theme.secondaryText)
+                if !shortcut.isEmpty {
+                    Text(shortcut)
+                        .font(.callout)
+                        .foregroundStyle(theme.secondaryText)
+                }
             }
             .padding(.horizontal, 16)
             .frame(height: 52)
@@ -200,7 +202,7 @@ private struct StartButton: View {
 }
 
 /// A smaller button, like the top bar's pills but a little larger.
-private struct StartPill: View {
+struct StartPill: View {
     @Environment(\.theme) private var theme
     let title: String
     let systemImage: String
@@ -234,7 +236,7 @@ private struct StartPill: View {
 }
 
 /// Lays its children out left to right, wrapping to a new line when full.
-private struct FlowRow: Layout {
+struct FlowRow: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

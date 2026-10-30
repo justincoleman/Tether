@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.30.10",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.10 gives a paired Mac's projects the same start page as this Mac.",
+    "highlights": [
+      {
+        "title": "A start page on paired Macs.",
+        "body": "A paired Mac's project with no tab open, and the + button there, now show the start page: Start Claude, Start Codex, Agent on a Branch, and the last five conversations to pick back up. Shell tabs, the dev server preview, shortcuts and ssh aren't on it yet, because a paired Mac can't open those remotely."
+      }
+    ]
+  },
+  {
     "version": "0.30.9",
     "date": "2026-10-30",
     "summary": "Tether 0.30.9 tidies the Changes panel and puts New Agent on a Branch in the sidebar.",

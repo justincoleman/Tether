@@ -306,6 +306,7 @@ struct RemoteDetailView: View {
     @State private var showNewTab = false
     @State private var showHistory = false
     @State private var starting = false
+    @State private var showStart = false
 
     private var sessions: [SessionSummary] { connection.snapshot?.sessions ?? [] }
 
@@ -315,21 +316,29 @@ struct RemoteDetailView: View {
             ?? sessions.first { $0.id == model.remote.selectedPaneId }?.projectId
     }
 
+    private var project: ProjectSummary? {
+        projectId.flatMap { id in connection.snapshot?.projects.first { $0.id == id } }
+    }
+
     var body: some View {
         let paneId = model.remote.selectedPaneId
         let tabs = sessions.filter { $0.projectId == projectId }
         VStack(spacing: 0) {
             header(tabs: tabs)
             Group {
-                if let paneId, sessions.contains(where: { $0.id == paneId }) {
+                let hasTab = paneId.map { id in sessions.contains { $0.id == id } } ?? false
+                if let project, showStart || !hasTab {
+                    RemoteStartPage(connection: connection, project: project, hasTabs: hasTab,
+                                    start: { start($0) }, newBranch: { showNewTab = true },
+                                    close: { showStart = false })
+                        .id(project.id)
+                } else if let paneId, hasTab {
                     RemoteSessionView(connection: connection, paneId: paneId, showsHeader: false)
                         .id(paneId)
                 } else {
-                    ContentUnavailableView(tabs.isEmpty && projectId != nil ? "No Claude tab" : "Pick a Claude tab",
+                    ContentUnavailableView("Pick a project",
                                            systemImage: "bubble.left.and.bubble.right",
-                                           description: Text(projectId != nil
-                                               ? "Start one with the Claude button."
-                                               : "Choose a project on \(connection.mac.name) in the sidebar."))
+                                           description: Text("Choose a project on \(connection.mac.name) in the sidebar."))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -341,6 +350,9 @@ struct RemoteDetailView: View {
         .sheet(isPresented: $showNewTab) {
             NewRemoteTabSheet(connection: connection, projectId: projectId)
         }
+        // Picking a tab or another project leaves the start page.
+        .onChange(of: model.remote.selectedPaneId) { showStart = false }
+        .onChange(of: projectId) { showStart = false }
     }
 
     private func header(tabs: [SessionSummary]) -> some View {
@@ -379,21 +391,9 @@ struct RemoteDetailView: View {
                             .environment(\.theme, theme)
                     }
                 }
-            Menu {
-                Button("Claude") { start(.claude) }
-                Button("Codex") { start(.codex) }
-                Button("Agent on a Branch…") { showNewTab = true }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(theme.secondaryText)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .frame(width: 28, height: 28)
-            .disabled(!canStart)
-            .help("New tab on \(connection.mac.name)")
+            ChromeButton(systemImage: "plus", active: showStart,
+                         help: "New tab on \(connection.mac.name)") { showStart.toggle() }
+                .disabled(!online || projectId == nil)
             ChromeButton(systemImage: "sidebar.right", active: model.showInspector,
                          help: "Changes on \(connection.mac.name)") { model.toggleInspector() }
                 .disabled(model.remote.selectedPaneId == nil)
@@ -409,6 +409,7 @@ struct RemoteDetailView: View {
             if case .started(let paneId) = await connection.startSession(
                 projectId: projectId, branch: nil, prompt: "", permissionMode: nil, agent: agent) {
                 model.remote.selectedPaneId = paneId
+                showStart = false
             }
             starting = false
         }
