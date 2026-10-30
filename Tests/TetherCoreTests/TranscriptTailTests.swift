@@ -51,6 +51,60 @@ import TetherProtocol
         #expect(tail.readNewLines().isEmpty)
     }
 
+    @Test func readsSameSizeAtomicReplacementFromTheStart() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tail-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("old\n".utf8).write(to: url)
+        var tail = TranscriptTail(path: url.path, fromStart: true)
+        #expect(tail.readNewLines() == ["old"])
+
+        try Data("new\n".utf8).write(to: url, options: .atomic)
+        #expect(tail.readNewLines() == ["new"])
+        #expect(tail.readNewLines().isEmpty)
+    }
+
+    @Test func replacementBeforeFirstPollDoesNotInheritOriginalOffset() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tail-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("old\n".utf8).write(to: url)
+        var tail = TranscriptTail(path: url.path)
+
+        try Data("first\nsecond\n".utf8).write(to: url, options: .atomic)
+        #expect(tail.readNewLines() == ["first", "second"])
+    }
+
+    @Test func replacementDropsBufferedPartialLine() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tail-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("old partial".utf8).write(to: url)
+        var tail = TranscriptTail(path: url.path, fromStart: true)
+        #expect(tail.readNewLines().isEmpty)
+
+        try Data("replacement line\n".utf8).write(to: url, options: .atomic)
+        #expect(tail.readNewLines() == ["replacement line"])
+    }
+
+    @Test func truncationClearsUnconsumedWindowBoundary() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tail-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("old-first\nold-last\n".utf8).write(to: url)
+        var tail = TranscriptTail(path: url.path, lastBytes: 3)
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.truncate(atOffset: 0)
+        try handle.write(contentsOf: Data("new\n".utf8))
+        try handle.close()
+
+        #expect(tail.readNewLines() == ["new"])
+    }
+
+    @Test func readsFileCreatedAfterInitialization() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tail-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var tail = TranscriptTail(path: url.path)
+        try Data("new\n".utf8).write(to: url)
+        #expect(tail.readNewLines() == ["new"])
+    }
+
     @Test func missingFileIsQuiet() {
         var tail = TranscriptTail(path: "/nonexistent/\(UUID().uuidString).jsonl")
         #expect(tail.readNewLines().isEmpty)

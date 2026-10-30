@@ -176,3 +176,8 @@ Sessions write transcripts of hundreds of megabytes. `TranscriptFeed` reads only
 poll (`TranscriptTail(path:lastBytes:)`), drops the cut line at the start of that window, and puts an
 `Earlier messages are left out` notice first when it skipped anything. Tool results whose call is before the
 window are ignored, and later polls read only what is appended. Nothing in the file is changed.
+
+The tail tracks the device and inode of its opened file. An atomic replacement (even one with the same
+size or a larger size) or an observed truncation starts reading the new contents at byte zero and drops
+any buffered partial line or initial-window boundary from the old contents. Metadata and bytes are read
+from the same open file, so replacement between polls cannot apply an old offset to the new file.

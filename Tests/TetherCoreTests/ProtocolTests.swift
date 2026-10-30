@@ -69,14 +69,25 @@ import TetherProtocol
 
     @Test func phoneMessageRoundTrips() throws {
         let pane = UUID()
-        let original = PhoneMessage.sendMessage(paneId: pane, text: "ship it")
+        let request = UUID()
+        let original = PhoneMessage.sendMessage(requestId: request, paneId: pane, text: "ship it")
         let data = try WireCodec.encoder().encode(original)
         let decoded = try WireCodec.decoder().decode(PhoneMessage.self, from: data)
-        guard case .sendMessage(let id, let text) = decoded else {
+        guard case .sendMessage(let requestId, let id, let text) = decoded else {
             Issue.record("wrong case"); return
         }
         #expect(id == pane)
+        #expect(requestId == request)
         #expect(text == "ship it")
+    }
+
+    @Test func sendReceiptIdentifiesTheExactReply() throws {
+        let request = UUID(), pane = UUID()
+        let encoded = try WireCodec.encoder().encode(MacMessage.sendResult(paneId: pane, outcome: "queued", requestId: request))
+        guard case .sendResult(let decodedPane, let outcome, let decodedRequest) = try WireCodec.decoder().decode(MacMessage.self, from: encoded) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(decodedPane == pane && decodedRequest == request && outcome == "queued")
     }
 
     @Test func changesAndDiffsRoundTrip() throws {
@@ -176,8 +187,8 @@ import TetherProtocol
 
     @Test func imagesTravelAsBase64() throws {
         let image = Data([0xFF, 0xD8, 0xFF, 0x00, 0x01])
-        let data = try WireCodec.encoder().encode(PhoneMessage.sendImage(paneId: UUID(), image: image, text: "this"))
-        guard case .sendImage(_, let decoded, let text) = try WireCodec.decoder().decode(PhoneMessage.self, from: data) else {
+        let data = try WireCodec.encoder().encode(PhoneMessage.sendImage(requestId: UUID(), paneId: UUID(), image: image, text: "this"))
+        guard case .sendImage(_, _, let decoded, let text) = try WireCodec.decoder().decode(PhoneMessage.self, from: data) else {
             Issue.record("wrong case"); return
         }
         #expect(decoded == image)

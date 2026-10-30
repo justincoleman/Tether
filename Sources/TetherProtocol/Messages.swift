@@ -293,7 +293,7 @@ public enum MacMessage: Codable, Sendable {
     /// phone holds (sent first after subscribing); otherwise append.
     case transcript(sessionId: SessionID, events: [MirrorEvent], reset: Bool)
     /// Answer to `sendMessage`: "sent", "queued" or "failed".
-    case sendResult(paneId: PaneID, outcome: String)
+    case sendResult(paneId: PaneID, outcome: String, requestId: UUID? = nil)
     /// Answer to `startSession`: the new tab, or why it couldn't start.
     case startResult(requestId: UUID, paneId: PaneID?, error: String?)
     /// Answer to `requestChanges`: the tab's worktree against its base branch.
@@ -320,7 +320,7 @@ public enum PhoneMessage: Codable, Sendable {
     case authenticate(token: String)
     /// Stream this session's transcript; nil stops streaming.
     case subscribe(sessionId: SessionID?)
-    case sendMessage(paneId: PaneID, text: String)
+    case sendMessage(requestId: UUID, paneId: PaneID, text: String)
     /// Stops Claude's current turn, like Esc in the terminal.
     case interrupt(paneId: PaneID)
     case permissionDecision(requestId: UUID, allow: Bool)
@@ -366,7 +366,7 @@ public enum PhoneMessage: Codable, Sendable {
     case resumeSession(requestId: UUID, projectId: ProjectID, sessionId: SessionID)
     /// A photo plus optional text for Claude. The Mac saves the image and
     /// sends the text with its path, like `sendMessage`; answered with `sendResult`.
-    case sendImage(paneId: PaneID, image: Data, text: String)
+    case sendImage(requestId: UUID, paneId: PaneID, image: Data, text: String)
 }
 
 /// Shared encoder/decoder configuration so both sides agree on date format.

@@ -147,7 +147,10 @@ struct RemoteSessionView: View {
     let paneId: PaneID
     /// The Remote Macs window has no tab strip above it, so it draws its own.
     let showsHeader: Bool
-    @State private var text = ""
+    private var draft: CompanionDraft { connection.messageDrafts[paneId] ?? CompanionDraft() }
+    private var text: Binding<String> {
+        Binding(get: { draft.text }, set: { connection.messageDrafts[paneId, default: CompanionDraft()].text = $0 })
+    }
     /// Where the conversation is scrolled to, so Send and the jump button can go to the end.
     @State private var position = ScrollPosition(edge: .bottom)
 
@@ -260,10 +263,16 @@ struct RemoteSessionView: View {
 
     private var canSend: Bool {
         connection.status == .online && session?.state != .detached
-            && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !draft.isSending && !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var note: String? {
+        if draft.isSending { return "Waiting for the Mac to confirm…" }
+        switch draft.outcome {
+        case "unconfirmed"?: return "Delivery wasn't confirmed. Your draft is kept. Check the Mac before sending again."
+        case "failed"?: return "The Mac couldn't send that. Your draft is kept."
+        default: break
+        }
         switch connection.sendResults[paneId] {
         case "queued"?: return "Queued. \(connection.mac.name) sends it when Claude is ready."
         case "failed"?: return "\(connection.mac.name) couldn't send that."
@@ -280,9 +289,10 @@ struct RemoteSessionView: View {
     private var compose: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message Claude on \(connection.mac.name)", text: $text, axis: .vertical)
+                TextField("Message Claude on \(connection.mac.name)", text: text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
+                    .disabled(draft.isSending)
                     .onSubmit(send)
                 Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                     .buttonStyle(.plain)
@@ -305,8 +315,7 @@ struct RemoteSessionView: View {
 
     private func send() {
         guard canSend else { return }
-        connection.send(text, to: paneId)
-        text = ""
+        connection.sendDraft(to: paneId)
         // Sending always brings you back to the end.
         position.scrollTo(edge: .bottom)
     }
