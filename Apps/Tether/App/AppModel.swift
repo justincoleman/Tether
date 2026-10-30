@@ -286,7 +286,11 @@ final class AppModel {
     /// A Codex tab in the project's folder. Codex reports to the same hook
     /// server as Claude (docs/HOOKS.md, "Codex").
     func openCodexPane(project: Project) async {
-        guard let wt = await store.primaryWorktree(for: project.id) else { return }
+        guard let wt = await store.primaryWorktree(for: project.id) else {
+            print("openCodexPane: \(project.name) has no primary worktree")
+            return
+        }
+        print("openCodexPane: opening in \(wt.path), hook port \(hookPort.map(String.init) ?? "none")")
         let d = PaneDescriptor(projectId: project.id,
                                kind: .codex(worktreeId: wt.id, resumeSessionId: nil),
                                title: "Codex")
@@ -733,7 +737,10 @@ final class AppModel {
             }
             return
         }
-        guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
+        guard let project = projects.first(where: { $0.id == selectedProjectId }) else {
+            print("newAgentTab(\(agent)): no selected project")
+            return
+        }
         Task {
             switch agent {
             case .claude: await openClaudePane(project: project)
