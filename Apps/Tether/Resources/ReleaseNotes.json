@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.30.11",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.11 protects companion drafts and fixes pairing and transcript reliability. Update Tether on your Mac and iPhone together.",
+    "highlights": [
+      {
+        "title": "Replies stay until delivery is confirmed.",
+        "body": "Phone and paired-Mac replies keep their text and photos until the Mac confirms it sent or queued them. If the connection drops or delivery can't be confirmed, your draft stays available with a reminder to check the Mac before sending again. Unsent drafts also survive leaving and reopening the conversation."
+      },
+      {
+        "title": "Pairing changes are saved before success.",
+        "body": "Pairing and removing a device now report storage failures instead of appearing to succeed. If saving fails, the pairing code stays usable until it expires, or the device stays paired so you can retry its removal."
+      },
+      {
+        "title": "Replaced transcripts keep reading.",
+        "body": "Tether detects when a transcript file is replaced and reads the new contents from the start, without skipping messages or mixing in an unfinished line from the old file."
+      }
+    ]
+  },
+  {
     "version": "0.30.10",
     "date": "2026-10-30",
     "summary": "Tether 0.30.10 gives a paired Mac's projects the same start page as this Mac.",
