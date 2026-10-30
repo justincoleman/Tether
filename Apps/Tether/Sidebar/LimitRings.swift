@@ -2,62 +2,59 @@ import SwiftUI
 import TetherCore
 import TetherProtocol
 
-/// The plan's 5-hour and weekly limits as two small rings at the bottom of
-/// the sidebar. A tick on each ring marks how far into its window you are;
-/// a ring that has passed its tick is using the limit faster than it refills.
-/// Hover for the numbers, click for the detail. Nothing shows until Claude
-/// Code has reported limits.
+/// The plan's 5-hour and weekly limits at the bottom of the sidebar. At rest,
+/// two small colored rings; hover and they grow into a card with the percent
+/// inside each ring, its name and the time until it resets. A tick on each ring
+/// marks how far into its window you are, so a ring past its tick is using the
+/// limit faster than it refills. Nothing shows until Claude Code has reported
+/// limits.
 struct LimitRings: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     @AppStorage("showLimitRings") private var showRings = true
     @AppStorage("showLimitPace") private var showPace = true
-    @State private var showDetail = false
+    @State private var hovering = false
 
     var body: some View {
         TimelineView(.everyMinute) { context in
             let now = context.date
             if showRings, let limits = model.usageLimits.flatMap({ SavedLimits.current($0, now: now) }) {
                 let rows = Self.rows(limits)
-                Button { showDetail.toggle() } label: {
-                    HStack(spacing: 14) {
-                        ForEach(rows, id: \.title) { row in
-                            HStack(spacing: 6) {
-                                Ring(used: row.limit.usedPercent,
-                                     pace: showPace ? row.limit.paceFraction(in: row.window, now: now) : nil,
-                                     ahead: row.limit.isAheadOfPace(in: row.window, now: now))
-                                Text(row.short)
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(theme.secondaryText)
+                HStack(spacing: hovering ? 28 : 14) {
+                    ForEach(rows, id: \.title) { row in
+                        VStack(spacing: 5) {
+                            Ring(used: row.limit.usedPercent,
+                                 pace: showPace ? row.limit.paceFraction(in: row.window, now: now) : nil,
+                                 ahead: row.limit.isAheadOfPace(in: row.window, now: now),
+                                 expanded: hovering)
+                            if hovering {
+                                VStack(spacing: 1) {
+                                    Text(row.short)
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(theme.text)
+                                    if let left = Self.timeLeft(row.limit, now: now) {
+                                        Text(left)
+                                            .font(.caption)
+                                            .foregroundStyle(theme.secondaryText)
+                                    }
+                                }
+                                .transition(.opacity)
                             }
                         }
-                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, hovering ? 12 : 8)
+                .frame(maxWidth: .infinity)
+                .background(hovering ? theme.elevated : .clear, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(theme.border.opacity(hovering ? 0.6 : 0), lineWidth: 0.5))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
+                .animation(.smooth(duration: 0.28), value: hovering)
                 .help(rows.map(Self.summary).joined(separator: "\n"))
-                .popover(isPresented: $showDetail, arrowEdge: .trailing) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Plan limits").font(.headline)
-                        ForEach(rows, id: \.title) { row in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(row.title): \(Int(row.limit.usedPercent.rounded()))% used")
-                                    .font(.body.weight(.medium))
-                                Text(Self.detail(row, now: now))
-                                    .font(.callout)
-                                    .foregroundStyle(theme.secondaryText)
-                            }
-                        }
-                        Text("Reported by Claude Code after each reply, shared by every tab on your account.")
-                            .font(.caption)
-                            .foregroundStyle(theme.secondaryText)
-                    }
-                    .padding(14)
-                    .frame(width: 280, alignment: .leading)
-                }
             }
         }
     }
@@ -76,51 +73,54 @@ struct LimitRings: View {
         return rows
     }
 
-    private static func resets(_ limit: UsageLimit) -> String? {
-        limit.resetsAt.map { "resets \($0.formatted(.relative(presentation: .named)))" }
+    /// "3h 34m", "1d 7h"; nil without a reset time or once it has passed.
+    static func timeLeft(_ limit: UsageLimit, now: Date) -> String? {
+        guard let resetsAt = limit.resetsAt else { return nil }
+        let minutes = Int(resetsAt.timeIntervalSince(now) / 60)
+        guard minutes > 0 else { return nil }
+        if minutes >= 24 * 60 { return "\(minutes / 1440)d \(minutes % 1440 / 60)h" }
+        if minutes >= 60 { return "\(minutes / 60)h \(minutes % 60)m" }
+        return "\(minutes)m"
     }
 
     static func summary(_ row: Row) -> String {
         "\(row.title): \(Int(row.limit.usedPercent.rounded()))% used"
-            + (resets(row.limit).map { ", \($0)" } ?? "")
+            + (row.limit.resetsAt.map { ", resets \($0.formatted(.relative(presentation: .named)))" } ?? "")
     }
 
-    static func detail(_ row: Row, now: Date) -> String {
-        var parts: [String] = []
-        if let pace = row.limit.paceFraction(in: row.window, now: now) {
-            parts.append("\(Int((pace * 100).rounded()))% of the window has passed")
-            parts.append(row.limit.isAheadOfPace(in: row.window, now: now)
-                         ? "using it faster than it refills" : "on pace")
-        }
-        if let reset = resets(row.limit) { parts.append(reset) }
-        guard let first = parts.first else { return "No reset time reported yet" }
-        return (first.prefix(1).uppercased() + first.dropFirst()) + parts.dropFirst().map { ", " + $0 }.joined()
-    }
-
-    /// A ring filled to `used` percent, with a tick at `pace` (0...1).
+    /// A ring filled to `used` percent, with a tick at `pace` (0...1). Green
+    /// while you're within pace, orange once ahead of it, red from 90%.
     private struct Ring: View {
         @Environment(\.theme) private var theme
         let used: Double
         let pace: Double?
         let ahead: Bool
-        private let size: CGFloat = 20
+        let expanded: Bool
 
         var body: some View {
+            let size: CGFloat = expanded ? 46 : 22
+            let line: CGFloat = expanded ? 5 : 3.5
             let fraction = min(max(used, 0), 100) / 100
-            let tint = used >= 90 ? theme.red : ahead ? theme.claude : theme.secondaryText
+            let tint = used >= 90 ? theme.red : ahead ? theme.claude : theme.green
             ZStack {
-                Circle().stroke(theme.border, lineWidth: 3)
+                Circle().stroke(theme.border.opacity(0.7), lineWidth: line)
                 Circle()
                     .trim(from: 0, to: fraction)
-                    .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .butt))
+                    .stroke(tint, style: StrokeStyle(lineWidth: line, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 if let pace {
                     // A short radial line across the ring at the pace angle.
                     Capsule()
                         .fill(theme.text)
-                        .frame(width: 1.5, height: 7)
-                        .offset(y: -size / 2 + 1)
+                        .frame(width: 1.5, height: line + 3)
+                        .offset(y: -size / 2 + line / 2)
                         .rotationEffect(.degrees(pace * 360))
+                }
+                if expanded {
+                    Text("\(Int(used.rounded()))%")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(theme.text)
+                        .transition(.opacity)
                 }
             }
             .frame(width: size, height: size)
