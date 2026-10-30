@@ -131,6 +131,25 @@ import TetherProtocol
         #expect(id == "abc")
     }
 
+    @Test func startSessionCarriesTheAgent() throws {
+        let codex = PhoneMessage.startSession(requestId: UUID(), projectId: UUID(), branch: nil, prompt: "",
+                                              permissionMode: nil, agent: .codex)
+        guard case .startSession(_, _, _, _, _, let agent) = try WireCodec.decoder().decode(
+            PhoneMessage.self, from: try WireCodec.encoder().encode(codex)) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(agent == .codex)
+
+        // A sender from before protocol 22 leaves the key out: that's Claude.
+        let old = try WireCodec.encoder().encode(
+            PhoneMessage.startSession(requestId: UUID(), projectId: UUID(), branch: "fix", prompt: "go",
+                                      permissionMode: nil, agent: nil))
+        #expect(!String(decoding: old, as: UTF8.self).contains("agent"))
+        guard case .startSession(_, _, _, _, _, nil) = try WireCodec.decoder().decode(PhoneMessage.self, from: old) else {
+            Issue.record("agent should decode as nil"); return
+        }
+    }
+
     @Test func filesAndDevServersRoundTrip() throws {
         let request = UUID()
         let file = RemoteFile(path: "a/b.swift", kind: .text, text: "let x = 1\n", truncated: false)

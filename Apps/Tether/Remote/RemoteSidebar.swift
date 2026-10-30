@@ -92,7 +92,7 @@ struct RemoteProjectList: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.secondaryText)
                 .disabled(connection.status != .online || projects.isEmpty)
-                .help("New Claude tab on \(connection.mac.name)")
+                .help("New Claude or Codex tab on \(connection.mac.name)")
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -258,7 +258,7 @@ private struct RemoteProjectRow: View {
             }
             .onHover { hovering = $0 }
             .contextMenu {
-                Button("New Claude Tab…", action: newTab)
+                Button("New Claude or Codex Tab…", action: newTab)
                     .disabled(connection.status != .online)
                 Divider()
                 Button(project.pinned ? "Unpin" : "Pin to Top") {
@@ -364,7 +364,10 @@ struct RemoteDetailView: View {
             }
             Spacer(minLength: 8)
             ToolbarPill(title: "Claude", systemImage: "sparkles", iconColor: theme.claude,
-                        help: "New Claude tab on \(connection.mac.name)") { startClaude() }
+                        help: "New Claude tab on \(connection.mac.name)") { start(.claude) }
+                .disabled(!canStart)
+            ToolbarPill(title: "Codex", systemImage: "chevron.left.forwardslash.chevron.right", iconColor: theme.codex,
+                        help: "New Codex tab on \(connection.mac.name)") { start(.codex) }
                 .disabled(!canStart)
             ToolbarPill(title: "History", systemImage: "clock.arrow.circlepath",
                         help: "Past sessions on \(connection.mac.name)") { showHistory.toggle() }
@@ -377,7 +380,8 @@ struct RemoteDetailView: View {
                     }
                 }
             Menu {
-                Button("Claude") { startClaude() }
+                Button("Claude") { start(.claude) }
+                Button("Codex") { start(.codex) }
                 Button("Agent on a Branch…") { showNewTab = true }
             } label: {
                 Image(systemName: "plus")
@@ -398,12 +402,12 @@ struct RemoteDetailView: View {
         .frame(height: ChromeMetrics.headerHeight)
     }
 
-    private func startClaude() {
+    private func start(_ agent: AgentKind) {
         guard let projectId else { return }
         starting = true
         Task {
             if case .started(let paneId) = await connection.startSession(
-                projectId: projectId, branch: nil, prompt: "", permissionMode: nil) {
+                projectId: projectId, branch: nil, prompt: "", permissionMode: nil, agent: agent) {
                 model.remote.selectedPaneId = paneId
             }
             starting = false
@@ -422,9 +426,9 @@ private struct RemoteTabButton: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "sparkles")
+            Image(systemName: session.agent == .codex ? "chevron.left.forwardslash.chevron.right" : "sparkles")
                 .font(.caption)
-                .foregroundStyle(theme.claude)
+                .foregroundStyle(session.agent == .codex ? theme.codex : theme.claude)
             Text(session.title)
                 .font(.callout.weight(selected ? .medium : .regular))
                 .foregroundStyle(selected ? theme.text : theme.secondaryText)
@@ -446,14 +450,15 @@ private struct RemoteTabButton: View {
     }
 }
 
-/// Start a Claude tab on a paired Mac: pick the project, optionally a new
-/// branch (the other Mac makes the worktree), and say what Claude should do.
+/// Start a Claude or Codex tab on a paired Mac: pick the project, optionally
+/// a new branch (the other Mac makes the worktree), and say what to do.
 struct NewRemoteTabSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.theme) private var theme
     let connection: MacConnection
     @State private var projectId: ProjectID?
+    @State private var agent: AgentKind = .claude
     @State private var onBranch = false
     @State private var branch = ""
     @State private var prompt = ""
@@ -474,7 +479,8 @@ struct NewRemoteTabSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("New Claude tab on \(connection.mac.name)").font(.title2.bold())
+            Text("New \(agent.displayName) tab on \(connection.mac.name)").font(.title2.bold())
+            AgentPicker(agent: $agent)
             Picker("Project", selection: $projectId) {
                 ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
             }
@@ -488,7 +494,7 @@ struct NewRemoteTabSheet: View {
                  : "Runs in the project's main folder, next to any open tabs.")
                 .font(.callout)
                 .foregroundStyle(theme.secondaryText)
-            TextField("What should Claude do? (optional)", text: $prompt, axis: .vertical)
+            TextField("What should \(agent.displayName) do? (optional)", text: $prompt, axis: .vertical)
                 .lineLimit(3...8)
                 .textFieldStyle(.roundedBorder)
             if let error {
@@ -515,7 +521,7 @@ struct NewRemoteTabSheet: View {
         let branchName = onBranch ? branch.trimmingCharacters(in: .whitespaces) : nil
         Task {
             switch await connection.startSession(projectId: projectId, branch: branchName, prompt: prompt,
-                                                 permissionMode: nil) {
+                                                 permissionMode: nil, agent: agent) {
             case .started(let paneId):
                 model.remote.selectedProjectId = projectId
                 model.remote.selectedPaneId = paneId

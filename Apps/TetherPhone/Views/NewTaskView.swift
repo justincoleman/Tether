@@ -1,8 +1,8 @@
 import SwiftUI
 import TetherProtocol
 
-/// Start Claude on something from the phone: pick a Mac and project,
-/// optionally a new branch (its own worktree), and describe the task.
+/// Start Claude or Codex on something from the phone: pick a Mac and
+/// project, optionally a new branch (its own worktree), and describe the task.
 struct NewTaskView: View {
     @Environment(PhoneStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +13,7 @@ struct NewTaskView: View {
 
     @State private var macId: UUID?
     @State private var projectId: ProjectID?
+    @State private var agent: AgentKind = .claude
     @State private var onBranch = false
     @State private var branch = ""
     @State private var prompt = ""
@@ -55,6 +56,11 @@ struct NewTaskView: View {
                         Picker("Project", selection: $projectId) {
                             ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
                         }
+                        Picker("Agent", selection: $agent) {
+                            Text("Claude").tag(AgentKind.claude)
+                            Text("Codex").tag(AgentKind.codex)
+                        }
+                        .pickerStyle(.segmented)
                         Section {
                             Toggle("On a new branch", isOn: $onBranch)
                             if onBranch {
@@ -68,18 +74,21 @@ struct NewTaskView: View {
                                  : "Runs in the project's main folder, next to any open tabs.")
                         }
                         Section("Task") {
-                            TextField("What should Claude do?", text: $prompt, axis: .vertical)
+                            TextField("What should \(agent.displayName) do?", text: $prompt, axis: .vertical)
                                 .lineLimit(4...12)
                         }
-                        Section {
-                            Picker("Mode", selection: $mode) {
-                                Text("Default from settings").tag(String?.none)
-                                ForEach(PermissionModeName.launchable, id: \.self) { m in
-                                    Text(PermissionModeName.label(m)).tag(Optional(m))
+                        // Permission modes are Claude's.
+                        if agent == .claude {
+                            Section {
+                                Picker("Mode", selection: $mode) {
+                                    Text("Default from settings").tag(String?.none)
+                                    ForEach(PermissionModeName.launchable, id: \.self) { m in
+                                        Text(PermissionModeName.label(m)).tag(Optional(m))
+                                    }
                                 }
+                            } footer: {
+                                Text(PermissionModeName.explanation(mode))
                             }
-                        } footer: {
-                            Text(PermissionModeName.explanation(mode))
                         }
                         if let error {
                             Text(error).foregroundStyle(.red)
@@ -120,7 +129,7 @@ struct NewTaskView: View {
         let branchName = onBranch ? branch.trimmingCharacters(in: .whitespaces) : nil
         Task {
             switch await connection.startSession(projectId: projectId, branch: branchName, prompt: prompt,
-                                                 permissionMode: mode) {
+                                                 permissionMode: agent == .claude ? mode : nil, agent: agent) {
             case .started(let paneId):
                 dismiss()
                 opened(SessionRoute(macId: connection.id, paneId: paneId))

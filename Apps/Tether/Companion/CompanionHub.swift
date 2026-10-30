@@ -259,11 +259,12 @@ final class CompanionHub {
             model.resolvePermission(requestId, allow ? .allow : .deny(message: "Denied from iPhone."))
         case .answerQuestion(let requestId, let answer):
             model.answerQuestion(requestId, answer: answer)
-        case .startSession(let requestId, let projectId, let branch, let prompt, let permissionMode):
+        case .startSession(let requestId, let projectId, let branch, let prompt, let permissionMode, let agent):
             Task {
                 do {
                     let paneId = try await model.startSession(projectId: projectId, branch: branch, prompt: prompt,
-                                                              permissionMode: permissionMode, select: false)
+                                                              permissionMode: permissionMode, agent: agent ?? .claude,
+                                                              select: false)
                     client.send(.startResult(requestId: requestId, paneId: paneId, error: nil))
                 } catch {
                     client.send(.startResult(requestId: requestId, paneId: nil, error: "\(error)"))

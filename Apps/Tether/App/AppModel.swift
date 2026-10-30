@@ -297,12 +297,13 @@ final class AppModel {
         var description: String
     }
 
-    /// A new Claude tab, on a new worktree branch when `branch` is set,
-    /// starting on `prompt` when given. `select` is false for phone requests,
-    /// so the Mac's view doesn't jump.
+    /// A new Claude (or Codex) tab, on a new worktree branch when `branch` is
+    /// set, starting on `prompt` when given. `select` is false for phone
+    /// requests, so the Mac's view doesn't jump.
     @discardableResult
     func startSession(projectId: ProjectID, branch: String?, prompt: String?,
-                      permissionMode: String? = nil, select: Bool) async throws -> PaneID {
+                      permissionMode: String? = nil, agent: AgentKind = .claude,
+                      select: Bool) async throws -> PaneID {
         guard let project = projects.first(where: { $0.id == projectId }) else {
             throw StartError(description: "That project is no longer on the Mac.")
         }
@@ -323,13 +324,17 @@ final class AppModel {
                 throw StartError(description: failure.description)
             }
         }
-        let d = PaneDescriptor(projectId: project.id,
-                               kind: .claude(worktreeId: worktree.id, resumeSessionId: nil),
-                               title: branchName.isEmpty ? "Claude" : branchName)
+        let kind: PaneKind = switch agent {
+        case .claude: .claude(worktreeId: worktree.id, resumeSessionId: nil)
+        case .codex: .codex(worktreeId: worktree.id, resumeSessionId: nil)
+        }
+        let d = PaneDescriptor(projectId: project.id, kind: kind,
+                               title: branchName.isEmpty ? agent.displayName : branchName)
         if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             initialPrompts[d.id] = prompt
         }
-        if let permissionMode { initialModes[d.id] = permissionMode }
+        // Permission modes are Claude's; Codex starts in its own default.
+        if let permissionMode, agent == .claude { initialModes[d.id] = permissionMode }
         try? await store.addPane(d)
         await mount(d)
         if select {
@@ -712,14 +717,29 @@ final class AppModel {
         selectedProjectId = projects[number - 1].id
     }
 
-    func newClaudeTabInSelectedProject() {
+    /// File → New Claude/Codex Tab. With a paired Mac in view, the tab opens
+    /// on that Mac, in its selected project: opening it here would land in a
+    /// project the window isn't showing.
+    func newAgentTabInSelectedProject(_ agent: AgentKind) {
+        if let connection = remote.selectedConnection {
+            guard connection.status == .online,
+                  let projectId = remote.selectedProjectId ?? connection.snapshot?.projects.first?.id else { return }
+            Task {
+                if case .started(let paneId) = await connection.startSession(
+                    projectId: projectId, branch: nil, prompt: "", permissionMode: nil, agent: agent) {
+                    remote.selectedProjectId = projectId
+                    remote.selectedPaneId = paneId
+                }
+            }
+            return
+        }
         guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
-        Task { await openClaudePane(project: project) }
-    }
-
-    func newCodexTabInSelectedProject() {
-        guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
-        Task { await openCodexPane(project: project) }
+        Task {
+            switch agent {
+            case .claude: await openClaudePane(project: project)
+            case .codex: await openCodexPane(project: project)
+            }
+        }
     }
 
     func newShellTabInSelectedProject() {

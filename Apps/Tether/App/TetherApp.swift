@@ -54,12 +54,14 @@ struct TetherApp: App {
             }
             // Replaces File → Close (⌘W) so it closes the tab, not the window.
             CommandGroup(replacing: .saveItem) {
-                Button("New Claude Tab") { model.newClaudeTabInSelectedProject() }
+                Button("New Claude Tab") { model.newAgentTabInSelectedProject(.claude) }
                     .keyboardShortcut("t", modifiers: .command)
-                Button("New Codex Tab") { model.newCodexTabInSelectedProject() }
+                Button("New Codex Tab") { model.newAgentTabInSelectedProject(.codex) }
                     .keyboardShortcut("t", modifiers: [.command, .option])
+                // A paired Mac's tabs are agents only; there's no remote shell.
                 Button("New Shell Tab") { model.newShellTabInSelectedProject() }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
+                    .disabled(model.remote.selectedMacId != nil)
                 Button("Close Tab") { model.requestCloseSelectedPane() }
                     .keyboardShortcut("w", modifiers: .command)
                 Divider()
