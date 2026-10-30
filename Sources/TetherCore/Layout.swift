@@ -90,10 +90,15 @@ public struct PaneDescriptor: Codable, Hashable, Sendable, Identifiable {
     public var kind: PaneKind
     public var title: String
 
-    public init(id: PaneID = UUID(), projectId: ProjectID, kind: PaneKind, title: String) {
+    /// Nil for existing terminal tabs. Native chats exclusively own their app-server process.
+    public var codexChat: Bool?
+    public var readOnly: Bool?
+    public init(id: PaneID = UUID(), projectId: ProjectID, kind: PaneKind, title: String,
+                codexChat: Bool? = nil, readOnly: Bool? = nil) {
         self.id = id
         self.projectId = projectId
         self.kind = kind
         self.title = title
+        self.codexChat = codexChat; self.readOnly = readOnly
     }
 }

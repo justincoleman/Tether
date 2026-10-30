@@ -77,8 +77,8 @@ struct OverviewView: View {
                 }
             } message: { request in
                 Text(request.session.state == .working
-                     ? "Claude is working right now. Closing stops it."
-                     : "The tab closes on \(request.connection.mac.name). The conversation stays in Claude's history.")
+                     ? "The task is working right now. Closing stops it."
+                     : "The tab closes on \(request.connection.mac.name). The conversation stays in the agent's history.")
             }
             .sheet(item: $reordering) { connection in
                 ReorderProjectsView(connection: connection)
@@ -136,6 +136,8 @@ struct OverviewView: View {
                 MacProjects(connection: connection, showMacName: store.connections.count > 1,
                             startTask: { projectId in
                     newTask = NewTaskTarget(macId: connection.id, projectId: projectId)
+                }, openSession: { pane in
+                    path.append(SessionRoute(macId: connection.id, paneId: pane))
                 }, askToClose: { session in
                     closeRequest = CloseRequest(connection: connection, session: session)
                 })
@@ -159,7 +161,7 @@ struct OverviewView: View {
         if waiting > 0 { parts.append("\(waiting) waiting on you") }
         if working > 0 { parts.append("\(working) working") }
         if done > 0 { parts.append("\(done) done") }
-        if parts.isEmpty { return "\(sessions.count) Claude tab\(sessions.count == 1 ? "" : "s"), all quiet" }
+        if parts.isEmpty { return "\(sessions.count) agent tab\(sessions.count == 1 ? "" : "s"), all quiet" }
         return parts.joined(separator: " · ")
     }
 
@@ -232,10 +234,15 @@ private struct MacProjects: View {
     let connection: MacConnection
     let showMacName: Bool
     let startTask: (ProjectID) -> Void
+    let openSession: (PaneID) -> Void
     let askToClose: (SessionSummary) -> Void
+    @State private var historyProject: ProjectSummary?
+    @State private var shortcutFailure: String?
+    @State private var runningShortcut = false
     @State private var showInactive = false
 
     var body: some View {
+        Group {
         if let limits = connection.snapshot?.limits, limits.fiveHour != nil || limits.sevenDay != nil {
             Section {
                 UsageCard(limits: limits, updatedAt: connection.snapshot?.limitsAt, macName: showMacName ? connection.mac.name : nil)
@@ -278,6 +285,13 @@ private struct MacProjects: View {
                 }
             }
         }
+        }
+        .sheet(item: $historyProject) { project in
+            PhoneHistorySheet(connection: connection, project: project, open: openSession)
+        }
+        .alert("Can't run shortcut", isPresented: Binding(get: { shortcutFailure != nil }, set: { if !$0 { shortcutFailure = nil } })) {
+            Button("OK") { shortcutFailure = nil }
+        } message: { Text(shortcutFailure ?? "") }
     }
 
     private func projectSection(_ project: ProjectSummary, snapshot: Snapshot) -> some View {
@@ -311,9 +325,25 @@ private struct MacProjects: View {
                 }
             }
         } header: {
+            HStack {
             ProjectHeader(project: project, sessions: sessions,
                           icon: connection.projectIcons[project.id]) { startTask(project.id) }
-                .contextMenu {
+            Menu {
+                    Button("History", systemImage: "clock.arrow.circlepath") { historyProject = project }
+                        .disabled(connection.status != .online)
+                    ForEach(snapshot.shortcuts?.filter { $0.projectId == project.id } ?? []) { shortcut in
+                        Button("Run \(shortcut.label)", systemImage: "play") {
+                            runningShortcut = true
+                            Task {
+                                switch await connection.runShortcut(shortcut.id, paneId: nil) {
+                                case .success(let pane): openSession(pane)
+                                case .failure(let error): shortcutFailure = error.message
+                                }
+                                runningShortcut = false
+                            }
+                        }
+                        .disabled(runningShortcut || connection.status != .online)
+                    }
                     Button(project.pinned ? "Unpin" : "Pin to Top",
                            systemImage: project.pinned ? "pin.slash" : "pin") {
                         connection.setProjectPinned(project.id, !project.pinned)
@@ -322,7 +352,13 @@ private struct MacProjects: View {
                            systemImage: project.active ? "moon.zzz" : "sun.max") {
                         connection.setProjectActive(project.id, !project.active)
                     }
-                }
+            } label: {
+                Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(theme.secondaryText)
+                    .frame(width: 32, height: 36)
+            }
+            .accessibilityLabel("Project actions for \(project.name)")
+            }
+            .textCase(nil)
         }
     }
 }
@@ -478,10 +514,13 @@ private struct ThreadRow: View {
                             .lineLimit(1)
                     }
                 }
-                Text(session.preview ?? (session.agent == .codex ? "Codex tab: replies show on the Mac" : "No messages yet"))
+                Text(session.preview ?? session.liveText ?? session.command?.command ?? "No messages yet")
                     .font(.subheadline)
                     .foregroundStyle(session.preview == nil ? theme.tertiaryText : theme.secondaryText)
                     .lineLimit(2)
+                if let warning = session.warning {
+                    Label(warning, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(theme.red)
+                }
                 if let summary = session.status?.summary {
                     Text(summary)
                         .font(.caption.monospacedDigit())

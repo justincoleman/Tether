@@ -15,9 +15,15 @@ structural. Work proceeds in the numbered phases there.
 - `make bootstrap` installs xcodegen and generates the Xcode project.
 - `make test` runs package tests (also works on Linux).
 - `make mac`, `make phone` build the apps; `make phone-install` installs to a device.
-- `make dev` runs the tests, builds the Mac app and launches it (replacing a
-  running copy). `make run` skips the tests; `make run-log` runs the binary in
-  the terminal to show its log output; `make stop` quits it.
+- `make dev` runs the tests, builds the Mac app and schedules a detached
+  stop/reopen. `make run` skips the tests; `make stop` schedules a detached stop.
+  These commands return before stopping the app; the nohup helper survives its
+  calling terminal and writes to `build/dev.log`. Never run foreground process
+  stopping commands from a Tether tab: stopping the app also closes that shell.
+- `make run-log` builds and runs the binary in the foreground for diagnostics.
+  Quit any existing copy first; it deliberately has no stop prerequisite.
+- `scripts/test-detached-app.sh` verifies detached launch/stop using fake
+  commands without stopping a real Tether instance.
 - `make release` builds, notarizes and publishes a signed release
   (`docs/RELEASING.md`); `scripts/ghosttykit.sh` switches libghostty to a
   source build in `Vendor/` (`--off` switches back).
@@ -90,9 +96,13 @@ structural. Work proceeds in the numbered phases there.
   to `TerminalPane.send`.
 
 ## Handing work to the user for testing
-- No session can compile Swift; the user builds and tests on the Mac mini.
-  After every change, give the exact build command (`git pull && make dev`)
-  and a numbered test list.
+- Sessions in Mac mini tabs can run `make test && make mac`; run affected
+  verification and report its output before handing work back. Use those
+  build-only commands while dogfooding so the current terminal stays alive.
+  To relaunch, use `make dev` or `make run` and inspect `build/dev.log`; never
+  use a foreground `make stop` implementation or direct process kill in a tab.
+- Make changes in a dedicated worktree. Never commit on the default branch.
+  After changes, give the exact build command and a numbered test list.
 - Every test step that involves Claude includes the literal prompt to paste,
   in its own code block, plus what the user should see if it works. Pick
   prompts that reliably trigger the behaviour under test (e.g. a command that

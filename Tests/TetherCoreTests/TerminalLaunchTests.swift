@@ -107,7 +107,9 @@ import TetherProtocol
         #expect(launch.workingDirectory == "/tmp/p")
         #expect(launch.environment[TerminalLaunch.runEnvKey] == "npm run dev")
         #expect(launch.environment[TerminalLaunch.paneEnvKey] == pane.id.uuidString)
-        #expect(launch.command == "/bin/sh -c 'trap : INT; /bin/zsh -ilc \"$TETHER_RUN\"; exec /bin/zsh -l'")
+        #expect(launch.command?.contains("TETHER_RUN_LOG") == true)
+        #expect(launch.command?.contains("PIPESTATUS[0]") == true)
+        #expect(launch.command?.contains("exec /bin/zsh -l") == true)
     }
 }
 

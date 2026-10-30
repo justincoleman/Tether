@@ -15,6 +15,7 @@ struct TetherApp: App {
         let theme = Theme.current(appearance)
         WindowGroup {
             RootView()
+                .onAppear { appDelegate.model = model }
                 .environment(model)
                 .environment(\.theme, theme)
                 .tint(theme.accent)

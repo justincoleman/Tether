@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TetherProtocol
 @testable import TetherCore
 
 @Suite struct PullRequestTests {
@@ -68,5 +69,93 @@ import Testing
         #expect(PullRequestPolicy.interval(for: pr(.merged, pending: 1), appActive: true, lowPower: false) == 600)
         #expect(PullRequestPolicy.interval(for: pr(.open, pending: 1), appActive: false, lowPower: false) == 300)
         #expect(PullRequestPolicy.interval(for: pr(.open), appActive: true, lowPower: true) == 270)
+    }
+}
+
+@Suite struct PullRequestActionTests {
+    struct Fixture {
+        let directory: URL
+        let gh: URL
+        let git: URL
+        let log: URL
+        init() throws {
+            directory = FileManager.default.temporaryDirectory.appendingPathComponent("pr actions \(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            gh = directory.appendingPathComponent("fake gh")
+            git = directory.appendingPathComponent("fake git")
+            log = directory.appendingPathComponent("arguments")
+            try """
+            #!/bin/sh
+            printf '%s\\0' "$@" >> "$COMMAND_LOG"
+            if [ "$1 $2" = 'pr view' ]; then
+              printf '%s' "$PR_JSON"
+            elif [ "$1 $2" = 'run list' ]; then
+              printf '%s' "$RUN_JSON"
+            elif [ "$FAIL_MUTATION" = 1 ]; then
+              echo 'remote rejected' >&2; exit 1
+            else
+              echo 'Action completed'
+            fi
+            """.write(to: gh, atomically: true, encoding: .utf8)
+            try """
+            #!/bin/sh
+            if [ "$1" = branch ]; then printf '%s' "$LOCAL_BRANCH"; else printf '%s' "$LOCAL_HEAD"; fi
+            """.write(to: git, atomically: true, encoding: .utf8)
+            for file in [gh, git] { try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path) }
+        }
+        func cli(head: String = "abc123", branch: String = "feature", state: String = "OPEN",
+                 remoteHead: String = "abc123", remoteBranch: String = "feature", runs: String = "[]", fail: Bool = false) -> GitHubCLI {
+            GitHubCLI(path: gh.path, environment: ["COMMAND_LOG": log.path, "LOCAL_BRANCH": branch,
+                "LOCAL_HEAD": head, "FAIL_MUTATION": fail ? "1" : "0", "RUN_JSON": runs,
+                "PR_JSON": "{\"number\":7,\"title\":\"PR\",\"url\":\"https://example.com/pr/7\",\"state\":\"\(state)\",\"headRefName\":\"\(remoteBranch)\",\"baseRefName\":\"main\",\"headRefOid\":\"\(remoteHead)\"}"], gitPath: git.path)
+        }
+        var arguments: [String] {
+            ((try? Data(contentsOf: log)) ?? Data()).split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
+        }
+        func remove() { try? FileManager.default.removeItem(at: directory) }
+    }
+
+    @Test func createUsesSeparateArgumentsWithoutPublishing() async throws {
+        let f = try Fixture(); defer { f.remove() }
+        let title = "Fix $(touch injected)"
+        let body = "First line\n`not shell code`"
+        _ = try await f.cli().perform(.create(title: title, body: body), branch: "feature", expectedBase: "main", in: f.directory.path)
+        #expect(f.arguments == ["pr", "create", "--base", "main", "--head", "feature", "--title", title, "--body", body])
+        #expect(!FileManager.default.fileExists(atPath: f.directory.appendingPathComponent("injected").path))
+    }
+
+    @Test func rejectsUnsafeAndStaleActionsBeforeMutation() async throws {
+        let f = try Fixture(); defer { f.remove() }
+        await #expect(throws: (any Error).self) { try await f.cli().perform(.create(title: " ", body: "body"), branch: "feature", expectedBase: "main", in: f.directory.path) }
+        await #expect(throws: (any Error).self) { try await f.cli().perform(.create(title: "title", body: "body"), branch: "main", expectedBase: "main", in: f.directory.path) }
+        await #expect(throws: (any Error).self) { try await f.cli(branch: "other").perform(.merge(expectedHead: "abc123"), branch: "feature", expectedBase: "main", in: f.directory.path) }
+        await #expect(throws: (any Error).self) { try await f.cli(head: "def456").perform(.merge(expectedHead: "abc123"), branch: "feature", expectedBase: "main", in: f.directory.path) }
+        for cli in [f.cli(state: "MERGED"), f.cli(remoteHead: "def456"), f.cli(remoteBranch: "other")] {
+            await #expect(throws: (any Error).self) { try await cli.perform(.merge(expectedHead: "abc123"), branch: "feature", expectedBase: "main", in: f.directory.path) }
+        }
+        #expect(!f.arguments.contains("merge"))
+    }
+
+    @Test func mergePinsTheReviewedCommit() async throws {
+        let f = try Fixture(); defer { f.remove() }
+        _ = try await f.cli().perform(.merge(expectedHead: "abc123"), branch: "feature", expectedBase: "main", in: f.directory.path)
+        #expect(Array(f.arguments.suffix(6)) == ["pr", "merge", "7", "--squash", "--match-head-commit", "abc123"])
+    }
+
+    @Test func rerunsOnlyFailedActionRunsForExpectedCommit() async throws {
+        let f = try Fixture(); defer { f.remove() }
+        _ = try await f.cli(runs: "[{\"databaseId\":123},{\"databaseId\":456}]").perform(.rerunChecks(expectedHead: "abc123"), branch: "feature", expectedBase: "main", in: f.directory.path)
+        #expect(f.arguments.contains("--commit"))
+        #expect(f.arguments.contains("failure"))
+        #expect(Array(f.arguments.suffix(8)) == ["run", "rerun", "123", "--failed", "run", "rerun", "456", "--failed"])
+    }
+
+    @Test func failuresAndMissingActionRunsAreReported() async throws {
+        let f = try Fixture(); defer { f.remove() }
+        await #expect(throws: (any Error).self) { try await f.cli().perform(.rerunChecks(expectedHead: "abc123"), branch: "feature", expectedBase: "main", in: f.directory.path) }
+        await #expect(throws: (any Error).self) { try await f.cli(fail: true).perform(.create(title: "title", body: "body"), branch: "feature", expectedBase: "main", in: f.directory.path) }
+        await #expect(throws: (any Error).self) { try await f.cli(runs: "[{\"databaseId\":-1}]").perform(.rerunChecks(expectedHead: "abc123"), branch: "feature", expectedBase: "main", in: f.directory.path) }
+        #expect(!f.arguments.contains("push"))
+        #expect(!f.arguments.contains("rerun"))
     }
 }

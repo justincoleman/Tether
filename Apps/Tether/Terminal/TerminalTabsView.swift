@@ -18,7 +18,7 @@ struct TerminalTabsView: View {
         let overlayOpen = model.openDiffTarget?.projectId == project.id
             || model.openFileTarget?.projectId == project.id
         let selectedPane = panes.first { $0.id == model.selectedPaneId }
-        // Chat replaces the terminal only for Claude tabs; shells have no conversation.
+        // Chat replaces the terminal for agent tabs; shells have no conversation.
         // With no tabs, or after +, the start page covers the card.
         let startShown = panes.isEmpty || model.newTabPage == project.id
         let chatShown = !startShown && (selectedPane.map { model.showsChat($0.id) } ?? false)
@@ -93,40 +93,49 @@ private struct TerminalCard: View {
                     let rect = frame(of: pane.id, split: split, halves: halves, full: full)
                     // Hidden while a diff or a file covers the card, and while the
                     // chat covers this pane, so keystrokes and rendering go there.
-                    let shown = isActive && rect != nil && !overlayOpen && !(chatShown && pane.id == selectedId)
+                    let shown = isActive && rect != nil && !overlayOpen && !model.showsChat(pane.id)
                     let focused = shown && pane.id == selectedId
                     let r = rect ?? full
-                    TerminalSurfaceView(context: pane.terminal)
-                        .frame(width: r.width, height: r.height)
-                        .overlay {
-                            // First click on the other half focuses it, like Ghostty.
-                            if shown && !focused {
-                                theme.window.opacity(0.22)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { model.selectedPaneId = pane.id }
+                    if !pane.usesNativeCodexChat {
+                        VStack(spacing: 0) {
+                            if shown { AgentWarningCard(paneId: pane.id, offersTerminal: false) }
+                            TerminalSurfaceView(context: pane.terminal)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                            .frame(width: r.width, height: r.height)
+                            .overlay {
+                                // First click on the other half focuses it, like Ghostty.
+                                if shown && !focused {
+                                    theme.window.opacity(0.22)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture { model.selectedPaneId = pane.id }
+                                }
                             }
-                        }
-                        .offset(x: r.minX, y: r.minY)
-                        .opacity(shown ? 1 : 0)
-                        .allowsHitTesting(shown)
-                        .onChange(of: shown, initial: true) { _, isShown in
-                            pane.setVisible(isShown)
-                        }
-                        .onChange(of: focused, initial: true) { _, isFocused in
-                            if isFocused {
-                                pane.setVisible(true)
-                                pane.focus()
+                            .offset(x: r.minX, y: r.minY)
+                            .opacity(shown ? 1 : 0)
+                            .allowsHitTesting(shown)
+                            .onChange(of: shown, initial: true) { _, isShown in
+                                pane.setVisible(isShown)
                             }
-                        }
+                            .onChange(of: focused, initial: true) { _, isFocused in
+                                if isFocused {
+                                    pane.setVisible(true)
+                                    pane.focus()
+                                }
+                            }
+                    }
                 }
-                if chatShown, let selectedId {
-                    let r = frame(of: selectedId, split: split, halves: halves, full: full) ?? full
-                    MirrorView(paneId: selectedId)
+                ForEach(panes) { pane in
+                    if isActive, !overlayOpen, model.showsChat(pane.id),
+                       let r = frame(of: pane.id, split: split, halves: halves, full: full) {
+                    MirrorView(paneId: pane.id)
                         // Alone, the chat fills the card edge to edge.
                         .padding(.horizontal, split == nil ? -10 : 0)
                         .padding(.vertical, split == nil ? -8 : 0)
                         .frame(width: r.width, height: r.height)
                         .offset(x: r.minX, y: r.minY)
+                        .simultaneousGesture(TapGesture().onEnded { model.selectedPaneId = pane.id })
+                    }
                 }
                 // Covers both the terminal and the chat: neither has anything to show.
                 if isActive && !overlayOpen {
@@ -240,7 +249,8 @@ private struct TabStrip: View {
 
     var body: some View {
         let shortcuts = model.quickActions(for: project.id)
-        let selectedIsClaude = panes.first { $0.id == model.selectedPaneId }?.isClaude == true
+        let selectedIsAgent = panes.first { $0.id == model.selectedPaneId }?.isAgent == true
+        let selectedIsNative = panes.first { $0.id == model.selectedPaneId }?.usesNativeCodexChat == true
         HStack(spacing: 4) {
             if !showSidebar {
                 ChromeButton(systemImage: "sidebar.left", help: "Show sidebar (⌃⌘S)") { showSidebar = true }
@@ -285,15 +295,22 @@ private struct TabStrip: View {
                                   set: { chat in
                                       if let id = model.selectedPaneId { model.setChat(chat, forPane: id) }
                                   }),
-                chatAvailable: selectedIsClaude)
+                chatAvailable: selectedIsAgent, terminalAvailable: !selectedIsNative)
                 .padding(.trailing, 4)
             ToolbarPill(title: "Claude", systemImage: "sparkles", iconColor: theme.claude,
                         help: "New Claude tab (⌘T)") {
                 Task { await model.openClaudePane(project: project) }
             }
-            ToolbarPill(title: "Codex", systemImage: "chevron.left.forwardslash.chevron.right",
-                        iconColor: theme.codex, help: "New Codex tab (⌥⌘T)") {
-                Task { await model.openCodexPane(project: project) }
+            Menu {
+                Button("New Codex Chat") { Task { await model.openCodexChatPane(project: project) } }
+                Button("New Codex Terminal (⌥⌘T)") { Task { await model.openCodexPane(project: project) } }
+            } label: {
+                Label("Codex", systemImage: "chevron.left.forwardslash.chevron.right").foregroundStyle(theme.codex)
+            }
+            .menuStyle(.borderlessButton).fixedSize()
+            if let paneId = model.selectedPaneId, selectedIsAgent {
+                PullRequestActionsView(paneId: paneId)
+                AgentTransferActionsView(paneId: paneId)
             }
             ToolbarPill(title: "History", systemImage: "clock.arrow.circlepath", help: "Past sessions") {
                 showHistory.toggle()
@@ -355,12 +372,14 @@ private struct ViewModeToggle: View {
     @Environment(\.theme) private var theme
     @Binding var showChat: Bool
     let chatAvailable: Bool
+    var terminalAvailable = true
 
     var body: some View {
         HStack(spacing: 2) {
-            segment(chat: false, systemImage: "apple.terminal", help: "Terminal for this tab (⇧⌘M)")
+            segment(chat: false, systemImage: "apple.terminal", help: terminalAvailable ? "Terminal for this tab (⇧⌘M)" : "Native Codex chat has no terminal")
+                .disabled(!terminalAvailable)
             segment(chat: true, systemImage: "bubble.left.and.text.bubble.right",
-                    help: chatAvailable ? "Chat for this tab (⇧⌘M)" : "Chat is for Claude tabs")
+                    help: chatAvailable ? "Chat for this tab (⇧⌘M)" : "Chat is for agent tabs")
                 .disabled(!chatAvailable)
         }
         .padding(2)

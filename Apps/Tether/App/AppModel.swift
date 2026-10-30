@@ -77,6 +77,17 @@ final class AppModel {
     /// Shortcut commands for every project, shown in the top bar.
     private(set) var quickActions: [QuickAction] = []
 
+    private(set) var commandRuns: [PaneID: CommandRunSummary] = [:]
+    private var commandMonitors: [PaneID: Task<Void, Never>] = [:]
+    private(set) var nativeLiveText: [PaneID: String] = [:]
+    private var codexChats: [PaneID: CodexChatDriver] = [:]
+    private var codexGenerations: [PaneID: UUID] = [:]
+    private(set) var codexErrors: [PaneID: String] = [:]
+    private(set) var codexMissingReports: Set<PaneID> = []
+    private var codexLaunches: [PaneID: Date] = [:]
+    private var codexReports: [PaneID: Date] = [:]
+    private var prActionsInFlight: Set<String> = []
+
     let mirror = MirrorStore()
     let releases = ReleaseNotesStore()
     let changes = ChangesStore()
@@ -324,7 +335,7 @@ final class AppModel {
     @discardableResult
     func startSession(projectId: ProjectID, branch: String?, prompt: String?,
                       permissionMode: String? = nil, agent: AgentKind = .claude,
-                      select: Bool) async throws -> PaneID {
+                      nativeCodexChat: Bool = false, select: Bool) async throws -> PaneID {
         guard let project = projects.first(where: { $0.id == projectId }) else {
             throw StartError(description: "That project is no longer on the Mac.")
         }
@@ -350,7 +361,8 @@ final class AppModel {
         case .codex: .codex(worktreeId: worktree.id, resumeSessionId: nil)
         }
         let d = PaneDescriptor(projectId: project.id, kind: kind,
-                               title: branchName.isEmpty ? agent.displayName : branchName)
+                               title: branchName.isEmpty ? agent.displayName : branchName,
+                               codexChat: agent == .codex && nativeCodexChat ? true : nil)
         if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             initialPrompts[d.id] = prompt
         }
@@ -573,18 +585,24 @@ final class AppModel {
     /// Runs a shortcut in its own tab, in the folder the selected tab works
     /// in. If that command is already running there, its tab is selected
     /// instead, so a second click doesn't start a second dev server.
-    func runQuickAction(_ action: QuickAction) async {
-        guard let project = projects.first(where: { $0.id == action.projectId }) else { return }
-        let cwd = (selectedProjectId == project.id ? selectedWorktreePath : nil) ?? project.path
+    @discardableResult
+    func runQuickAction(_ action: QuickAction, inPane paneId: PaneID? = nil, select: Bool = true) async -> PaneID? {
+        guard let project = projects.first(where: { $0.id == action.projectId }) else { return nil }
+        if let paneId, panes[paneId]?.descriptor.projectId != project.id { return nil }
+        let cwd = paneId.flatMap { worktreePath(forPane: $0) }
+            ?? (select && selectedProjectId == project.id ? selectedWorktreePath : nil) ?? project.path
         let kind = PaneKind.command(cwd: cwd, command: action.command)
-        closeOverlays()
-        selectedProjectId = project.id
-        if let running = panes(for: project.id).first(where: { $0.descriptor.kind == kind && !$0.hasExited }) {
-            selectedPaneId = running.id
-            return
+        if select { closeOverlays(); selectedProjectId = project.id }
+        if let running = panes(for: project.id).first(where: {
+            $0.descriptor.kind == kind && !$0.hasExited && commandRuns[$0.id]?.exitCode == nil
+        }) {
+            if select { selectedPaneId = running.id }
+            return running.id
         }
-        // Not persisted: a relaunch shouldn't start dev servers on its own.
-        await open(PaneDescriptor(projectId: project.id, kind: kind, title: action.label), persist: false)
+        let descriptor = PaneDescriptor(projectId: project.id, kind: kind, title: action.label)
+        await mount(descriptor)
+        if select { selectedPaneId = descriptor.id }
+        return descriptor.id
     }
 
     // MARK: History
@@ -806,6 +824,7 @@ final class AppModel {
     }
 
     private func canSendNow(_ paneId: PaneID) -> Bool {
+        if let driver = codexChats[paneId] { return driver.isReady && !driver.isWorking && paneAttention[paneId] == nil }
         // Without hooks there is no state to wait for.
         guard hookServer != nil else { return true }
         guard let state = paneStates[paneId] else { return false } // still starting up
@@ -1051,11 +1070,13 @@ final class AppModel {
 
     /// Whether this tab shows its chat instead of its terminal.
     func showsChat(_ paneId: PaneID) -> Bool {
-        guard panes[paneId]?.isClaude == true else { return false }
+        guard let pane = panes[paneId], pane.isAgent else { return false }
+        if pane.usesNativeCodexChat { return true }
         return chatOverrides[paneId] ?? chatByDefault
     }
 
     func setChat(_ chat: Bool, forPane paneId: PaneID) {
+        guard panes[paneId]?.usesNativeCodexChat != true else { return }
         chatOverrides[paneId] = chat
         // Whatever is typed in the terminal from here on isn't Claude's suggestion.
         if !chat { setSuggestion(nil, for: paneId) }
@@ -1063,7 +1084,7 @@ final class AppModel {
 
     /// Switches the selected Claude tab between its terminal and its chat.
     func toggleChat() {
-        guard let id = selectedPaneId, panes[id]?.isClaude == true else { return }
+        guard let id = selectedPaneId, panes[id]?.isAgent == true else { return }
         setChat(!showsChat(id), forPane: id)
     }
 
@@ -1116,12 +1137,15 @@ final class AppModel {
             answerTrust(request, decision)
             return
         }
+        if let paneId = request?.paneId, codexChats[paneId]?.resolve(id, decision: decision) == true { return }
         Task { await self.broker.resolve(id, decision) }
     }
 
     /// Answers a question Claude asked with options: the choice goes back to
     /// Claude Code as the tool's answer, so no terminal dialog is needed.
     func answerQuestion(_ id: UUID, answer: String) {
+        if let paneId = pendingPermissions.first(where: { $0.id == id })?.paneId,
+           codexChats[paneId]?.answer(id, answer: answer) == true { return }
         guard let request = pendingPermissions.first(where: { $0.id == id }),
               request.toolName == AskUserQuestion.toolName,
               let prompt = AskUserQuestion.prompt(from: request.toolInput) else { return }
@@ -1202,7 +1226,9 @@ final class AppModel {
     private func handle(_ event: HookEvent) {
         switch event {
         case .session(let session):
-            guard let paneId = session.paneId, panes[paneId] != nil else { return }
+            guard let paneId = session.paneId, panes[paneId] != nil, codexChats[paneId] == nil else { return }
+            codexReports[paneId] = Date()
+            codexMissingReports.remove(paneId)
             let previous = paneStates[paneId]
             paneStates[paneId] = session.state
             paneAttention[paneId] = session.attention
@@ -1225,9 +1251,8 @@ final class AppModel {
                 recordedSessions[paneId] = session.id
                 Task { try? await self.store.recordSession(session.id, forPane: paneId) }
             }
-            // The chat reads Claude transcripts only; a Codex rollout is another format.
             let isClaude = panes[paneId]?.isClaude == true
-            if isClaude { mirror.track(sessionId: session.id, path: session.transcriptPath) }
+            mirror.track(sessionId: session.id, path: session.transcriptPath, agent: panes[paneId]?.agent ?? .claude)
             recomputeProjectStates()
             notifyPhones(paneId: paneId, previous: previous, state: session.state, attention: session.attention)
             // Codex has an Interrupt hook; Claude's Esc only shows in its transcript.
@@ -1322,6 +1347,8 @@ final class AppModel {
     }
 
     private func paneDidExit(_ id: PaneID) async {
+        codexMissingReports.remove(id)
+        companion.setNeedsSnapshot()
         stopInterruptWatcher(forPane: id)
         _ = await broker.cancelAll(paneId: id)
         pendingPermissions.removeAll { $0.paneId == id }
@@ -1398,6 +1425,7 @@ final class AppModel {
         _ = toolPaths()
         await startHookServer()
         companion.start()
+        pullRequests.onChange = { [weak self] in self?.companion.setNeedsSnapshot() }
         pullRequests.targets = { [weak self] in self?.pullRequestTargets() ?? [:] }
         pullRequests.start()
         preview.folders = { [weak self] in
@@ -1446,12 +1474,13 @@ final class AppModel {
             } else {
                 launchSession = UUID().uuidString.lowercased()
             }
-        case .codex(let wtId, _):
-            // Codex has no --session-id: its thread id arrives with SessionStart.
+        case .codex(let wtId, let resume):
+            if d.codexChat != true, let resume, !resume.isEmpty { launchSession = resume }
+            // New Codex terminal thread ids arrive with SessionStart.
             worktree = await store.worktree(wtId)
             if let worktree { paneWorktreePaths[d.id] = worktree.path }
         case .ssh(let hostId): host = await store.remoteHost(hostId)
-        case .shell, .command: break
+        case .shell(let cwd), .command(let cwd, _): paneWorktreePaths[d.id] = cwd
         }
         var tools = ToolPaths()
         if let agent = d.kind.agent {
@@ -1462,16 +1491,31 @@ final class AppModel {
                 missingTools[d.id] = nil
             }
         }
-        let launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host,
+        let initialPrompt = initialPrompts.removeValue(forKey: d.id)
+        var launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host,
                                          token: launchToken, hookSettingsPath: hookSettingsPath,
                                          newSessionId: launchSession,
-                                         initialPrompt: initialPrompts.removeValue(forKey: d.id),
-                                         permissionMode: initialModes.removeValue(forKey: d.id),
+                                         initialPrompt: initialPrompt,
+                                         permissionMode: d.readOnly == true && d.kind.agent == .claude ? "plan" : initialModes.removeValue(forKey: d.id),
                                          hookPort: hookPort,
                                          claudeExecutable: tools.path(of: AgentKind.claude.rawValue) ?? "claude",
                                          codexExecutable: tools.path(of: AgentKind.codex.rawValue) ?? "codex",
                                          searchPath: d.kind.agent == nil ? nil
                                             : tools.launchPath(inherited: ProcessInfo.processInfo.environment["PATH"]))
+        var captureDirectory: URL?
+        if case .command(_, let command) = d.kind {
+            do {
+                let folder = ProjectStore.defaultFileURL().deletingLastPathComponent()
+                    .appendingPathComponent("command-runs/" + d.id.uuidString, isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                        attributes: [.posixPermissions: 0o700])
+                launch.environment["TETHER_RUN_LOG"] = folder.appendingPathComponent("output.log").path
+                launch.environment["TETHER_RUN_STATUS"] = folder.appendingPathComponent("exit").path
+                commandRuns[d.id] = CommandRunSummary(command: command)
+                paneStates[d.id] = .working
+                captureDirectory = folder
+            } catch { codexErrors[d.id] = "Output capture failed: \(error)" }
+        }
         let pane = TerminalPane(descriptor: d, launch: launch, controller: TerminalHost.controller)
         pane.onExit = { [weak self] id in
             guard let self else { return }
@@ -1479,11 +1523,18 @@ final class AppModel {
         }
         panes[d.id] = pane
         paneOrder.append(d.id)
+        if let captureDirectory { monitorCommand(d.id, directory: captureDirectory) }
+        if pane.usesNativeCodexChat, let worktree,
+           let executable = tools.path(of: AgentKind.codex.rawValue) {
+            startCodexChat(pane: pane, directory: worktree.path, executable: executable, initialPrompt: initialPrompt)
+        } else if pane.agent == .codex, !pane.usesNativeCodexChat {
+            scheduleCodexHealth(d.id)
+        }
         if let launchSession {
             // Not persisted for --resume until a hook confirms the session
             // exists: resuming an id with no transcript would fail.
             launchSessions[d.id] = launchSession
-            mirror.track(sessionId: launchSession, path: nil)
+            mirror.track(sessionId: launchSession, path: nil, agent: d.kind.agent ?? .claude)
         }
         if let worktree, case .claude = d.kind {
             scheduleTrustCheck(paneId: d.id, path: worktree.path)
@@ -1531,6 +1582,14 @@ final class AppModel {
         splits.removeAll { $0.contains(id) }
         stopInterruptWatcher(forPane: id)
         stopMirror(forPane: id)
+        codexGenerations[id] = nil
+        codexChats.removeValue(forKey: id)?.stop()
+        nativeLiveText[id] = nil
+        codexErrors[id] = nil
+        codexMissingReports.remove(id)
+        codexLaunches[id] = nil; codexReports[id] = nil
+        commandMonitors.removeValue(forKey: id)?.cancel()
+        commandRuns[id] = nil
         panes[id] = nil
         paneOrder.removeAll { $0 == id }
         paneStates[id] = nil
@@ -1622,14 +1681,20 @@ extension AppModel {
         var sessions: [SessionSummary] = []
         for project in projects {
             for pane in panes(for: project.id) {
-                guard let agent = pane.descriptor.kind.agent else { continue }
+                let agent = pane.descriptor.kind.agent
+                guard agent != nil || commandRuns[pane.id] != nil else { continue }
+                let pr = worktreePath(forPane: pane.id).flatMap { pullRequests.statuses[$0] }.map {
+                    PullRequestSummary(number: $0.number, title: $0.title, url: $0.url, state: $0.state.rawValue,
+                                       headRevision: $0.headRevision, checksSummary: $0.checksSummary)
+                }
                 sessions.append(SessionSummary(
                     id: pane.id, projectId: project.id, sessionId: sessionId(forPane: pane.id),
                     title: pane.title, state: paneStates[pane.id] ?? .idle,
                     attention: paneAttention[pane.id], queued: queuedCounts[pane.id] ?? 0,
                     preview: mirror.model(for: sessionId(forPane: pane.id))?.preview(),
                     permissionMode: paneModes[pane.id], status: paneStatus[pane.id], agent: agent,
-                    suggestion: suggestions[pane.id]))
+                    suggestion: suggestions[pane.id], command: commandRuns[pane.id], warning: warning(for: pane.id),
+                    liveText: nativeLiveText[pane.id], pullRequest: pr))
             }
         }
         let permissions = pendingPermissions.map(phoneSummary(of:))
@@ -1637,7 +1702,8 @@ extension AppModel {
         return Snapshot(macName: macName, projects: projectList, sessions: sessions, permissions: permissions,
                         limits: usageLimits.flatMap { SavedLimits.current($0, now: Date()) },
                         limitsAt: usageLimitsAt,
-                        theme: MacTheme(background: colors.surface.hexString, foreground: colors.text.hexString))
+                        theme: MacTheme(background: colors.surface.hexString, foreground: colors.text.hexString),
+                        shortcuts: quickActions.map { ShortcutSummary(id: $0.id, projectId: $0.projectId, label: $0.label, command: $0.command) })
     }
 }
 
@@ -1756,7 +1822,7 @@ extension AppModel {
     func phoneSummary(of request: PendingPermission) -> PermissionRequested {
         let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
         let question = request.toolName == AskUserQuestion.toolName
-            ? AskUserQuestion.prompt(from: request.toolInput) : nil
+            ? questionPrompt(for: request) : nil
         return PermissionRequested(id: request.id, paneId: request.paneId, sessionId: request.sessionId,
                                    toolName: request.toolName, title: summary.title, detail: summary.detail,
                                    question: question, agent: agent(forPane: request.paneId))
@@ -1774,7 +1840,7 @@ extension AppModel {
         let transcript = mirror.model(for: sessionId(forPane: paneId))
         companion.sessionChanged(paneId: paneId, projectName: projectName(forPane: paneId), title: pane.title,
                                  previous: previous, state: state, attention: attention,
-                                 preview: transcript?.preview(), steps: transcript?.stepsInCurrentTurn ?? 0)
+                                 preview: transcript?.preview(), steps: transcript?.stepsInCurrentTurn ?? 0, agent: pane.agent ?? .claude)
     }
 
     fileprivate func activityContentChanged(sessionId: SessionID) {
@@ -1783,5 +1849,222 @@ extension AppModel {
               let transcript = mirror.model(for: sessionId) else { return }
         companion.activityContentChanged(paneId: paneId, state: state, preview: transcript.preview(),
                                          steps: transcript.stepsInCurrentTurn)
+    }
+}
+
+// MARK: - Native Codex and dogfooding workflows
+extension AppModel {
+    func openCodexChatPane(project: Project) async {
+        _ = try? await startSession(projectId: project.id, branch: nil, prompt: nil,
+                                    agent: .codex, nativeCodexChat: true, select: true)
+    }
+
+    func agent(for paneId: PaneID) -> AgentKind? { panes[paneId]?.agent }
+    func isNativeCodex(_ paneId: PaneID) -> Bool { panes[paneId]?.usesNativeCodexChat == true }
+
+    func warning(for paneId: PaneID) -> String? {
+        if let error = codexErrors[paneId] { return error }
+        if codexMissingReports.contains(paneId) {
+            return "Codex isn’t reporting. Check the terminal for hook trust or sign-in prompts."
+        }
+        let occupants = paneOrder.compactMap { id -> AgentFolderOccupant? in
+            guard let pane = panes[id], let agent = pane.agent, let path = paneWorktreePaths[id] else { return nil }
+            return AgentFolderOccupant(id: id, agent: agent, path: path,
+                                      isLive: !pane.hasExited && paneStates[id] != .detached && codexErrors[id] == nil)
+        }
+        if !SameFolderAgents(occupants).conflicts(for: paneId).isEmpty {
+            return "Claude and Codex share this folder. Their edits can overlap. Use separate worktrees for independent work."
+        }
+        return nil
+    }
+
+    private func scheduleCodexHealth(_ id: PaneID) {
+        let launched = Date()
+        codexLaunches[id] = launched
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard let self, let pane = self.panes[id], self.codexLaunches[id] == launched,
+                  self.missingTools[id] == nil,
+                  CodexReportingHealth.isMissing(agent: .codex, launchedAt: launched,
+                      lastReportAt: self.codexReports[id], hasExited: pane.hasExited, now: Date()) else { return }
+            self.codexMissingReports.insert(id)
+            self.companion.setNeedsSnapshot()
+        }
+    }
+
+    private func startCodexChat(pane: TerminalPane, directory: String, executable: String, initialPrompt: String?) {
+        let id = pane.id
+        let generation = UUID()
+        codexGenerations[id] = generation
+        let resume: String?
+        if case .codex(_, let sessionId) = pane.descriptor.kind { resume = sessionId } else { resume = nil }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let environment = ProcessInfo.processInfo.environment
+        let driver = CodexChatDriver(directory: directory, executable: executable, version: version,
+                                    resumeSessionId: resume, readOnly: pane.descriptor.readOnly == true, environment: environment)
+        codexChats[id] = driver
+        pane.sendHandler = { [weak driver] in driver?.send($0) ?? false }
+        pane.interruptHandler = { [weak driver] in driver?.interrupt() ?? false }
+        driver.onReady = { [weak self] sessionId in
+            guard let self, self.codexGenerations[id] == generation else { return }
+            self.launchSessions[id] = sessionId
+            self.recordedSessions[id] = sessionId
+            self.codexErrors[id] = nil
+            Task { try? await self.store.recordSession(sessionId, forPane: id) }
+            self.companion.setNeedsSnapshot()
+        }
+        driver.onEvents = { [weak self] events in
+            guard let self, self.codexGenerations[id] == generation,
+                  let session = self.sessionId(forPane: id) else { return }
+            self.mirror.append(events, for: session)
+        }
+        driver.onLiveText = { [weak self] text in
+            guard let self, self.codexGenerations[id] == generation else { return }
+            self.nativeLiveText[id] = text.map { String($0.suffix(16_000)) }
+            self.companion.setNeedsSnapshot()
+        }
+        driver.onState = { [weak self] state, attention in
+            guard let self, self.codexGenerations[id] == generation else { return }
+            let previous = self.paneStates[id]
+            self.paneStates[id] = state; self.paneAttention[id] = attention
+            if state == .working { self.codexErrors[id] = nil }
+            self.updateTurnStart(id, previous: previous, state: state)
+            self.recomputeProjectStates()
+            self.notifyPhones(paneId: id, previous: previous, state: state, attention: attention)
+            if state == .done || state == .idle { self.flushQueue(id) }
+            if previous == .working, state != .working {
+                self.changes.refresh(directory); self.pullRequests.refreshSoon(directory)
+            }
+            self.companion.setNeedsSnapshot()
+        }
+        driver.onPermission = { [weak self] request in
+            guard let self, self.codexGenerations[id] == generation else { return }
+            var card = request; card.paneId = id
+            self.pendingPermissions.append(card)
+            self.requestAttention()
+            self.companion.permissionRequested(self.phoneSummary(of: card), projectName: self.projectName(forPane: id))
+            self.companion.setNeedsSnapshot()
+        }
+        driver.onResolved = { [weak self] requestId in
+            guard let self, self.codexGenerations[id] == generation else { return }
+            self.pendingPermissions.removeAll { $0.id == requestId }
+            self.companion.setNeedsSnapshot()
+        }
+        driver.onError = { [weak self] error in
+            guard let self, self.codexGenerations[id] == generation else { return }
+            self.codexErrors[id] = error
+            self.pendingPermissions.removeAll { $0.paneId == id }
+            self.companion.setNeedsSnapshot()
+        }
+        Task { await driver.start(initialPrompt: initialPrompt, review: pane.descriptor.readOnly == true && initialPrompt != nil) }
+    }
+
+    private func monitorCommand(_ id: PaneID, directory: URL) {
+        commandMonitors[id] = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let previous = self.commandRuns[id], self.panes[id] != nil else { return }
+                do {
+                    let next = try await Task.detached(priority: .utility) {
+                        try ShortcutCapture.read(in: directory, previous: previous)
+                    }.value
+                    guard !Task.isCancelled, self.panes[id] != nil else { return }
+                    if next != previous {
+                        self.commandRuns[id] = next
+                        if let code = next.exitCode {
+                            self.paneStates[id] = code == 0 ? .done : .error
+                            if code != 0 {
+                                self.companion.shortcutFailed(paneId: id, projectName: self.projectName(forPane: id),
+                                    title: self.panes[id]?.title ?? "Shortcut", exitCode: code, output: next.output)
+                            }
+                        }
+                        self.companion.setNeedsSnapshot()
+                    }
+                    if next.exitCode != nil { return }
+                } catch {
+                    self.codexErrors[id] = "Couldn’t read shortcut output: \(error)"
+                    self.companion.setNeedsSnapshot()
+                }
+                do { try await Task.sleep(for: .milliseconds(750)) } catch { return }
+            }
+        }
+    }
+
+    func runShortcut(_ shortcutId: UUID, paneId: PaneID?) async throws -> PaneID {
+        guard let action = quickActions.first(where: { $0.id == shortcutId }),
+              let id = await runQuickAction(action, inPane: paneId, select: false) else {
+            throw StartError(description: "That shortcut or tab is no longer available on the Mac.")
+        }
+        return id
+    }
+
+    func performPullRequest(_ action: PullRequestAction, paneId: PaneID) async throws -> String {
+        guard let pane = panes[paneId], let path = worktreePath(forPane: paneId),
+              let project = projects.first(where: { $0.id == pane.descriptor.projectId }),
+              let branch = changes.snapshots[path]?.branch else {
+            throw StartError(description: "Open a tab on a branch and wait for its changes to load.")
+        }
+        guard !prActionsInFlight.contains(path) else { throw StartError(description: "A pull request action is already running here.") }
+        guard let cli = GitHubCLI.locate() else { throw StartError(description: "Install and sign in to GitHub CLI on the host Mac first.") }
+        prActionsInFlight.insert(path)
+        defer { prActionsInFlight.remove(path); pullRequests.refreshSoon(path); companion.setNeedsSnapshot() }
+        let result = try await cli.perform(action, branch: branch, expectedBase: project.baseBranch, in: path)
+        return result.isEmpty ? "Pull request action completed." : result
+    }
+}
+
+extension AppModel {
+    func transferDraft(for paneId: PaneID, kind: AgentTransferKind) async throws -> AgentTransferDraft {
+        guard let pane = panes[paneId], let source = pane.agent, !pane.hasExited,
+              AgentTransferMessage.canStart(state: paneStates[paneId] ?? .detached, attention: paneAttention[paneId]),
+              let path = paneWorktreePaths[paneId], let wtId = pane.descriptor.kind.worktreeId,
+              let wt = worktrees.first(where: { $0.id == wtId }), wt.path == path,
+              let project = projects.first(where: { $0.id == pane.descriptor.projectId }) else {
+            throw StartError(description: "Let the source agent finish or stop its turn before starting a review or handoff.")
+        }
+        let git = GitRunner()
+        let revision = try await git.run(["rev-parse", "HEAD"], in: path).text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let branch = try await git.run(["branch", "--show-current"], in: path).text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let changes = self.changes.snapshots[path]
+        return AgentTransferDraft(paneId: paneId, kind: kind, target: source == .claude ? .codex : .claude,
+            directory: path, revision: revision, branch: branch,
+            message: AgentTransferMessage.compose(kind: kind, source: source, directory: path,
+                base: changes?.baseRef ?? project.baseBranch, files: changes?.files.map(\.path) ?? [],
+                items: mirror.model(for: sessionId(forPane: paneId))?.items ?? []))
+    }
+
+    func startTransfer(_ draft: AgentTransferDraft, message: String) async throws {
+        let fresh = try await transferDraft(for: draft.paneId, kind: draft.kind)
+        guard fresh.directory == draft.directory, fresh.revision == draft.revision, fresh.branch == draft.branch,
+              fresh.target == draft.target, let source = panes[draft.paneId],
+              let worktreeId = source.descriptor.kind.worktreeId else {
+            throw StartError(description: "The source folder or branch changed. Reopen the preview before continuing.")
+        }
+        let kind: PaneKind = draft.target == .codex
+            ? .codex(worktreeId: worktreeId, resumeSessionId: nil)
+            : .claude(worktreeId: worktreeId, resumeSessionId: nil)
+        let pane = PaneDescriptor(projectId: source.descriptor.projectId, kind: kind,
+            title: "\(draft.target.displayName) \(draft.kind == .review ? "Review" : "Handoff")",
+            codexChat: draft.target == .codex ? true : nil, readOnly: draft.kind == .review ? true : nil)
+        initialPrompts[pane.id] = message
+        if draft.target == .claude, draft.kind == .review { initialModes[pane.id] = "plan" }
+        await open(pane)
+    }
+}
+
+extension AppModel {
+    func questionPrompt(for request: PendingPermission) -> QuestionPrompt? {
+        if let prompt = AskUserQuestion.prompt(from: request.toolInput) { return prompt }
+        guard request.toolName == AskUserQuestion.toolName,
+              let pane = request.paneId, isNativeCodex(pane),
+              case .array(let questions)? = request.toolInput?["questions"], questions.count == 1,
+              let question = questions.first,
+              let text = question["question"]?.stringValue else { return nil }
+        return QuestionPrompt(header: question["header"]?.stringValue ?? "", question: text, options: [])
+    }
+
+    /// Called as the app quits, so native app-server children cannot outlive it.
+    func stopOwnedProcesses() async {
+        for driver in codexChats.values { await driver.shutdown() }
+        for monitor in commandMonitors.values { monitor.cancel() }
     }
 }

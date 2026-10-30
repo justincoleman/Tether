@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 25).
+`ProtocolVersion.current` with any shape change (currently 26).
 
 Clients are the iPhone app and, since 0.10.0, another Mac's Remote Macs
 window (`Apps/Shared/MacConnection.swift`, shared by both). A Mac client
@@ -185,3 +185,43 @@ Pairing and removal succeed only after `companion.json` is atomically saved.
 A failed pairing leaves the unexpired code usable; a failed removal leaves the
 device paired and displays a retry error in Settings. Neither operation reports
 success when storage fails. Device metadata updates remain best effort.
+
+
+## Protocol 26: Codex and dogfooding
+
+Rebuild both Mac and iPhone. `SessionSummary` adds optional `command`, `warning`,
+`liveText`, and `pullRequest`. Agent tabs retain their agent tag; configured
+shortcut runs are also listed, with nil agent/session id and a `CommandRunSummary`.
+Its output is a sanitized last-80-line / 16-KiB tail, with a nil exit code while
+running and a terminal exit code plus finish time on completion. Shell/SSH ptys
+are not streamed. A canceled shortcut reports exit 130. Failed shortcuts push
+an alert linking to their tab; they do not pretend to be Claude or start a Live Activity.
+
+Snapshots include the optional host-configured `shortcuts` catalog. Authenticated
+`runShortcut(requestId, shortcutId, paneId?)` requests can only run a saved shortcut;
+they cannot supply arbitrary commands. A supplied pane must belong to the shortcut's
+project and selects its working folder. No pane selects the project's primary folder.
+`shortcutResult(requestId, paneId?, error?)` acknowledges startup, not completion.
+The snapshot carries progress and results. A duplicate running folder/command
+selects the existing tab. Completed runs may be started again.
+
+`pullRequestAction(requestId, paneId, action)` supports `create(title,body)`,
+`merge(expectedHead)`, and `rerunChecks(expectedHead)`, answered by
+`pullRequestResult(requestId,message?,error?)`. Each UI previews creation and
+confirms merge/rerun. Host checks the current branch and commit, rejects the
+project's base branch, and re-reads PR head/base before a mutation. Merge pins
+the reviewed head with `--match-head-commit`, uses squash and never bypasses
+checks. Rerun selects failed GitHub Actions runs for that exact commit. There
+is no automatic branch push or retry. Lost receipts tell users to check the
+host/GitHub before retrying. The host serializes actions per folder.
+
+Native Codex deltas travel as bounded `liveText`; completed public items use the
+existing transcript stream. Native approvals/questions use the existing request
+cards, including free-text answers. Unknown or unsupported server requests are
+rejected, never silently approved. Terminal Codex uses its rollout file feed.
+Both transports display on phones and paired Macs without importing sessions
+into the Codex desktop app. Native and terminal ownership are exclusive.
+
+Phone History/resume, Files and Dev Servers use the existing protocol messages.
+Files remain constrained to the host's file list. Dev server links use the paired
+Tailscale host; the server must listen beyond localhost.

@@ -115,7 +115,8 @@ public struct TerminalLaunch: Hashable, Sendable {
     /// The outer `sh` traps Ctrl-C so stopping a dev server doesn't close the tab.
     static func quickActionCommand(shell: String) -> String {
         let s = shellQuote(shell)
-        let script = "trap : INT; \(s) -ilc \"$\(runEnvKey)\"; exec \(s) -l"
+        let capture = #"trap : INT; umask 077; if [ -n "$TETHER_RUN_LOG" ] && [ -n "$TETHER_RUN_STATUS" ]; then "$TETHER_RUN_SHELL" -ilc "$TETHER_RUN" 2>&1 | /usr/bin/tee "$TETHER_RUN_LOG"; result=${PIPESTATUS[0]}; printf '%s\n' "$result" > "$TETHER_RUN_STATUS.tmp"; /bin/mv "$TETHER_RUN_STATUS.tmp" "$TETHER_RUN_STATUS"; else "$TETHER_RUN_SHELL" -ilc "$TETHER_RUN"; fi"#
+        let script = "trap : INT; export TETHER_RUN_SHELL=\(s); /bin/bash -c \(shellQuote(capture)); exec \(s) -l"
         return "/bin/sh -c \(shellQuote(script))"
     }
 

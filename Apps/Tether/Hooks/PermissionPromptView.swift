@@ -11,7 +11,7 @@ struct PermissionPromptView: View {
 
     var body: some View {
         if request.toolName == AskUserQuestion.toolName,
-           let prompt = AskUserQuestion.prompt(from: request.toolInput) {
+           let prompt = model.questionPrompt(for: request) {
             questionCard(prompt)
         } else {
             permissionCard
@@ -24,8 +24,9 @@ struct PermissionPromptView: View {
             QuestionOptionsView(question: prompt) { answer in
                 model.answerQuestion(request.id, answer: answer)
             }
-            Button("Ask in Terminal") { model.resolvePermission(request.id, .askInTerminal) }
-                .buttonStyle(.link)
+            Button(request.paneId.map { model.isNativeCodex($0) } == true ? "Cancel Question" : "Ask in Terminal") {
+                model.resolvePermission(request.id, request.paneId.map { model.isNativeCodex($0) } == true ? .deny(message: nil) : .askInTerminal)
+            }.buttonStyle(.link)
         }
         .padding(14)
         .background(theme.elevated, in: RoundedRectangle(cornerRadius: 10))
@@ -72,8 +73,9 @@ struct PermissionPromptView: View {
                     .foregroundStyle(.secondary)
             }
             HStack {
-                Button("Ask in Terminal") { model.resolvePermission(request.id, .askInTerminal) }
-                    .buttonStyle(.link)
+                if request.paneId.map({ model.isNativeCodex($0) }) != true {
+                    Button("Ask in Terminal") { model.resolvePermission(request.id, .askInTerminal) }.buttonStyle(.link)
+                }
                 Spacer()
                 Button(isTrust ? "Don't Trust" : "Deny", role: .destructive) { model.resolvePermission(request.id, .deny(message: nil)) }
                     .keyboardShortcut(.escape, modifiers: [.command])

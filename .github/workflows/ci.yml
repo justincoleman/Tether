@@ -12,6 +12,12 @@ jobs:
     container: swift:6.1
     steps:
       - uses: actions/checkout@v4
+      # The app-server transport tests use a local Python JSON-RPC fixture.
+      # swift:6.1 ships libpython, but not the Python interpreter.
+      - name: Install test fixture runtime
+        run: apt-get update && apt-get install -y --no-install-recommends python3
+      - name: Check test fixture runtime
+        run: python3 --version
       - run: swift test
 
   apps-macos:

@@ -1,0 +1,32 @@
+#!/usr/bin/python3
+import json,sys
+turn = None
+def emit(x):
+ print(json.dumps(x),flush=True)
+for line in sys.stdin:
+ m=json.loads(line); method=m.get('method'); p=m.get('params',{})
+ if method=='initialize': emit({'id':m['id'],'result':{}})
+ elif method in ['thread/start','thread/resume']:
+  emit({'id':m['id'],'result':{'thread':{'id':'native-test','turns':[{'items':[{'id':'history','type':'agentMessage','text':'sandbox:'+p['sandbox']},{'id':'secret','type':'reasoning','summary':['hidden']}]}]}}})
+ elif method=='turn/start':
+  turn='turn-test'
+  emit({'method':'turn/started','params':{'threadId':'native-test','turn':{'id':turn}}})
+  emit({'id':m['id'],'result':{'turn':{'id':turn}}})
+  if p['input'][0]['text']=='question':
+   emit({'id':91,'method':'item/tool/requestUserInput','params':{'threadId':'native-test','turnId':turn,'itemId':'question','questions':[{'id':'choice','header':'Choice','question':'Which?','options':[{'label':'First','description':'One'}]}]}})
+  elif p['input'][0]['text']!='hang':
+   emit({'id':27,'method':'item/commandExecution/requestApproval','params':{'threadId':'native-test','turnId':turn,'itemId':'cmd','command':'pwd'}})
+ elif method is None and m.get('id')==27:
+  if m.get('result',{}).get('decision')!='accept':sys.exit(3)
+  emit({'method':'item/agentMessage/delta','params':{'threadId':'native-test','itemId':'answer','delta':'Done'}})
+  emit({'method':'item/completed','params':{'threadId':'native-test','item':{'id':'answer','type':'agentMessage','text':'Done'}}})
+  emit({'method':'turn/completed','params':{'threadId':'native-test','turn':{'id':turn,'status':'completed'}}})
+ elif method is None and m.get('id')==91:
+  if 'error' not in m:sys.exit(4)
+  emit({'method':'turn/completed','params':{'threadId':'native-test','turn':{'id':turn,'status':'completed'}}})
+ elif method=='turn/interrupt':
+  emit({'id':m['id'],'result':{}})
+  emit({'method':'turn/completed','params':{'threadId':'native-test','turn':{'id':turn,'status':'interrupted'}}})
+ elif method=='review/start':
+  emit({'id':m['id'],'result':{'turn':{'id':'review-turn'},'reviewThreadId':'native-test'}})
+  emit({'method':'turn/completed','params':{'threadId':'native-test','turn':{'id':'review-turn','status':'completed'}}})

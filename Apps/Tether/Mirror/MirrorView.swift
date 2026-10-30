@@ -18,17 +18,19 @@ struct MirrorView: View {
         let transcript = model.mirror.model(for: sessionId)
         let state = paneId.flatMap { model.paneStates[$0] } ?? .idle
         let queued = paneId.flatMap { model.queuedMessages[$0] } ?? []
+        let agentName = paneId.flatMap { model.agent(for: $0) } == .codex ? "Codex" : "Claude"
+        let liveText = paneId.flatMap { model.nativeLiveText[$0] } ?? ""
 
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text("Chat").font(.headline)
                 StatusBadge(state: state)
-                if let paneId, sessionId != nil, state != .detached {
+                if let paneId, model.agent(for: paneId) == .claude, sessionId != nil, state != .detached {
                     ChatModeMenu(paneId: paneId)
                     ChatModelMenu(paneId: paneId)
                 }
                 Spacer()
-                if let limits = model.usageLimits.flatMap({ SavedLimits.current($0, now: Date()) }) {
+                if paneId.flatMap({ model.agent(for: $0) }) == .claude, let limits = model.usageLimits.flatMap({ SavedLimits.current($0, now: Date()) }) {
                     PlanUsageMeters(limits: limits)
                 }
                 if let usage = transcript?.usage {
@@ -38,14 +40,19 @@ struct MirrorView: View {
             .padding(.horizontal, 12)
             .frame(height: 36)
             Divider()
+            if let paneId { AgentWarningCard(paneId: paneId) }
 
-            if transcript?.items.isEmpty == false || !queued.isEmpty {
+            if transcript?.items.isEmpty == false || !queued.isEmpty || !liveText.isEmpty {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(transcript?.items ?? []) { item in
                             TranscriptItemView(item: item).id(item.id)
                         }
-                        // Held for Claude, shown now; it becomes a normal message once Claude reads it.
+                        if !liveText.isEmpty {
+                            Text(liveText).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        // Held for the agent, shown now; it becomes a normal message once the agent reads it.
                         ForEach(Array(queued.enumerated()), id: \.offset) { index, text in
                             if let paneId { QueuedBubble(paneId: paneId, index: index, text: text) }
                         }
@@ -57,15 +64,15 @@ struct MirrorView: View {
                 }
                 .followsLatest($position)
             } else {
-                ContentUnavailableView(sessionId == nil ? "No Claude session" : "Nothing yet",
+                ContentUnavailableView(paneId == nil ? "No session" : "Nothing yet",
                                        systemImage: sessionId == nil ? "bubble.left.and.bubble.right" : "sparkle",
-                                       description: Text(sessionId == nil
-                                           ? "Select a Claude tab to see its conversation."
-                                           : "Send Claude its first message below."))
+                                       description: Text(paneId == nil
+                                           ? "Select an agent tab to see its conversation."
+                                           : "Send \(agentName) its first message below."))
                     .frame(maxHeight: .infinity)
             }
 
-            if let paneId, sessionId != nil {
+            if let paneId, sessionId != nil || model.isNativeCodex(paneId) {
                 VStack(spacing: 0) {
                     if let agents = transcript?.runningAgents, !agents.isEmpty {
                         RunningAgentsRow(agents: agents)
@@ -266,7 +273,7 @@ private struct QueuedBubble: View {
                         }
                         Button("Remove") { model.removeQueued(at: index, expected: text, forPane: paneId) }
                         Button("Send Now") { _ = model.sendQueuedNow(at: index, expected: text, forPane: paneId) }
-                            .help("Stop what Claude is doing and send this now (⌃↩ in the message box)")
+                            .help("Stop the agent and send this now (⌃↩ in the message box)")
                     }
                 }
                 .font(.caption2)
@@ -321,6 +328,7 @@ private struct ComposeBar: View {
             && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty)
     }
 
+    private var agentName: String { model.agent(for: paneId) == .codex ? "Codex" : "Claude" }
     private var queued: Int { model.queuedCounts[paneId] ?? 0 }
     /// Claude Code's suggested next prompt, offered while the box is empty.
     private var suggestion: String? {
@@ -365,10 +373,12 @@ private struct ComposeBar: View {
                     .foregroundStyle(theme.secondaryText)
                     .help("Attach pictures")
                     .padding(.bottom, 2)
-                SlashMenu(paneId: paneId)
-                    .disabled(state == .detached || !model.claudeHasStarted(paneId))
-                    .padding(.bottom, 1)
-                TextField(answersPermission ? "Return allows, Esc denies" : suggestion.map { "\($0)  (Tab)" } ?? "Message Claude",
+                if model.agent(for: paneId) == .claude {
+                    SlashMenu(paneId: paneId)
+                        .disabled(state == .detached || !model.claudeHasStarted(paneId))
+                        .padding(.bottom, 1)
+                }
+                TextField(answersPermission ? "Return allows, Esc denies" : suggestion.map { "\($0)  (Tab)" } ?? "Message \(agentName)",
                           text: draft.text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
@@ -427,19 +437,19 @@ private struct ComposeBar: View {
                 Text(pasteNote).font(.caption).foregroundStyle(theme.red)
             }
             if state == .detached {
-                Text("Claude isn't running in this tab.")
+                Text("\(agentName) isn't running in this tab.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if queued > 0 {
-                Text("\(queued) message\(queued == 1 ? "" : "s") queued. Sent when Claude is ready.")
+                Text("\(queued) message\(queued == 1 ? "" : "s") queued. Sent when \(agentName) is ready.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if state == .working {
-                Text("Claude is working. Return queues your message; ⌃Return stops Claude and sends it now.")
+                Text("\(agentName) is working. Return queues your message; ⌃Return stops \(agentName) and sends it now.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if state == .needsInput, model.paneAttention[paneId] != .question {
-                Text("Claude is waiting on a prompt. Your message will be sent after you answer it.")
+                Text("\(agentName) is waiting on a prompt. Your message will be sent after you answer it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -842,7 +852,7 @@ private struct ChatFooter: View {
     let transcript: TranscriptModel?
 
     var body: some View {
-        if !model.claudeHasStarted(paneId) {
+        if model.agent(for: paneId) == .claude, !model.claudeHasStarted(paneId) {
             if model.pendingPermission(forPane: paneId) == nil { StartingRow(paneId: paneId) }
         } else if state == .working || state == .needsInput {
             HStack(spacing: 8) {
@@ -864,7 +874,7 @@ private struct ChatFooter: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .help("Stop Claude (same as Esc in the terminal)")
+                    .help(model.agent(for: paneId) == .codex ? "Stop Codex" : "Stop Claude (same as Esc in the terminal)")
                 }
             }
             .padding(.horizontal, 16)
@@ -995,5 +1005,28 @@ struct ContextMeter: View {
 
     static func short(_ n: Int) -> String {
         n >= 1_000_000 ? "\(n / 1_000_000)M" : "\(n / 1000)k"
+    }
+}
+
+/// Shared warning above a local chat or terminal, including folder collisions.
+struct AgentWarningCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    let paneId: PaneID
+    var offersTerminal = true
+
+    var body: some View {
+        if let warning = model.warning(for: paneId) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(theme.red)
+                Text(warning).font(.callout).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if offersTerminal, !model.isNativeCodex(paneId), model.agent(for: paneId) == .codex {
+                    Button("Show Terminal") { model.setChat(false, forPane: paneId) }
+                        .buttonStyle(.bordered).controlSize(.small)
+                }
+            }
+            .padding(12).background(theme.elevated)
+        }
     }
 }
