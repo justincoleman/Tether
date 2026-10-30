@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.30.6",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.6 redraws the plan limit rings: small and colored at rest, a detailed card on hover.",
+    "highlights": [
+      {
+        "title": "Rings that open on hover.",
+        "body": "The plan limit rings are now green while you're within pace, orange once you're ahead of it, and red from 90%. Hover and they grow smoothly into a card with the percentage inside each ring, its name and the time until it resets. The click-through popover is gone."
+      }
+    ]
+  },
+  {
     "version": "0.30.5",
     "date": "2026-10-30",
     "summary": "Tether 0.30.5 puts your Claude plan's limits in the sidebar, with a pace tick on each ring.",
