@@ -156,6 +156,10 @@ tab's current turn (the Mac presses Esc). The phone's "Use Mac's Colors" switch 
 
 ## Protocol 18
 
+`SessionSummary.agent` and `PermissionRequested.agent` (`AgentKind`: `claude`, `codex`; protocol 21)
+say which agent a tab runs. Nil means an older Mac, which only had Claude tabs. The phone labels
+Codex tabs, uses "Codex wants to …" in permission headings, and hides the Claude model menu for them.
+
 `PermissionRequested.question` (`QuestionPrompt`) carries a multiple-choice question from Claude;
 `PhoneMessage.answerQuestion(requestId:answer:)` answers it. Older phones ignore the field and show the
 raw question as a permission.

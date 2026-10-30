@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.30.0",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.0 puts Codex beside Claude: Codex tabs with live status, approvals from the Mac or iPhone, and Stop.",
+    "highlights": [
+      {
+        "title": "Codex tabs.",
+        "body": "Choose Codex from a project's + menu, or File > New Codex Tab (Option-Command-T). Tether runs OpenAI's Codex CLI in the project's folder, and reopens it on the same thread next launch. The first time, Codex asks you to review Tether's hooks: choose Trust all and continue. Codex remembers that."
+      },
+      {
+        "title": "Same status, same approvals.",
+        "body": "A Codex tab's badge shows working, done and needs-you like a Claude tab, in the sidebar, the Overview, the menu bar and on the iPhone. When Codex asks to run something, the card says Codex wants to, and you can allow or deny it from the Mac, the iPhone or the lock screen."
+      },
+      {
+        "title": "Messages and Stop from the iPhone.",
+        "body": "Messages you send a Codex tab wait until it finishes its turn, like Claude's. Stop works too. Codex's replies stay in its terminal for now; the chat view for Codex comes next."
+      },
+      {
+        "title": "Update everything together.",
+        "body": "Update Tether on every Mac and the iPhone: older copies can't talk to this one."
+      }
+    ]
+  },
+  {
     "version": "0.20.12",
     "date": "2026-10-30",
     "summary": "Tether 0.20.12 makes the project list sort itself: Active projects by recent use, Pin to Top, and a folding Inactive section, on the Mac and iPhone.",

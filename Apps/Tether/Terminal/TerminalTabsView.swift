@@ -290,6 +290,7 @@ private struct TabStrip: View {
             }
             Menu {
                 Button("Claude") { Task { await model.openClaudePane(project: project) } }
+                Button("Codex") { Task { await model.openCodexPane(project: project) } }
                 Button("Shell") { Task { await model.openShellPane(project: project) } }
                 Button("Agent on a Branch…") { showNewAgent = true }
                 if !model.remoteHosts.isEmpty {
@@ -485,7 +486,7 @@ private struct TabButton: View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.caption)
-                .foregroundStyle(isClaude ? theme.claude : theme.secondaryText)
+                .foregroundStyle(iconColor)
             Text(pane.title)
                 .font(.callout.weight(selected ? .medium : .regular))
                 .foregroundStyle(selected ? theme.text : theme.secondaryText)
@@ -523,11 +524,18 @@ private struct TabButton: View {
 
     private var state: SessionState { model.paneStates[pane.id] ?? .idle }
 
-    private var isClaude: Bool { pane.isClaude }
+    private var iconColor: Color {
+        switch pane.agent {
+        case .claude: theme.claude
+        case .codex: theme.codex
+        case nil: theme.secondaryText
+        }
+    }
 
     private var icon: String {
         switch pane.descriptor.kind {
         case .claude: "sparkles"
+        case .codex: "chevron.left.forwardslash.chevron.right"
         case .shell: "terminal"
         case .ssh: "network"
         case .command: "play"

@@ -81,7 +81,7 @@ struct OverviewView: View {
 
     private var entries: [Entry] {
         model.projects.flatMap { project -> [Entry] in
-            let tabs = model.panes(for: project.id).filter(\.isClaude)
+            let tabs = model.panes(for: project.id).filter(\.isAgent)
             if tabs.isEmpty { return [.empty(project)] }
             return tabs.map { .tab(project, $0, showTitle: tabs.count > 1) }
         }
