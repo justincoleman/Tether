@@ -39,6 +39,8 @@ final class AppModel {
     private(set) var queuedMessages: [PaneID: [String]] = [:]
     /// What's typed in each tab's chat box, kept while you look elsewhere.
     var drafts: [PaneID: ComposeDraft] = [:]
+    /// Claude Code's suggested next prompt per tab, shown faintly in the chat box.
+    private(set) var suggestions: [PaneID: String] = [:]
     /// When each tab's current turn started, while Claude works or waits on
     /// you mid-turn. Shown as elapsed time in the Overview.
     private(set) var turnStartedAt: [PaneID: Date] = [:]
@@ -753,6 +755,7 @@ final class AppModel {
         promptQueue.enqueue(text, for: paneId)
         guard promptQueue.count(for: paneId) > 0 else { return .failed } // blank text
         touchProject(panes[paneId]?.descriptor.projectId)
+        suggestions[paneId] = nil
         if flushQueue(paneId) { return .sent }
         syncQueuedCount(paneId)
         return .queued
@@ -972,6 +975,27 @@ final class AppModel {
         return outcome == .sent ? .sent : .queued
     }
 
+    // MARK: Suggested prompt
+
+    /// Reads Claude Code's suggested next prompt after a turn ends. It draws a
+    /// moment after the Stop hook, so this tries a few times. Only for a tab
+    /// showing its chat: nobody can have typed into that terminal, so text in
+    /// its prompt box is the suggestion.
+    private func readSuggestion(_ paneId: PaneID) {
+        Task { [weak self] in
+            for delay in [0.5, 1.0, 2.0, 3.0] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, let pane = self.panes[paneId], self.showsChat(paneId),
+                      let state = self.paneStates[paneId], state != .working, state != .needsInput,
+                      self.promptQueue.count(for: paneId) == 0 else { return }
+                if let text = pane.promptSuggestion() {
+                    self.suggestions[paneId] = text
+                    return
+                }
+            }
+        }
+    }
+
     // MARK: Chat or terminal
 
     /// Whether this tab shows its chat instead of its terminal.
@@ -982,6 +1006,8 @@ final class AppModel {
 
     func setChat(_ chat: Bool, forPane paneId: PaneID) {
         chatOverrides[paneId] = chat
+        // Whatever is typed in the terminal from here on isn't Claude's suggestion.
+        if !chat { suggestions[paneId] = nil }
     }
 
     /// Switches the selected Claude tab between its terminal and its chat.
@@ -1133,6 +1159,11 @@ final class AppModel {
             updateTurnStart(paneId, previous: previous, state: session.state)
             // A turn started, from chat, the terminal or the phone.
             if session.state == .working, previous != .working { touchProject(panes[paneId]?.descriptor.projectId) }
+            if session.state == .working || session.state == .needsInput {
+                suggestions[paneId] = nil
+            } else if previous == .working {
+                readSuggestion(paneId)
+            }
             if let mode = session.permissionMode { paneModes[paneId] = mode }
             if let old = sessionId(forPane: paneId), old != session.id {
                 // /clear or a fork gave this tab a new session.
@@ -1407,6 +1438,7 @@ final class AppModel {
         queuedCounts[id] = nil
         queuedMessages[id] = nil
         drafts[id] = nil
+        suggestions[id] = nil
         turnStartedAt[id] = nil
         recordedSessions[id] = nil
         launchSessions[id] = nil

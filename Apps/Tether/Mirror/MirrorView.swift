@@ -322,6 +322,11 @@ private struct ComposeBar: View {
     }
 
     private var queued: Int { model.queuedCounts[paneId] ?? 0 }
+    /// Claude Code's suggested next prompt, offered while the box is empty.
+    private var suggestion: String? {
+        guard text.isEmpty, images.isEmpty, permission == nil else { return nil }
+        return model.suggestions[paneId]
+    }
     private var permission: PendingPermission? { model.pendingPermission(forPane: paneId) }
     /// Return and Escape answer the permission only while nothing is typed.
     /// Never a folder-trust or multiple-choice question: those take a deliberate click.
@@ -363,7 +368,8 @@ private struct ComposeBar: View {
                 SlashMenu(paneId: paneId)
                     .disabled(state == .detached || !model.claudeHasStarted(paneId))
                     .padding(.bottom, 1)
-                TextField(answersPermission ? "Return allows, Esc denies" : "Message Claude", text: draft.text, axis: .vertical)
+                TextField(answersPermission ? "Return allows, Esc denies" : suggestion.map { "\($0)  (Tab)" } ?? "Message Claude",
+                          text: draft.text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
                     .focused($focused)
@@ -405,6 +411,13 @@ private struct ComposeBar: View {
                     Button("Send Now", action: sendNow)
                         .keyboardShortcut(.return, modifiers: [.control])
                         .disabled(!focused || !canSend)
+                    // Tab or Right Arrow takes Claude's suggestion, as in the terminal.
+                    Button("Use Suggestion", action: useSuggestion)
+                        .keyboardShortcut(.tab, modifiers: [])
+                        .disabled(!focused || suggestion == nil)
+                    Button("Use Suggestion", action: useSuggestion)
+                        .keyboardShortcut(.rightArrow, modifiers: [])
+                        .disabled(!focused || suggestion == nil)
                 }
                 .opacity(0)
                 .allowsHitTesting(false)
@@ -443,6 +456,11 @@ private struct ComposeBar: View {
         // Typing goes here once the chat replaces the terminal.
         .onAppear { focused = true }
         .onChange(of: paneId) { focused = true }
+    }
+
+    private func useSuggestion() {
+        guard let suggestion else { return }
+        draft.wrappedValue.text = suggestion
     }
 
     private func send() {
