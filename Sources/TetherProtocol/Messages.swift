@@ -92,10 +92,16 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     /// chat showing on the Mac. Nil otherwise, and from a Mac older than 25.
     public var suggestion: String?
 
+    public var command: CommandRunSummary?
+    public var warning: String?
+    public var liveText: String?
+    public var pullRequest: PullRequestSummary?
+
     public init(id: PaneID, projectId: ProjectID, sessionId: SessionID?, title: String,
                 state: SessionState, attention: AttentionReason?, queued: Int, preview: String? = nil,
                 permissionMode: String? = nil, status: SessionStatus? = nil, agent: AgentKind? = nil,
-                suggestion: String? = nil) {
+                suggestion: String? = nil, command: CommandRunSummary? = nil, warning: String? = nil,
+                liveText: String? = nil, pullRequest: PullRequestSummary? = nil) {
         self.suggestion = suggestion
         self.id = id
         self.projectId = projectId
@@ -108,6 +114,7 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
         self.permissionMode = permissionMode
         self.status = status
         self.agent = agent
+        self.command = command; self.warning = warning; self.liveText = liveText; self.pullRequest = pullRequest
     }
 }
 
@@ -272,10 +279,13 @@ public struct Snapshot: Codable, Hashable, Sendable {
     /// The Mac's Ghostty colors, when it has them.
     public var theme: MacTheme?
 
+    public var shortcuts: [ShortcutSummary]?
+
     public init(macName: String, projects: [ProjectSummary], sessions: [SessionSummary],
                 permissions: [PermissionRequested], limits: UsageLimits? = nil, limitsAt: Date? = nil,
-                theme: MacTheme? = nil) {
+                theme: MacTheme? = nil, shortcuts: [ShortcutSummary]? = nil) {
         self.limitsAt = limitsAt
+        self.shortcuts = shortcuts
         self.theme = theme
         self.macName = macName
         self.projects = projects
@@ -317,12 +327,18 @@ public enum MacMessage: Codable, Sendable {
     case devServers(requestId: UUID, servers: [DevServerInfo]?, error: String?)
     /// Answer to `requestHistory`: past sessions in the project, newest first.
     case history(requestId: UUID, sessions: [PastSessionInfo]?, error: String?)
+    case shortcutResult(requestId: UUID, paneId: PaneID?, error: String?)
+    case pullRequestResult(requestId: UUID, message: String?, error: String?)
     case error(message: String)
 }
 
 /// Phone → Mac. See docs/PROTOCOL.md.
 public enum PhoneMessage: Codable, Sendable {
     case hello(Hello)
+    /// Run an existing, host-configured shortcut in the supplied tab's folder (or its project's primary folder).
+    case runShortcut(requestId: UUID, shortcutId: UUID, paneId: PaneID?)
+    /// Explicitly confirmed action in a tab's repository. The host revalidates branch and revision.
+    case pullRequestAction(requestId: UUID, paneId: PaneID, action: PullRequestAction)
     /// First connection: the one-time code from the Mac's QR.
     case pair(code: String)
     /// Every later connection.

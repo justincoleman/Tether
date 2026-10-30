@@ -3,7 +3,7 @@ import SwiftUI
 import TetherCore
 import TetherProtocol
 
-/// The Remote Macs window: Claude tabs on other Macs running Tether, paired
+/// The Remote Macs window: agent tabs on other Macs running Tether, paired
 /// like an iPhone. Read the conversation, answer permissions, send messages.
 struct RemoteMacsView: View {
     @Environment(AppModel.self) private var model
@@ -27,7 +27,7 @@ struct RemoteMacsView: View {
                     ContentUnavailableView {
                         Label("No Macs paired", systemImage: "desktopcomputer")
                     } description: {
-                        Text("Pair another Mac running Tether to follow its Claude tabs from here.")
+                        Text("Pair another Mac running Tether to follow its agent tabs from here.")
                     } actions: {
                         SettingsLink { Text("Pair a Mac in Settings…") }
                     }
@@ -36,10 +36,12 @@ struct RemoteMacsView: View {
             .navigationSplitViewColumnWidth(min: 220, ideal: 260)
         } detail: {
             if let selection, let connection = remote.connection(selection.macId) {
-                RemoteSessionView(connection: connection, paneId: selection.paneId)
+                RemoteSessionView(connection: connection, paneId: selection.paneId, onOpen: { pane in
+                    self.selection = RemoteSelection(macId: connection.id, paneId: pane)
+                })
                     .id(selection)
             } else {
-                ContentUnavailableView("Pick a Claude tab", systemImage: "bubble.left.and.bubble.right")
+                ContentUnavailableView("Pick a tab", systemImage: "bubble.left.and.bubble.right")
             }
         }
         .background(theme.window)
@@ -51,14 +53,22 @@ struct RemoteMacsView: View {
     private func sessions(of connection: MacConnection) -> some View {
         let snapshot = connection.snapshot
         let projects = snapshot?.projects ?? []
-        ForEach(snapshot?.sessions ?? []) { session in
-            let project = projects.first { $0.id == session.projectId }
-            RemoteSessionRow(session: session, projectName: project?.name ?? "Project",
-                             waiting: snapshot?.permissions.contains { $0.paneId == session.id } ?? false)
-                .tag(RemoteSelection(macId: connection.id, paneId: session.id))
+        ForEach(projects) { project in
+            HStack {
+                Text(project.name).font(.subheadline.weight(.semibold))
+                Spacer()
+                RemoteWorkflowMenu(connection: connection, projectId: project.id) { pane in
+                    selection = RemoteSelection(macId: connection.id, paneId: pane)
+                }
+            }
+            ForEach(snapshot?.sessions.filter { $0.projectId == project.id } ?? []) { session in
+                RemoteSessionRow(session: session, projectName: project.name,
+                                 waiting: snapshot?.permissions.contains { $0.paneId == session.id } ?? false)
+                    .tag(RemoteSelection(macId: connection.id, paneId: session.id))
+            }
         }
         if connection.status == .online, snapshot?.sessions.isEmpty ?? true {
-            Text("No Claude tabs open").foregroundStyle(theme.secondaryText)
+            Text("No tabs open").foregroundStyle(theme.secondaryText)
         }
     }
 }
@@ -129,7 +139,7 @@ private struct RemoteSessionRow: View {
             StatusBadge(state: session.state).frame(width: 14)
             VStack(alignment: .leading, spacing: 1) {
                 Text(projectName).lineLimit(1)
-                Text(session.statusNote ?? session.preview ?? session.title)
+                Text(session.warning ?? session.statusNote ?? session.preview ?? session.liveText ?? session.command?.command ?? session.title)
                     .font(.caption)
                     .foregroundStyle(waiting ? theme.blue : theme.secondaryText)
                     .lineLimit(1)
@@ -143,10 +153,12 @@ private struct RemoteSessionRow: View {
 /// compose box. Messages queue on the other Mac like the phone's do.
 struct RemoteSessionView: View {
     @Environment(\.theme) private var theme
+    @Environment(AppModel.self) private var model
     let connection: MacConnection
     let paneId: PaneID
     /// The Remote Macs window has no tab strip above it, so it draws its own.
     let showsHeader: Bool
+    private let onOpen: ((PaneID) -> Void)?
     private var draft: CompanionDraft { connection.messageDrafts[paneId] ?? CompanionDraft() }
     private var text: Binding<String> {
         Binding(get: { draft.text }, set: { connection.messageDrafts[paneId, default: CompanionDraft()].text = $0 })
@@ -155,10 +167,11 @@ struct RemoteSessionView: View {
     @State private var position = ScrollPosition(edge: .bottom)
     @FocusState private var composeFocused: Bool
 
-    init(connection: MacConnection, paneId: PaneID, showsHeader: Bool = true) {
+    init(connection: MacConnection, paneId: PaneID, showsHeader: Bool = true, onOpen: ((PaneID) -> Void)? = nil) {
         self.connection = connection
         self.paneId = paneId
         self.showsHeader = showsHeader
+        self.onOpen = onOpen
     }
 
     private var session: SessionSummary? {
@@ -179,12 +192,23 @@ struct RemoteSessionView: View {
                 chatHeader(transcript)
             }
             Divider()
-            if let transcript, !transcript.items.isEmpty {
+            if let command = session?.command {
+                ScrollView([.horizontal, .vertical]) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("$ " + command.command).font(.callout.monospaced().weight(.semibold))
+                        Text(command.output.isEmpty ? "Waiting for output…" : command.output).font(.callout.monospaced())
+                        if let code = command.exitCode { Text("Exited with code \(code)").foregroundStyle(code == 0 ? theme.secondaryText : theme.red) }
+                        else { ProgressView("Running on \(connection.mac.name)…").controlSize(.small) }
+                    }
+                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(16)
+                }
+            } else if let transcript, !transcript.items.isEmpty {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(transcript.items) { item in
                             TranscriptItemView(item: item).id(item.id)
                         }
+                        if let liveText = session?.liveText, !liveText.isEmpty { Text(liveText).textSelection(.enabled) }
                         if session?.state == .working {
                             WorkingRow { connection.interrupt(paneId) }.id("working")
                         }
@@ -194,19 +218,25 @@ struct RemoteSessionView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .followsLatest($position)
+            } else if let liveText = session?.liveText, !liveText.isEmpty {
+                ScrollView { Text(liveText).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(16) }
             } else {
                 ContentUnavailableView(session == nil ? "Tab closed" : "Nothing yet",
                                        systemImage: "bubble.left.and.bubble.right",
                                        description: Text(session == nil
-                                           ? "This Claude tab is no longer open on \(connection.mac.name)."
-                                           : "Messages appear here as Claude works."))
+                                           ? "This tab is no longer open on \(connection.mac.name)."
+                                           : "Messages appear here as \(agentName) works."))
                     .frame(maxHeight: .infinity)
             }
-            if let permission {
+            if let warning = session?.warning {
+                Label(warning, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(theme.red)
+                    .padding(12).frame(maxWidth: .infinity, alignment: .leading).background(theme.elevated)
+            }
+            if session?.command == nil, let permission {
                 PermissionBar(request: permission, decide: { allow in connection.decide(permission.id, allow: allow) },
                               answer: { connection.answer(permission.id, answer: $0) })
             }
-            if session != nil {
+            if session != nil, session?.command == nil {
                 compose
             }
         }
@@ -221,10 +251,10 @@ struct RemoteSessionView: View {
     /// The strip above a chat on this Mac: its title, state and context use.
     private func chatHeader(_ transcript: TranscriptModel?) -> some View {
         HStack(spacing: 8) {
-            Text("Chat").font(.headline)
+            Text(session?.command == nil ? "Chat" : "Command").font(.headline)
             if let session { StatusBadge(state: session.state) }
             Spacer()
-            if let status = session?.status {
+            if session?.command == nil, let status = session?.status {
                 let parts = [status.modelName, status.costUSD.map { $0.formatted(.currency(code: "USD")) }]
                     .compactMap { $0 }
                 if !parts.isEmpty {
@@ -236,9 +266,10 @@ struct RemoteSessionView: View {
             if let limits = connection.snapshot?.limits {
                 PlanUsageMeters(limits: limits)
             }
-            if let usage = transcript?.usage {
+            if session?.command == nil, let usage = transcript?.usage {
                 ContextMeter(usage: usage.reported(window: session?.status?.contextWindow))
             }
+            workflows
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
@@ -253,13 +284,27 @@ struct RemoteSessionView: View {
                 Text(session.title).foregroundStyle(theme.secondaryText).lineLimit(1)
             }
             Spacer()
-            if let model = session?.status?.modelName {
+            if session?.command == nil, let model = session?.status?.modelName {
                 Text(model).font(.caption).foregroundStyle(theme.secondaryText)
             }
             Text("on \(connection.mac.name)").font(.caption).foregroundStyle(theme.secondaryText)
+            workflows
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
+    }
+
+    private var agentName: String { session?.agent == .codex ? "Codex" : "Claude" }
+
+    @ViewBuilder private var workflows: some View {
+        if let session {
+            RemoteWorkflowMenu(connection: connection, projectId: session.projectId, session: session) { pane in
+                if let onOpen { onOpen(pane); return }
+                model.remote.selectedMacId = connection.id
+                model.remote.selectedProjectId = session.projectId
+                model.remote.selectedPaneId = pane
+            }
+        }
     }
 
     private var canSend: Bool {
@@ -275,14 +320,14 @@ struct RemoteSessionView: View {
         default: break
         }
         switch connection.sendResults[paneId] {
-        case "queued"?: return "Queued. \(connection.mac.name) sends it when Claude is ready."
+        case "queued"?: return "Queued. \(connection.mac.name) sends it when \(agentName) is ready."
         case "failed"?: return "\(connection.mac.name) couldn't send that."
         default: break
         }
         guard let session else { return nil }
-        if session.state == .working { return "Claude is working. Your message waits for this turn to finish." }
+        if session.state == .working { return "\(agentName) is working. Your message waits for this turn to finish." }
         if session.state == .needsInput, session.attention == .dialog {
-            return "Claude is waiting on a prompt only \(connection.mac.name) can answer."
+            return "\(agentName) is waiting on a prompt only \(connection.mac.name) can answer."
         }
         return nil
     }
@@ -303,7 +348,7 @@ struct RemoteSessionView: View {
     private var compose: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .bottom, spacing: 8) {
-                TextField(suggestion.map { "\($0)  (Tab)" } ?? "Message Claude on \(connection.mac.name)",
+                TextField(suggestion.map { "\($0)  (Tab)" } ?? "Message \(agentName) on \(connection.mac.name)",
                           text: text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)

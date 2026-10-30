@@ -309,3 +309,25 @@ limits, switch model?" popup takes the next Return, so a queued message sent
 while it shows picks "Switch". Not verified: whether SessionStart fires when
 the TUI starts or only with the first prompt, and the PermissionRequest
 answer shape on a real approval.
+
+
+## Native Codex chat (0.30.16)
+
+`PaneDescriptor.codexChat == true` selects an exclusively owned `codex app-server`
+stdio process. It initializes, starts/resumes only that tab's thread, sends turns,
+and handles streaming public items and server approval requests. It never mounts
+a terminal surface or attaches to a live terminal-owned thread. Commands and file
+changes ask through native/companion permission cards. One non-secret question
+can be answered through the same card. Unsupported requests receive an RPC error.
+Stopping a tab closes requests and terminates its process; app termination awaits
+bounded shutdown. Review threads force read-only sandbox; ordinary chat uses
+workspace-write with on-request approvals. No user Codex configuration is modified.
+
+Legacy Codex Terminal retains its fixed hook overrides. A startup-only check shows
+“Codex isn’t reporting” after 15 seconds without a first report, with a terminal
+recovery button. A successful report clears it; an idle tab's silence never triggers
+it again. Native transport errors are shown separately and its queue waits for
+readiness. Notifications name the correct agent; Live Activity startup says “Agent”.
+
+Live Claude and Codex tabs sharing the same canonical folder show a collision
+warning. Symlink aliases match; separate worktrees and nested folders do not.

@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.30.17",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.17 brings Codex chat, cross-agent workflows and the tools to work on Tether from Tether.",
+    "highlights": [
+      {
+        "title": "Codex chat on every device.",
+        "body": "Read terminal Codex conversations from their session files, or open a native Codex Chat with streaming replies, approvals and Stop through app-server. Conversations stay inside Tether and its companions. Startup reporting problems and shared Claude/Codex folders have clear warnings."
+      },
+      {
+        "title": "Review and handoff between agents.",
+        "body": "Preview and edit the public context sent to a fresh tab in the same worktree. Review uses read-only Codex or Claude plan mode; handoff waits for the source to be ready."
+      },
+      {
+        "title": "Build from inside Tether.",
+        "body": "make dev, run and stop use a detached helper and build/dev.log. Shortcut output and exit codes are visible on the phone and paired Macs, with failure notifications. Run configured shortcuts remotely."
+      },
+      {
+        "title": "Pull requests and phone tools.",
+        "body": "Create a PR, confirm a merge, or rerun failed Actions checks from the Mac, phone or paired Mac. The phone also gains history/resume, files and dev server links. Rebuild both apps for protocol 26."
+      }
+    ]
+  },
+  {
     "version": "0.30.16",
     "date": "2026-10-30",
     "summary": "Tether 0.30.16 makes tables in chat fit, and gives folders without git a calm message.",

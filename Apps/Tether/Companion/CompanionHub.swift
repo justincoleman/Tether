@@ -252,6 +252,16 @@ final class CompanionHub {
     private func handleAuthenticated(_ message: PhoneMessage, from client: CompanionClient) {
         guard let model else { return }
         switch message {
+        case .runShortcut(let requestId, let shortcutId, let paneId):
+            Task {
+                do { client.send(.shortcutResult(requestId: requestId, paneId: try await model.runShortcut(shortcutId, paneId: paneId), error: nil)) }
+                catch { client.send(.shortcutResult(requestId: requestId, paneId: nil, error: "\(error)")) }
+            }
+        case .pullRequestAction(let requestId, let paneId, let action):
+            Task {
+                do { client.send(.pullRequestResult(requestId: requestId, message: try await model.performPullRequest(action, paneId: paneId), error: nil)) }
+                catch { client.send(.pullRequestResult(requestId: requestId, message: nil, error: "\(error)")) }
+            }
         case .subscribe(let sessionId):
             client.subscribed = sessionId
             if let sessionId {
@@ -282,7 +292,7 @@ final class CompanionHub {
                 do {
                     let paneId = try await model.startSession(projectId: projectId, branch: branch, prompt: prompt,
                                                               permissionMode: permissionMode, agent: agent ?? .claude,
-                                                              select: false)
+                                                              nativeCodexChat: agent == .codex, select: false)
                     client.send(.startResult(requestId: requestId, paneId: paneId, error: nil))
                 } catch {
                     client.send(.startResult(requestId: requestId, paneId: nil, error: "\(error)"))
@@ -386,16 +396,20 @@ final class CompanionHub {
 
     /// A tab changed state: alerts and Live Activity changes for every phone.
     func sessionChanged(paneId: PaneID, projectName: String, title: String, previous: SessionState?,
-                        state: SessionState, attention: AttentionReason?, preview: String?, steps: Int) {
+                        state: SessionState, attention: AttentionReason?, preview: String?, steps: Int, agent: AgentKind = .claude) {
         let active: Set<SessionState> = [.working, .needsInput]
         if state == .working, !(previous.map(active.contains) ?? false) { workingSince[paneId] = Date() }
         guard let macId else { return }
         let change = PushPlanner.Change(
             macId: macId, paneId: paneId, projectName: projectName, title: title, previous: previous,
             state: state, attention: attention, preview: preview, steps: steps,
-            startedAt: workingSince[paneId] ?? Date())
+            startedAt: workingSince[paneId] ?? Date(), agent: agent)
         if !active.contains(state) { workingSince[paneId] = nil }
         deliver(PushPlanner.intents(for: change))
+    }
+
+    func shortcutFailed(paneId: PaneID, projectName: String, title: String, exitCode: Int32, output: String) {
+        deliver([.shortcutFailed(paneId: paneId, projectName: projectName, title: title, exitCode: exitCode, output: output)])
     }
 
     func permissionRequested(_ request: PermissionRequested, projectName: String) {

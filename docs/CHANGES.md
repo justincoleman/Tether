@@ -184,3 +184,24 @@ per pane. Repeated scheduling joins that task instead of resetting its budget.
 Closing the pane cancels its task. Exhaustion leaves the message queued; a later
 ready hook or send can attempt delivery again. Slash commands remain separate
 from following messages during retries.
+
+
+## Cross-agent review and handoff (0.30.16)
+
+The tab toolbar offers Review with the other agent and Hand off. Each opens an
+editable preview naming the exact source folder, comparison base, changed file
+names and bounded public conversation context. Tool output and private reasoning
+are excluded. The source must be idle, done, or waiting on a normal question;
+working turns and approval/dialog waits must be finished or stopped first.
+
+Confirmation rechecks the source pane, worktree, current branch and commit, then
+opens a fresh target tab on the same WorktreeID. It never injects into an unrelated
+agent tab or switches to the project's primary checkout. Codex reviews use native
+`review/start` with a custom target and read-only sandbox. Claude reviews use plan
+mode, including after restart. Handoff preserves source history and working files.
+
+PR actions use GitHub CLI with structured argv and fresh branch/head validation.
+Create requires a published branch and explicit title/body; Tether never pushes it
+implicitly. Merge uses squash with `--match-head-commit`; reruns select failed
+Actions runs for the reviewed commit. The phone and paired Mac use the same host
+implementation. Action errors remain visible and ambiguous receipts are not retried.

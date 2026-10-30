@@ -59,10 +59,11 @@ public enum APNsJWT {
 /// A notification the Mac wants a phone to show.
 public enum PushIntent: Equatable, Sendable {
     case permission(PermissionRequested, projectName: String)
-    case question(paneId: PaneID, projectName: String, text: String)
-    case dialog(paneId: PaneID, projectName: String)
-    case finished(paneId: PaneID, projectName: String, text: String)
-    case failed(paneId: PaneID, projectName: String, text: String)
+    case question(paneId: PaneID, projectName: String, text: String, agent: AgentKind = .claude)
+    case dialog(paneId: PaneID, projectName: String, agent: AgentKind = .claude)
+    case finished(paneId: PaneID, projectName: String, text: String, agent: AgentKind = .claude)
+    case failed(paneId: PaneID, projectName: String, text: String, agent: AgentKind = .claude)
+    case shortcutFailed(paneId: PaneID, projectName: String, title: String, exitCode: Int32, output: String)
     case activityStart(LiveActivityAttributes, LiveActivityContent)
     case activityUpdate(paneId: PaneID, LiveActivityContent)
     case activityEnd(paneId: PaneID, LiveActivityContent)
@@ -83,10 +84,11 @@ public enum PushPlanner {
         public var preview: String?
         public var steps: Int
         public var startedAt: Date
+        public var agent: AgentKind
 
         public init(macId: UUID, paneId: PaneID, projectName: String, title: String,
                     previous: SessionState?, state: SessionState, attention: AttentionReason?,
-                    preview: String?, steps: Int, startedAt: Date) {
+                    preview: String?, steps: Int, startedAt: Date, agent: AgentKind = .claude) {
             self.macId = macId
             self.paneId = paneId
             self.projectName = projectName
@@ -97,6 +99,7 @@ public enum PushPlanner {
             self.preview = preview
             self.steps = steps
             self.startedAt = startedAt
+            self.agent = agent
         }
 
         var content: LiveActivityContent {
@@ -115,13 +118,13 @@ public enum PushPlanner {
         // which carries the command.
         switch c.state {
         case .needsInput where c.attention == .question:
-            out.append(.question(paneId: c.paneId, projectName: c.projectName, text: text))
+            out.append(.question(paneId: c.paneId, projectName: c.projectName, text: text, agent: c.agent))
         case .needsInput where c.attention == .dialog:
-            out.append(.dialog(paneId: c.paneId, projectName: c.projectName))
+            out.append(.dialog(paneId: c.paneId, projectName: c.projectName, agent: c.agent))
         case .done where c.previous == .working:
-            out.append(.finished(paneId: c.paneId, projectName: c.projectName, text: text))
+            out.append(.finished(paneId: c.paneId, projectName: c.projectName, text: text, agent: c.agent))
         case .error:
-            out.append(.failed(paneId: c.paneId, projectName: c.projectName, text: text))
+            out.append(.failed(paneId: c.paneId, projectName: c.projectName, text: text, agent: c.agent))
         default:
             break
         }
@@ -154,23 +157,28 @@ public enum PushPayload {
                          body: p.detail.isEmpty ? p.toolName : p.detail,
                          category: PushKeys.permissionCategory, timeSensitive: true,
                          thread: p.paneId?.uuidString, collapseId: nil, info: info)
-        case .question(let pane, let project, let text):
-            return alert(title: "\(project): Claude asked you something", body: text.isEmpty ? "Open to answer." : text,
+        case .question(let pane, let project, let text, let agent):
+            return alert(title: "\(project): \(agent.displayName) asked you something", body: text.isEmpty ? "Open to answer." : text,
                          category: PushKeys.replyCategory, timeSensitive: true, thread: pane.uuidString,
                          collapseId: "q-" + pane.uuidString,
                          info: [PushKeys.macId: macId.uuidString, PushKeys.paneId: pane.uuidString])
-        case .dialog(let pane, let project):
-            return alert(title: "\(project): Claude is waiting", body: "A prompt on the Mac needs an answer.",
+        case .dialog(let pane, let project, let agent):
+            return alert(title: "\(project): \(agent.displayName) is waiting", body: "A prompt on the Mac needs an answer.",
                          category: nil, timeSensitive: true, thread: pane.uuidString,
                          collapseId: "q-" + pane.uuidString,
                          info: [PushKeys.macId: macId.uuidString, PushKeys.paneId: pane.uuidString])
-        case .finished(let pane, let project, let text):
-            return alert(title: "\(project): Claude finished", body: text.isEmpty ? "Done." : text,
+        case .finished(let pane, let project, let text, let agent):
+            return alert(title: "\(project): \(agent.displayName) finished", body: text.isEmpty ? "Done." : text,
                          category: PushKeys.replyCategory, timeSensitive: false, thread: pane.uuidString,
                          collapseId: "s-" + pane.uuidString,
                          info: [PushKeys.macId: macId.uuidString, PushKeys.paneId: pane.uuidString])
-        case .failed(let pane, let project, let text):
-            return alert(title: "\(project): Claude hit an error", body: text.isEmpty ? "Open to see what happened." : text,
+        case .failed(let pane, let project, let text, let agent):
+            return alert(title: "\(project): \(agent.displayName) hit an error", body: text.isEmpty ? "Open to see what happened." : text,
+                         category: nil, timeSensitive: false, thread: pane.uuidString,
+                         collapseId: "s-" + pane.uuidString,
+                         info: [PushKeys.macId: macId.uuidString, PushKeys.paneId: pane.uuidString])
+        case .shortcutFailed(let pane, let project, let title, let code, let output):
+            return alert(title: "\(project): \(title) failed (exit \(code))", body: String(output.suffix(400)),
                          category: nil, timeSensitive: false, thread: pane.uuidString,
                          collapseId: "s-" + pane.uuidString,
                          info: [PushKeys.macId: macId.uuidString, PushKeys.paneId: pane.uuidString])
@@ -178,7 +186,7 @@ public enum PushPayload {
             return activity(event: "start", content: content, now: now, extra: [
                 "attributes-type": LiveActivityAttributes.typeName,
                 "attributes": jsonObject(attributes),
-                "alert": ["title": "\(attributes.projectName): Claude is working", "body": attributes.title],
+                "alert": ["title": "\(attributes.projectName): Agent is working", "body": attributes.title],
             ])
         case .activityUpdate(_, let content):
             // A stale date marks the card stale if the Mac goes quiet.

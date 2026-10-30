@@ -13,6 +13,9 @@ final class TerminalPane: Identifiable {
     private(set) var title: String
     private(set) var hasExited = false
     var onExit: ((PaneID) -> Void)?
+    var sendHandler: ((String) -> Bool)?
+    var interruptHandler: (() -> Bool)?
+    var usesNativeCodexChat: Bool { descriptor.kind.agent == .codex && descriptor.codexChat == true }
     @ObservationIgnored private var focusTask: Task<Void, Never>?
 
     nonisolated var id: PaneID { descriptor.id }
@@ -21,13 +24,13 @@ final class TerminalPane: Identifiable {
         self.descriptor = descriptor
         self.title = descriptor.title
         self.terminal = TerminalViewState(controller: controller)
-        terminal.configuration = TerminalSurfaceOptions(
+        if !usesNativeCodexChat { terminal.configuration = TerminalSurfaceOptions(
             backend: .exec,
             workingDirectory: launch.workingDirectory,
             envVars: launch.environment,
             command: launch.command,
             waitAfterCommand: true,
-            resizeThrottleMilliseconds: 16)
+            resizeThrottleMilliseconds: 16) }
         terminal.onClose = { [weak self] _ in
             guard let self else { return }
             self.hasExited = true
@@ -39,6 +42,7 @@ final class TerminalPane: Identifiable {
     /// purpose: a pasted `\r` is a character under bracketed paste, not submit.
     @discardableResult
     func send(prompt: String) -> Bool {
+        if let sendHandler { return sendHandler(prompt) }
         let text = TerminalLaunch.promptText(prompt)
         guard terminal.paste(text: text) else { return false }
         return terminal.sendKey(.enter)
@@ -55,7 +59,7 @@ final class TerminalPane: Identifiable {
 
     /// Esc, which stops Claude's current turn like pressing it in the terminal.
     @discardableResult
-    func interrupt() -> Bool { terminal.sendKey(.escape) }
+    func interrupt() -> Bool { interruptHandler?() ?? terminal.sendKey(.escape) }
 
     /// Claude Code's faint suggested prompt, read off the screen. Only ask
     /// when nothing can have been typed into the terminal (see PromptSuggestion).

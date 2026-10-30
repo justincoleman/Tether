@@ -14,6 +14,12 @@ struct SessionView: View {
     @State private var askingModel = false
     @State private var customModel = ""
     @State private var showingChanges = false
+    @State private var showingFiles = false
+    @State private var showingServers = false
+    @State private var showingPR = false
+    @State private var pendingPRAction: PullRequestAction?
+    @State private var prFailure: String?
+    @State private var performingPR = false
     @State private var photoItem: PhotosPickerItem?
     @State private var loadingPhoto = false
     @State private var photoTask: Task<Void, Never>?
@@ -56,12 +62,25 @@ struct SessionView: View {
             if session == nil, !waitedForTab {
                 ProgressView("Opening on \(connection.mac.name)…")
                     .frame(maxHeight: .infinity)
+            } else if let command = session?.command {
+                ScrollView([.horizontal, .vertical]) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("$ " + command.command).font(.callout.monospaced().weight(.semibold))
+                        Text(command.output.isEmpty ? "Waiting for output…" : command.output).font(.caption.monospaced())
+                        if let exit = command.exitCode { Text("Exited with code \(exit)").foregroundStyle(exit == 0 ? theme.secondaryText : theme.red) }
+                        else { ProgressView("Running on \(connection.mac.name)…") }
+                    }
+                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding()
+                }
             } else if let transcript, !transcript.items.isEmpty {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 14) {
                             ForEach(transcript.items) { item in
                                 PhoneTranscriptItem(item: item).id(item.id)
+                            }
+                            if let liveText = session?.liveText, !liveText.isEmpty {
+                                Text(liveText).textSelection(.enabled)
                             }
                             if session?.state == .working {
                                 WorkingRow { connection.interrupt(paneId) }.id("working")
@@ -77,23 +96,28 @@ struct SessionView: View {
                         }
                     }
                 }
+            } else if let liveText = session?.liveText, !liveText.isEmpty {
+                ScrollView { Text(liveText).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding() }
             } else {
                 ContentUnavailableView(session == nil ? "Tab closed" : "Nothing yet",
                                        systemImage: "bubble.left.and.bubble.right",
                                        description: Text(session == nil
                                            ? "This tab is no longer open on the Mac."
-                                           : session?.agent == .codex
-                                           ? "Codex's replies show in its terminal on the Mac for now. Status, approvals and Stop work here."
-                                           : "Messages appear here as Claude works."))
+                                           : "Messages appear here as \(agentName) works."))
                     .frame(maxHeight: .infinity)
             }
-            if let permission {
+            if let warning = session?.warning {
+                Label(warning, systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(theme.red).padding()
+                    .frame(maxWidth: .infinity, alignment: .leading).background(theme.card)
+            }
+            if session?.command == nil, let permission {
                 NeedsYouCard(connection: connection, request: permission) { answering = permission }
                     .padding(.horizontal)
                     .padding(.top, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            if session != nil {
+            if session != nil, session?.command == nil {
                 compose
             }
         }
@@ -128,8 +152,23 @@ struct SessionView: View {
                     Menu {
                         Button("Changes", systemImage: "plusminus") { showingChanges = true }
                             .disabled(connection.status != .online)
-                        if session?.agent != .codex {
-                            modelMenu
+                        Button("Files", systemImage: "folder") { showingFiles = true }
+                            .disabled(connection.status != .online)
+                        Button("Dev Servers", systemImage: "network") { showingServers = true }
+                            .disabled(connection.status != .online)
+                        if session?.command == nil, session?.agent != .codex { modelMenu }
+                        if let pr = session?.pullRequest {
+                            if let url = safeWebURL(pr.url) { Link("Open PR #\(pr.number)", destination: url) }
+                            Text(pr.checksSummary)
+                            if pr.state.lowercased() == "open" {
+                                Button("Merge Pull Request", systemImage: "arrow.triangle.merge") { pendingPRAction = .merge(expectedHead: pr.headRevision) }
+                                    .disabled(performingPR || connection.status != .online)
+                                Button("Re-run Checks", systemImage: "arrow.clockwise") { pendingPRAction = .rerunChecks(expectedHead: pr.headRevision) }
+                                    .disabled(performingPR || connection.status != .online)
+                            }
+                        } else if session?.command == nil {
+                            Button("Create Pull Request", systemImage: "arrow.triangle.pull") { showingPR = true }
+                                .disabled(connection.status != .online)
                         }
                         Button("Close Thread", systemImage: "xmark.circle", role: .destructive) { confirmClose = true }
                     } label: {
@@ -168,12 +207,32 @@ struct SessionView: View {
             }
         } message: {
             Text(session?.state == .working
-                 ? "Claude is working right now. Closing stops it."
-                 : "The tab closes on the Mac. The conversation stays in Claude's history.")
+                 ? "This task is working right now. Closing stops it."
+                 : "The tab closes on the Mac. Its conversation stays in the agent's history.")
         }
         .sheet(isPresented: $showingChanges) {
             ChangesSheet(connection: connection, paneId: paneId)
         }
+        .sheet(isPresented: $showingFiles) { PhoneFilesSheet(connection: connection, paneId: paneId) }
+        .sheet(isPresented: $showingServers) { PhoneDevServersSheet(connection: connection, paneId: paneId) }
+        .sheet(isPresented: $showingPR) { PhonePullRequestSheet(connection: connection, paneId: paneId) }
+        .confirmationDialog("Confirm pull request action", isPresented: Binding(get: { pendingPRAction != nil }, set: { if !$0 { pendingPRAction = nil } }), titleVisibility: .visible) {
+            if let action = pendingPRAction {
+                Button(prActionLabel(action)) {
+                    pendingPRAction = nil
+                    performingPR = true
+                    Task {
+                        if case .failure(let error) = await connection.performPullRequest(action, paneId: paneId) { prFailure = error.message }
+                        performingPR = false
+                    }
+                }
+            }
+        } message: {
+            Text("Runs on \(connection.mac.name) for PR #\(session?.pullRequest?.number ?? 0), after checking that its revision has not changed.")
+        }
+        .alert("Pull request action failed", isPresented: Binding(get: { prFailure != nil }, set: { if !$0 { prFailure = nil } })) {
+            Button("OK") { prFailure = nil }
+        } message: { Text(prFailure ?? "") }
         .onChange(of: photoItem) { loadPhoto() }
         .onChange(of: draft.image, initial: true) { _, image in
             photo = image.flatMap(PhotoReply.init(jpeg:))
@@ -194,6 +253,22 @@ struct SessionView: View {
             Button("Cancel", role: .cancel) { customModel = "" }
         } message: {
             Text("Tether types /model and this name into the tab on \(connection.mac.name).")
+        }
+    }
+
+    private var agentName: String { session?.agent == .codex ? "Codex" : "Claude" }
+
+    private func safeWebURL(_ value: String) -> URL? {
+        guard let url = URL(string: value), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil, url.user == nil, url.password == nil else { return nil }
+        return url
+    }
+
+    private func prActionLabel(_ action: PullRequestAction) -> String {
+        switch action {
+        case .merge: "Merge Pull Request"
+        case .rerunChecks: "Re-run Checks"
+        case .create: "Create Pull Request"
         }
     }
 
@@ -282,7 +357,7 @@ struct SessionView: View {
                 .disabled(draft.isSending || connection.status != .online || session?.state == .detached)
                 .accessibilityLabel("Attach a photo")
                 HStack(alignment: .bottom, spacing: 4) {
-                    TextField(photo == nil ? "Message Claude" : "Add a note (optional)", text: text, axis: .vertical)
+                    TextField(photo == nil ? "Message \(agentName)" : "Add a note (optional)", text: text, axis: .vertical)
                         .lineLimit(1...6)
                         .disabled(draft.isSending)
                         .foregroundStyle(theme.text)
@@ -354,14 +429,14 @@ struct SessionView: View {
         default: break
         }
         switch connection.sendResults[paneId] {
-        case "queued"?: return "Queued. The Mac sends it when Claude is ready."
+        case "queued"?: return "Queued. The Mac sends it when \(agentName) is ready."
         case "failed"?: return "The Mac couldn't send that."
         default: break
         }
         guard let session else { return nil }
-        if session.state == .working { return "Claude is working. Your message waits for this turn to finish." }
+        if session.state == .working { return "\(agentName) is working. Your message waits for this turn to finish." }
         if session.state == .needsInput, session.attention == .dialog {
-            return "Claude is waiting on a prompt only the Mac can answer."
+            return "\(agentName) is waiting on a prompt only the Mac can answer."
         }
         return nil
     }

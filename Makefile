@@ -32,23 +32,23 @@ mac: project
 		-derivedDataPath build/mac CODE_SIGNING_ALLOWED=NO build
 	@echo "Built $(APP)"
 
-# Quit a running Tether (its Claude tabs resume on the next launch).
+# Stop outside the calling terminal, which may itself belong to Tether.
 stop:
-	-@pkill -x Tether
-	@sleep 1
+	@./scripts/detached-app.sh stop
 
 # Build, replace the running app, and launch it. Uses `open`, so it also works
 # from an ssh session on a Mac with someone logged in.
-run: mac stop
-	open $(APP)
+run: mac
+	@./scripts/detached-app.sh restart "$(APP)"
 
-# Same, but runs the binary in this terminal so its log output is visible.
-run-log: mac stop
-	$(APP)/Contents/MacOS/Tether
+# Explicit foreground diagnostics: quit any existing copy before using this.
+# Never stop Tether from this terminal, since it may own the calling shell.
+run-log: mac
+	"$(APP)/Contents/MacOS/Tether"
 
 # The usual loop: tests first, then build, then launch.
-dev: test mac stop
-	open $(APP)
+dev: test mac
+	@./scripts/detached-app.sh restart "$(APP)"
 
 phone: project
 	xcodebuild -quiet -project Apps/Tether.xcodeproj -scheme TetherPhone -configuration Debug \

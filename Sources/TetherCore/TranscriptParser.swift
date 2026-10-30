@@ -264,6 +264,7 @@ public enum TranscriptParser {
 public actor TranscriptFeed {
     private var tail: TranscriptTail
     private let settingsFile: URL
+    private let agent: AgentKind
 
     /// How much of a long transcript the first read takes, from the end. Claude
     /// Code sessions write hundreds of megabytes; the chat shows the recent part.
@@ -272,9 +273,10 @@ public actor TranscriptFeed {
     private var announcedGap = false
 
     public init(path: String, settingsFile: URL = ContextWindow.defaultSettingsFile,
-                windowBytes: UInt64 = TranscriptFeed.defaultWindowBytes) {
+                windowBytes: UInt64 = TranscriptFeed.defaultWindowBytes, agent: AgentKind = .claude) {
         tail = TranscriptTail(path: path, lastBytes: windowBytes)
         self.settingsFile = settingsFile
+        self.agent = agent
     }
 
     /// The newest mode record seen since `takeMode` was last called.
@@ -288,13 +290,15 @@ public actor TranscriptFeed {
 
     public func poll() -> [MirrorEvent] {
         let lines = tail.readNewLines()
-        if let mode = lines.compactMap(TranscriptSignals.permissionMode).last { seenMode = mode }
-        var events = lines.flatMap(TranscriptParser.events(fromLine:))
+        if agent == .claude, let mode = lines.compactMap(TranscriptSignals.permissionMode).last { seenMode = mode }
+        var events = agent == .codex
+            ? lines.flatMap(CodexTranscriptParser.events(fromLine:))
+            : lines.flatMap(TranscriptParser.events(fromLine:))
         if tail.skippedEarlier, !announcedGap {
             announcedGap = true
             events.insert(.notice(id: "earlier-left-out", text: "Earlier messages are left out", at: Date()), at: 0)
         }
-        guard events.contains(where: { if case .usage = $0 { true } else { false } }) else { return events }
+        guard agent == .claude, events.contains(where: { if case .usage = $0 { true } else { false } }) else { return events }
         // Read on each batch with usage, so a /model switch shows on the next reply.
         let model = ContextWindow.configuredModel(settings: try? Data(contentsOf: settingsFile))
         return events.map { event in

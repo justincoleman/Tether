@@ -185,6 +185,22 @@ final class MacConnection: Identifiable {
         await startRequest { PhoneMessage.resumeSession(requestId: $0, projectId: projectId, sessionId: sessionId) }
     }
 
+    func runShortcut(_ id: UUID, paneId: PaneID? = nil) async -> Result<PaneID, ReplyError> {
+        switch await request({ .runShortcut(requestId: $0, shortcutId: id, paneId: paneId) }) {
+        case .shortcutResult(_, let pane?, _)?: return .success(pane)
+        case .shortcutResult(_, nil, let error)?: return .failure(ReplyError(message: error ?? "Shortcut could not start."))
+        default: return .failure(ReplyError(message: "No receipt from the Mac. Check its tabs before retrying."))
+        }
+    }
+
+    func performPullRequest(_ action: PullRequestAction, paneId: PaneID) async -> Result<String, ReplyError> {
+        switch await request({ .pullRequestAction(requestId: $0, paneId: paneId, action: action) }, timeout: .seconds(180)) {
+        case .pullRequestResult(_, let message?, _)?: return .success(message)
+        case .pullRequestResult(_, _, let error)?: return .failure(ReplyError(message: error ?? "Action failed."))
+        default: return .failure(ReplyError(message: "No receipt from the Mac. Check GitHub before retrying."))
+        }
+    }
+
     /// The project's past sessions, newest first.
     func history(for projectId: ProjectID) async -> Result<[PastSessionInfo], ReplyError> {
         switch await request({ PhoneMessage.requestHistory(requestId: $0, projectId: projectId) }) {
@@ -260,7 +276,7 @@ final class MacConnection: Identifiable {
         var message: String
     }
 
-    private func request(_ make: (UUID) -> PhoneMessage) async -> MacMessage? {
+    private func request(_ make: (UUID) -> PhoneMessage, timeout: Duration = .seconds(20)) async -> MacMessage? {
         guard status == .online, let channel else { return nil }
         let requestId = UUID()
         let message = make(requestId)
@@ -268,7 +284,7 @@ final class MacConnection: Identifiable {
             pendingReplies[requestId] = continuation
             channel.send(message)
             Task { [weak self] in
-                try? await Task.sleep(for: .seconds(20))
+                try? await Task.sleep(for: timeout)
                 self?.finishReply(requestId, nil)
             }
         }
@@ -400,7 +416,8 @@ final class MacConnection: Identifiable {
             }
         case .startResult(let requestId, let paneId, let error):
             finishStart(requestId, paneId.map(StartOutcome.started) ?? .failed(error ?? "The Mac couldn't start it."))
-        case .changes(let requestId, _, _), .fileDiff(let requestId, _, _), .history(let requestId, _, _),
+        case .shortcutResult(let requestId, _, _), .pullRequestResult(let requestId, _, _),
+             .changes(let requestId, _, _), .fileDiff(let requestId, _, _), .history(let requestId, _, _),
              .fileList(let requestId, _, _), .fileContent(let requestId, _, _), .devServers(let requestId, _, _):
             finishReply(requestId, message)
         case .error(let message):

@@ -26,18 +26,21 @@ struct StartPage: View {
                     StartButton(title: "Start Claude", systemImage: "sparkles", shortcut: "⌘T", tint: theme.claude) {
                         go { await model.openClaudePane(project: project) }
                     }
-                    StartButton(title: "Start Codex", systemImage: "chevron.left.forwardslash.chevron.right",
-                                shortcut: "⌥⌘T", tint: theme.codex) {
-                        go { await model.openCodexPane(project: project) }
+                    StartButton(title: "Start Codex Chat", systemImage: "chevron.left.forwardslash.chevron.right",
+                                shortcut: "", tint: theme.codex) {
+                        go { await model.openCodexChatPane(project: project) }
                     }
                 }
                 section("More") {
                     FlowRow {
+                        StartPill(title: "Codex Terminal", systemImage: "chevron.left.forwardslash.chevron.right", help: "New Codex terminal (⌥⌘T)") {
+                            go { await model.openCodexPane(project: project) }
+                        }
                         StartPill(title: "Shell", systemImage: "terminal", help: "New shell tab (⇧⌘T)") {
                             go { await model.openShellPane(project: project) }
                         }
                         StartPill(title: "Agent on a Branch…", systemImage: "arrow.triangle.branch",
-                                  help: "A new branch in its own worktree, with its own Claude tab") {
+                                  help: "A new branch in its own worktree, with its own agent tab") {
                             showNewAgent = true
                         }
                         StartPill(title: servers.first.map { "Preview localhost:\($0.port)" } ?? "Preview",

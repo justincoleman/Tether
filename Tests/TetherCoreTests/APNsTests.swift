@@ -78,6 +78,37 @@ import TetherProtocol
         #expect(body[PushKeys.paneId] as? String == pane.uuidString)
     }
 
+    @Test func codexStateAlertsUseCodexInsteadOfClaude() throws {
+        let cases: [(SessionState, SessionState, AttentionReason?, String)] = [
+            (.working, .needsInput, .question, "Tether: Codex asked you something"),
+            (.working, .needsInput, .dialog, "Tether: Codex is waiting"),
+            (.working, .done, nil, "Tether: Codex finished"),
+            (.working, .error, nil, "Tether: Codex hit an error"),
+        ]
+        for (previous, state, attention, title) in cases {
+            var c = change(previous, state, attention: attention)
+            c.agent = .codex
+            let intent = try #require(PushPlanner.intents(for: c).first)
+            let aps = try #require(try json(PushPayload.request(for: intent, macId: mac).body)["aps"] as? [String: Any])
+            let alert = try #require(aps["alert"] as? [String: Any])
+            #expect(alert["title"] as? String == title)
+        }
+    }
+
+    @Test func shortcutFailureNamesTheCommandAndExitCodeWithoutClaudeWording() throws {
+        let request = PushPayload.request(for: .shortcutFailed(paneId: pane, projectName: "Tether",
+            title: "Run tests", exitCode: 7, output: "captured stderr"), macId: mac)
+        #expect(request.pushType == "alert")
+        let body = try json(request.body)
+        let aps = try #require(body["aps"] as? [String: Any])
+        let alert = try #require(aps["alert"] as? [String: Any])
+        #expect(alert["title"] as? String == "Tether: Run tests failed (exit 7)")
+        #expect(alert["body"] as? String == "captured stderr")
+        #expect(!String(decoding: request.body, as: UTF8.self).contains("Claude"))
+        #expect(body[PushKeys.macId] as? String == mac.uuidString)
+        #expect(body[PushKeys.paneId] as? String == pane.uuidString)
+    }
+
     @Test func liveActivityStartPayloadMatchesActivityKitShape() throws {
         let attributes = LiveActivityAttributes(macId: mac.uuidString, paneId: pane.uuidString,
                                                 projectName: "Tether", title: "Claude")
@@ -90,6 +121,8 @@ import TetherProtocol
         #expect(aps["event"] as? String == "start")
         #expect(aps["timestamp"] as? Int == 1_700_000_000)
         #expect(aps["attributes-type"] as? String == "LiveActivityAttributes")
+        let alert = try #require(aps["alert"] as? [String: Any])
+        #expect(alert["title"] as? String == "Tether: Agent is working")
         let attrs = try #require(aps["attributes"] as? [String: Any])
         #expect(attrs["projectName"] as? String == "Tether" && attrs["paneId"] as? String == pane.uuidString)
         let state = try #require(aps["content-state"] as? [String: Any])

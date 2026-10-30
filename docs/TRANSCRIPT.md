@@ -1,4 +1,4 @@
-# Claude Code transcripts in Tether
+# Agent transcripts in Tether
 
 The chat mirror reads each session's transcript,
 `~/.claude/projects/<encoded cwd>/<session id>.jsonl`. Tether knows the session
@@ -185,3 +185,32 @@ The tail tracks the device and inode of its opened file. An atomic replacement (
 size or a larger size) or an observed truncation starts reading the new contents at byte zero and drops
 any buffered partial line or initial-window boundary from the old contents. Metadata and bytes are read
 from the same open file, so replacement between polls cannot apply an old offset to the new file.
+
+## Codex rollout chat
+
+Codex chat reads only a tracked session's rollout, without importing histories into
+Codex or changing its global configuration. `CodexTranscriptLocator` searches
+`$CODEX_HOME/sessions/YYYY/MM/DD/rollout-…-<session UUID>.jsonl` (default
+`~/.codex/sessions`). Lookup runs off the main actor, checks at most 10,000
+entries, skips symlinks, and verifies the first bounded `session_meta` record
+contains the requested UUID and an absolute `cwd`. Hook paths receive the same
+metadata validation. Subagent source objects are excluded.
+
+`CodexTranscriptParser` reads these synthetic-fixture-tested Codex 0.165 shapes:
+
+| Record | Becomes |
+| --- | --- |
+| `response_item.message`, role user or assistant, public text content | chat message |
+| `function_call` / `custom_tool_call` | tool step; command tools fold as Bash |
+| `function_call_output` / `custom_tool_call_output` | bounded result tail on its call |
+| `event_msg.token_count` | latest input usage and reported model context window |
+| `event_msg.turn_aborted` | Interrupted notice |
+
+Codex input usage already includes cached input tokens. Its reported context
+window is preserved; Claude settings do not affect it. Missing record IDs use
+a deterministic hash of the complete record, so repeat reads deduplicate.
+System/developer messages, analysis, reasoning, agent messages, known injected
+context, and event-message copies of user/assistant text are skipped. Unknown
+records are ignored. The same bounded transcript tail handles partial lines,
+replacement, and truncation for both agents. Codex format changes may require
+parser updates; it is not a public format contract.

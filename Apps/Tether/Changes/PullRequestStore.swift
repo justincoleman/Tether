@@ -12,6 +12,7 @@ final class PullRequestStore {
     private(set) var statuses: [String: PullRequestStatus] = [:]
 
     /// Worktree path to branch name: what to ask about right now.
+    @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored var targets: () -> [String: String] = { [:] }
     @ObservationIgnored private let cli = GitHubCLI.locate()
     @ObservationIgnored private var lastChecked: [String: (branch: String, at: Date)] = [:]
@@ -39,6 +40,7 @@ final class PullRequestStore {
         let targets = targets()
         for path in Array(statuses.keys) where targets[path] == nil {
             statuses[path] = nil
+            onChange?()
             lastChecked[path] = nil
         }
         let now = Date()
@@ -60,7 +62,7 @@ final class PullRequestStore {
                 self.inFlight.remove(path)
                 // Dropped or moved to another branch while gh ran.
                 guard self.lastChecked[path]?.branch == branch else { return }
-                if self.statuses[path] != status { self.statuses[path] = status }
+                if self.statuses[path] != status { self.statuses[path] = status; self.onChange?() }
             }
         }
     }

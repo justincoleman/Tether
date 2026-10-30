@@ -236,13 +236,17 @@ private struct RemoteProjectRow: View {
                     Text(project.name)
                         .font(.body.weight(.medium))
                         .lineLimit(1)
-                    Text(project.branch ?? (sessions.isEmpty ? "No Claude tab" : ""))
+                    Text(project.branch ?? (sessions.isEmpty ? "No agent tab" : ""))
                         .font(.caption)
                         .lineLimit(1)
                         .foregroundStyle(theme.secondaryText)
                 }
                 Spacer(minLength: 4)
                 StatusBadge(state: state)
+                RemoteWorkflowMenu(connection: connection, projectId: project.id) { pane in
+                    remote.selectedProjectId = project.id
+                    remote.selectedPaneId = pane
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
