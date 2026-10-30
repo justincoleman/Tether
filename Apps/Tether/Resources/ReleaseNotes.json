@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.30.14",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.14 brings Claude's suggested next message to the iPhone and to paired Macs.",
+    "highlights": [
+      {
+        "title": "Suggested next message on the iPhone and paired Macs.",
+        "body": "When Claude finishes a turn in a tab whose chat is showing on its Mac, the suggestion Claude Code offers for your next message now appears above the iPhone's message box. Tap it to fill the box, then send. On a paired Mac it shows in the message box and Tab or Right Arrow takes it, like a local tab. A tab showing its terminal on the Mac offers none, because we can't tell its prompt box from something you typed. Needs both apps rebuilt: protocol 25."
+      }
+    ]
+  },
+  {
     "version": "0.30.13",
     "date": "2026-10-30",
     "summary": "Tether 0.30.13 gives the iPhone the same plan limit rings as the Mac.",

@@ -153,6 +153,7 @@ struct RemoteSessionView: View {
     }
     /// Where the conversation is scrolled to, so Send and the jump button can go to the end.
     @State private var position = ScrollPosition(edge: .bottom)
+    @FocusState private var composeFocused: Bool
 
     init(connection: MacConnection, paneId: PaneID, showsHeader: Bool = true) {
         self.connection = connection
@@ -286,14 +287,43 @@ struct RemoteSessionView: View {
         return nil
     }
 
+    /// Claude Code's suggested next prompt on the other Mac, offered while the
+    /// box is empty and the tab is idle, as in a local tab's chat.
+    private var suggestion: String? {
+        guard let text = session?.suggestion, !text.isEmpty, draft.text.isEmpty, draft.image == nil,
+              session?.state != .working, session?.state != .needsInput else { return nil }
+        return text
+    }
+
+    private func useSuggestion() {
+        guard let suggestion else { return }
+        text.wrappedValue = suggestion
+    }
+
     private var compose: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message Claude on \(connection.mac.name)", text: text, axis: .vertical)
+                TextField(suggestion.map { "\($0)  (Tab)" } ?? "Message Claude on \(connection.mac.name)",
+                          text: text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
                     .disabled(draft.isSending)
+                    .focused($composeFocused)
                     .onSubmit(send)
+                    .background {
+                        // Tab or Right Arrow takes the suggestion, as in a local tab.
+                        Group {
+                            Button("Use Suggestion", action: useSuggestion)
+                                .keyboardShortcut(.tab, modifiers: [])
+                                .disabled(!composeFocused || suggestion == nil)
+                            Button("Use Suggestion", action: useSuggestion)
+                                .keyboardShortcut(.rightArrow, modifiers: [])
+                                .disabled(!composeFocused || suggestion == nil)
+                        }
+                        .opacity(0)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                    }
                 Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                     .buttonStyle(.plain)
                     .foregroundStyle(canSend ? theme.accent : theme.secondaryText)

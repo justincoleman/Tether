@@ -793,7 +793,7 @@ final class AppModel {
         promptQueue.enqueue(text, for: paneId)
         guard promptQueue.count(for: paneId) > 0 else { return .failed } // blank text
         touchProject(panes[paneId]?.descriptor.projectId)
-        suggestions[paneId] = nil
+        setSuggestion(nil, for: paneId)
         if flushQueue(paneId) { return .sent }
         syncQueuedCount(paneId)
         return .queued
@@ -1015,6 +1015,13 @@ final class AppModel {
 
     // MARK: Suggested prompt
 
+    /// Keeps a tab's suggestion and tells phones and paired Macs when it changes.
+    private func setSuggestion(_ text: String?, for paneId: PaneID) {
+        guard suggestions[paneId] != text else { return }
+        suggestions[paneId] = text
+        companion.setNeedsSnapshot()
+    }
+
     /// Reads Claude Code's suggested next prompt after a turn ends. It draws a
     /// moment after the Stop hook, so this tries a few times. Only for a tab
     /// showing its chat: nobody can have typed into that terminal, so text in
@@ -1027,7 +1034,7 @@ final class AppModel {
                       let state = self.paneStates[paneId], state != .working, state != .needsInput,
                       self.promptQueue.count(for: paneId) == 0 else { return }
                 if let text = pane.promptSuggestion() {
-                    self.suggestions[paneId] = text
+                    self.setSuggestion(text, for: paneId)
                     return
                 }
             }
@@ -1045,7 +1052,7 @@ final class AppModel {
     func setChat(_ chat: Bool, forPane paneId: PaneID) {
         chatOverrides[paneId] = chat
         // Whatever is typed in the terminal from here on isn't Claude's suggestion.
-        if !chat { suggestions[paneId] = nil }
+        if !chat { setSuggestion(nil, for: paneId) }
     }
 
     /// Switches the selected Claude tab between its terminal and its chat.
@@ -1198,7 +1205,7 @@ final class AppModel {
             // A turn started, from chat, the terminal or the phone.
             if session.state == .working, previous != .working { touchProject(panes[paneId]?.descriptor.projectId) }
             if session.state == .working || session.state == .needsInput {
-                suggestions[paneId] = nil
+                setSuggestion(nil, for: paneId)
             } else if previous == .working {
                 readSuggestion(paneId)
             }
@@ -1481,7 +1488,7 @@ final class AppModel {
         queuedCounts[id] = nil
         queuedMessages[id] = nil
         drafts[id] = nil
-        suggestions[id] = nil
+        setSuggestion(nil, for: id)
         turnStartedAt[id] = nil
         recordedSessions[id] = nil
         launchSessions[id] = nil
@@ -1565,7 +1572,8 @@ extension AppModel {
                     title: pane.title, state: paneStates[pane.id] ?? .idle,
                     attention: paneAttention[pane.id], queued: queuedCounts[pane.id] ?? 0,
                     preview: mirror.model(for: sessionId(forPane: pane.id))?.preview(),
-                    permissionMode: paneModes[pane.id], status: paneStatus[pane.id], agent: agent))
+                    permissionMode: paneModes[pane.id], status: paneStatus[pane.id], agent: agent,
+                    suggestion: suggestions[pane.id]))
             }
         }
         let permissions = pendingPermissions.map(phoneSummary(of:))
