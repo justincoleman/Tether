@@ -90,12 +90,12 @@ public enum ToolProbe {
         process.standardOutput = out
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
+        // The termination handler, not a second thread parked in waitUntilExit:
+        // with the pool busy (a test run, a busy launch) that thread can start
+        // late and the timeout fires on a shell that had long since exited.
         let finished = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .utility).async {
-            process.waitUntilExit()
-            finished.signal()
-        }
+        process.terminationHandler = { _ in finished.signal() }
+        do { try process.run() } catch { return nil }
         if finished.wait(timeout: .now() + timeout) == .timedOut {
             process.terminate()
             return nil
