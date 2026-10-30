@@ -50,6 +50,12 @@ struct LimitRings: View {
                     }
                     // Dimmed once the reading is old: the numbers may have moved.
                     .opacity(stale && !hovering ? 0.5 : 1)
+                    if hovering, showPace {
+                        Text("Tick: how far through the window you are")
+                            .font(.caption2)
+                            .foregroundStyle(theme.secondaryText)
+                            .transition(.opacity)
+                    }
                     if hovering, let reportedAt {
                         Text(stale ? "Last reading \(UsageAge.text(since: reportedAt, now: now))"
                                    : "Updated \(UsageAge.text(since: reportedAt, now: now))")

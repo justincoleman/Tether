@@ -302,6 +302,11 @@ struct UsageCard: View {
                             .font(.caption)
                             .foregroundStyle(theme.secondaryText)
                     }
+                    if live != nil {
+                        Text("The white tick marks how far through the window you are. Past it, you're using the limit faster than it refills.")
+                            .font(.caption2)
+                            .foregroundStyle(theme.tertiaryText)
+                    }
                     if let updatedAt {
                         Text(stale ? "Last reading \(UsageAge.text(since: updatedAt, now: now))"
                                    : "Updated \(UsageAge.text(since: updatedAt, now: now))")

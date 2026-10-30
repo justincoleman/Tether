@@ -6,7 +6,7 @@
     "highlights": [
       {
         "title": "Plan limit rings on the iPhone.",
-        "body": "The plan usage card at the top of the overview is now two small colored rings, green within pace, orange once you're ahead of it, red from 90%, each with a pace tick. Tap to open them into the percentage, name, time until reset and how fresh the reading is. iPhone only: rebuild it with make phone-install."
+        "body": "The plan usage card at the top of the overview is now two small colored rings, green within pace, orange once you're ahead of it, red from 90%, each with a pace tick. Tap to open them into the percentage, name, time until reset and how fresh the reading is. Both the Mac and iPhone cards now explain the white tick when opened. iPhone only: rebuild it with make phone-install."
       }
     ]
   },
