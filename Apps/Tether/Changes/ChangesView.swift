@@ -71,6 +71,28 @@ private struct SnapshotView: View {
         return "\(base) · \(n) file\(n == 1 ? "" : "s")"
     }
 
+    /// Files by folder, files in the project root first, so a long list reads as a tree.
+    private var groups: [(directory: String, files: [ChangedFile])] {
+        let byDirectory = Dictionary(grouping: snapshot.files, by: \.directory)
+        return byDirectory.keys.sorted()
+            .map { (directory: $0, files: byDirectory[$0] ?? []) }
+    }
+
+    private func folderHeader(_ directory: String, count: Int) -> some View {
+        HStack {
+            Text(directory.isEmpty ? "Project root" : directory)
+                .lineLimit(1)
+                .truncationMode(.head)
+            Spacer()
+            Text("\(count)").monospacedDigit()
+        }
+        .font(.caption)
+        .foregroundStyle(theme.secondaryText)
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -83,11 +105,15 @@ private struct SnapshotView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(snapshot.files) { file in
-                            FileRow(file: file, worktreePath: path,
-                                    staging: model.changes.staging[path]?[file.path],
-                                    selected: model.openDiffTarget?.file.path == file.path
-                                    && model.openDiffTarget?.worktreePath == path)
+                        ForEach(groups, id: \.directory) { group in
+                            if groups.count > 1 { folderHeader(group.directory, count: group.files.count) }
+                            ForEach(group.files) { file in
+                                FileRow(file: file, worktreePath: path,
+                                        staging: model.changes.staging[path]?[file.path],
+                                        selected: model.openDiffTarget?.file.path == file.path
+                                        && model.openDiffTarget?.worktreePath == path,
+                                        showsDirectory: groups.count == 1)
+                            }
                         }
                         if !snapshot.commits.isEmpty {
                             commits
@@ -104,9 +130,20 @@ private struct SnapshotView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch").foregroundStyle(.secondary)
-                Text(snapshot.branchLabel).font(.headline).lineLimit(1)
-                if snapshot.ahead > 0 { Text("↑\(snapshot.ahead)").font(.caption).foregroundStyle(.secondary) }
-                if snapshot.behind > 0 { Text("↓\(snapshot.behind)").font(.caption).foregroundStyle(theme.claude) }
+                Text(snapshot.branchLabel).font(.headline).lineLimit(1).truncationMode(.middle)
+                // The counts keep their room when a long branch name has to shorten.
+                Group {
+                    if snapshot.ahead > 0 {
+                        Text("↑\(snapshot.ahead)").foregroundStyle(.secondary)
+                            .help("\(snapshot.ahead) unpushed commit\(snapshot.ahead == 1 ? "" : "s")")
+                    }
+                    if snapshot.behind > 0 {
+                        Text("↓\(snapshot.behind)").foregroundStyle(theme.claude)
+                            .help("\(snapshot.behind) commit\(snapshot.behind == 1 ? "" : "s") to pull")
+                    }
+                }
+                .font(.caption.monospacedDigit())
+                .fixedSize()
                 Spacer()
                 if model.changes.refreshing.contains(path) { ProgressView().controlSize(.mini) }
                 Button { model.changes.refresh(path); model.changes.fetchNow(path, force: true) } label: {
@@ -207,6 +244,8 @@ private struct FileRow: View {
     /// or it's a conflict.
     let staging: StagingState?
     let selected: Bool
+    /// Off when a folder header above already says where the file is.
+    var showsDirectory = true
 
     var body: some View {
         Button { model.openDiff(file) } label: {
@@ -214,7 +253,7 @@ private struct FileRow: View {
                 KindBadge(kind: file.kind)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(file.fileName).lineLimit(1)
-                    if !file.directory.isEmpty {
+                    if showsDirectory, !file.directory.isEmpty {
                         Text(file.directory)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
