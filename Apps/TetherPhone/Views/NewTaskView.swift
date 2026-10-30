@@ -161,10 +161,22 @@ struct ReorderProjectsView: View {
                             .buttonStyle(.borderless)
                             .accessibilityLabel("Rename \(project.name)")
                         }
+                        .moveDisabled(!project.pinned)
                     }
                     .onMove { projects.move(fromOffsets: $0, toOffset: $1) }
                 }
                 .listRowBackground(theme.card)
+                if projects.contains(where: \.pinned) {
+                    Text("Drag pinned projects to set their order. The rest sort themselves by recent use.")
+                        .font(.footnote)
+                        .foregroundStyle(theme.secondaryText)
+                        .listRowBackground(Color.clear)
+                } else {
+                    Text("Pin a project (long-press it) to keep it at the top in your own order. The rest sort themselves by recent use.")
+                        .font(.footnote)
+                        .foregroundStyle(theme.secondaryText)
+                        .listRowBackground(Color.clear)
+                }
             }
             .macColors(connection.snapshot?.theme)
             .alert("Rename Project", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -190,7 +202,7 @@ struct ReorderProjectsView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        connection.reorderProjects(projects.map(\.id))
+                        connection.reorderProjects(projects.filter(\.pinned).map(\.id))
                         dismiss()
                     }
                 }

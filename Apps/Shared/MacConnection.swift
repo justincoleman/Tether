@@ -249,9 +249,12 @@ final class MacConnection: Identifiable {
 
     func reorderProjects(_ ids: [ProjectID]) {
         channel?.send(PhoneMessage.reorderProjects(ids: ids))
-        // Show the new order now; the next snapshot confirms it.
+        // Show the new order now, among the listed projects only (the pinned
+        // ones); the next snapshot confirms it.
         if var snapshot {
-            snapshot.projects.sort { (ids.firstIndex(of: $0.id) ?? .max) < (ids.firstIndex(of: $1.id) ?? .max) }
+            let slots = snapshot.projects.indices.filter { ids.contains(snapshot.projects[$0].id) }
+            let moved = ids.compactMap { id in snapshot.projects.first { $0.id == id } }
+            for (slot, project) in zip(slots, moved) { snapshot.projects[slot] = project }
             self.snapshot = snapshot
         }
     }
@@ -268,6 +271,26 @@ final class MacConnection: Identifiable {
         channel?.send(PhoneMessage.closeSession(paneId: paneId))
         // Drop the row now; the next snapshot confirms.
         snapshot?.sessions.removeAll { $0.id == paneId }
+    }
+
+    /// Pin to Top or unpin. The Mac re-sorts; the next snapshot carries it.
+    func setProjectPinned(_ id: ProjectID, _ pinned: Bool) {
+        channel?.send(PhoneMessage.setProjectPinned(id: id, pinned: pinned))
+        if var snapshot, let i = snapshot.projects.firstIndex(where: { $0.id == id }) {
+            snapshot.projects[i].pinned = pinned
+            if pinned { snapshot.projects[i].active = true }
+            self.snapshot = snapshot
+        }
+    }
+
+    /// Make Active or Move to Inactive.
+    func setProjectActive(_ id: ProjectID, _ active: Bool) {
+        channel?.send(PhoneMessage.setProjectActive(id: id, active: active))
+        if var snapshot, let i = snapshot.projects.firstIndex(where: { $0.id == id }) {
+            snapshot.projects[i].active = active
+            if !active { snapshot.projects[i].pinned = false }
+            self.snapshot = snapshot
+        }
     }
 
     func renameProject(_ id: ProjectID, to name: String) {

@@ -71,10 +71,12 @@ struct RemoteProjectList: View {
     let connection: MacConnection
     @State private var showingNewTab = false
     @State private var newTabProjectId: ProjectID?
+    @State private var showInactive = false
 
     var body: some View {
         let snapshot = connection.snapshot
         let projects = snapshot?.projects ?? []
+        let inactive = projects.filter { !$0.active }
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Projects on \(connection.mac.name)")
@@ -103,15 +105,20 @@ struct RemoteProjectList: View {
                     .padding(.vertical, 4)
             }
             List {
-                ForEach(projects) { project in
-                    let sessions = (snapshot?.sessions ?? []).filter { $0.projectId == project.id }
-                    RemoteProjectRow(connection: connection, project: project, sessions: sessions) {
-                        newTabProjectId = project.id
-                        showingNewTab = true
-                    }
-                        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+                // The other Mac sends pinned, then Active, then Inactive.
+                ForEach(projects.filter(\.active)) { project in
+                    row(project, sessions: snapshot?.sessions ?? [])
+                }
+                if !inactive.isEmpty {
+                    InactiveHeader(count: inactive.count, expanded: $showInactive)
+                        .listRowInsets(EdgeInsets(top: 10, leading: 8, bottom: 2, trailing: 8))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
+                    if showInactive {
+                        ForEach(inactive) { project in
+                            row(project, sessions: snapshot?.sessions ?? [])
+                        }
+                    }
                 }
             }
             .listStyle(.plain)
@@ -120,6 +127,19 @@ struct RemoteProjectList: View {
         .sheet(isPresented: $showingNewTab) {
             NewRemoteTabSheet(connection: connection, projectId: newTabProjectId)
         }
+    }
+}
+
+extension RemoteProjectList {
+    private func row(_ project: ProjectSummary, sessions all: [SessionSummary]) -> some View {
+        RemoteProjectRow(connection: connection, project: project,
+                         sessions: all.filter { $0.projectId == project.id }) {
+            newTabProjectId = project.id
+            showingNewTab = true
+        }
+        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 }
 
@@ -240,6 +260,15 @@ private struct RemoteProjectRow: View {
             .contextMenu {
                 Button("New Claude Tab…", action: newTab)
                     .disabled(connection.status != .online)
+                Divider()
+                Button(project.pinned ? "Unpin" : "Pin to Top") {
+                    connection.setProjectPinned(project.id, !project.pinned)
+                }
+                .disabled(connection.status != .online)
+                Button(project.active ? "Move to Inactive" : "Make Active") {
+                    connection.setProjectActive(project.id, !project.active)
+                }
+                .disabled(connection.status != .online)
             }
             // More than one tab: list each, so any of them can be opened.
             if sessions.count > 1 {

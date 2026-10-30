@@ -195,4 +195,16 @@ import TetherProtocol
         }
         #expect(id == pane)
     }
+
+    @Test func projectSectionsTravel() throws {
+        let id = UUID()
+        let summary = ProjectSummary(id: id, name: "Tether", branch: "main", pinned: true, active: true)
+        let back = try WireCodec.decoder().decode(ProjectSummary.self, from: try WireCodec.encoder().encode(summary))
+        #expect(back == summary)
+        let data = try WireCodec.encoder().encode(PhoneMessage.setProjectActive(id: id, active: false))
+        guard case .setProjectActive(let got, let active) = try WireCodec.decoder().decode(PhoneMessage.self, from: data) else {
+            Issue.record("wrong case"); return
+        }
+        #expect(got == id && !active)
+    }
 }

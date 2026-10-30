@@ -81,6 +81,8 @@ Phone → Mac (`PhoneMessage`):
 | `startSession(requestId, projectId, branch?, prompt, permissionMode?)` | `AppModel.startSession`: a new Claude tab, launched as `claude "<prompt>"`, with `--permission-mode` when given (only `default`, `acceptEdits`, `plan`, `auto`; anything else is ignored and the user's default applies). With `branch`, first a worktree on a new branch from `origin/<base>` (else `<base>`, else `HEAD`) under `~/Library/Application Support/Tether/Worktrees/<repo>/<branch-slug>` (`WorktreeCreator`). The Mac doesn't switch its own selected tab. The phone waits up to 90 s. |
 | `reorderProjects(ids)` | Saves the sidebar order; the next snapshot carries it. |
 | `renameProject(id, name)` | Display name only (`ProjectStore.renameProject`); the folder isn't touched. Blank names are ignored. |
+| `setProjectPinned(id, pinned)` | Pin to Top or unpin (`ProjectStore.setPinned`). Pinning also makes the project Active and puts it last among the pinned. |
+| `setProjectActive(id, active)` | Make Active or Move to Inactive (`ProjectStore.setActive`). Moving to Inactive unpins. |
 | `closeSession(paneId)` | `AppModel.closePane`: closes the tab like its x button, ending a running turn. A branch worktree stays on disk; remove it from the Mac sidebar. |
 | `setModel(paneId, model)` | `AppModel.setModel`: types `/model <model>` via `sendOrQueue` (alias or model id; anything else answers `failed`). Answered with `sendResult`. The new model shows once the status line redraws. |
 | `requestFileList(requestId, paneId)` | The tab's worktree files. Answered with `fileList`. |
@@ -136,6 +138,15 @@ and ends activities itself from each snapshot (`LiveActivities.reconcile`).
 `MirrorEvent.toolDetail(toolUseId:file:removed:added:at:)` carries the file a tool touched and, for
 edits, the changed lines. `toolResult.summary` now holds the last six lines of the output rather than
 the first. Phones on an older build cannot decode `toolDetail`; rebuild both apps together.
+
+## Protocol 20
+
+`ProjectSummary.pinned` and `.active`. `Snapshot.projects` is in the Mac sidebar's order: pinned projects in the
+user's order, then the rest of Active by most recent use, then Inactive (`ProjectSections`, TetherCore). A project is
+Inactive when unused for the Mac's "Move projects to Inactive after" days (default 3), or moved there by hand until
+it's next used. Use is a prompt, a new tab, a Claude turn starting, or a transcript write under `~/.claude/projects`
+(Claude Code outside Tether). `reorderProjects(ids)` now only matters for pinned projects; the phone sends just those.
+`setProjectPinned` and `setProjectActive` change them from the phone or a paired Mac.
 
 ## Protocol 19
 

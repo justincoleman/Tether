@@ -273,6 +273,10 @@ final class CompanionHub {
             Task { await model.reorderProjects(ids) }
         case .closeSession(let paneId):
             Task { await model.closePane(paneId) }
+        case .setProjectPinned(let id, let pinned):
+            Task { await model.setProjectPinned(id, pinned) }
+        case .setProjectActive(let id, let active):
+            Task { await model.setProjectActive(id, active) }
         case .renameProject(let id, let name):
             Task { await model.renameProject(id, to: name) }
         case .registerPush(let registration):

@@ -74,6 +74,23 @@ public enum SessionHistory {
         return sessions
     }
 
+    /// When Claude Code last wrote a transcript for any of `folders`, inside
+    /// Tether or not: the newest session file's modification time.
+    public static func latestActivity(folders: [String],
+                                      projectsDirectory: URL = TranscriptLocator.defaultProjectsDirectory) -> Date? {
+        let fm = FileManager.default
+        var latest: Date?
+        for dir in directories(for: folders, in: projectsDirectory) {
+            guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { continue }
+            for name in names where name.hasSuffix(".jsonl") {
+                let path = dir.appendingPathComponent(name).path
+                guard let modified = (try? fm.attributesOfItem(atPath: path)[.modificationDate]) as? Date else { continue }
+                if latest.map({ modified > $0 }) ?? true { latest = modified }
+            }
+        }
+        return latest
+    }
+
     /// The encoded folder for each path when it exists. Claude Code shortens
     /// very long names, so otherwise each folder's first transcript is
     /// checked for a matching `cwd`.

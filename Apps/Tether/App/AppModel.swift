@@ -20,6 +20,9 @@ final class AppModel {
     /// Every worktree, primary ones included. Branch worktrees nest under
     /// their project in the sidebar.
     private(set) var worktrees: [Worktree] = []
+    /// Last use, pin and Inactive state per project, mirrored from the store.
+    private(set) var projectActivity: [ProjectID: ProjectActivity] = [:]
+    @ObservationIgnored private var lastActivityScan = Date.distantPast
     /// Most urgent state across a project's panes, for the sidebar.
     private(set) var sessionStates: [ProjectID: SessionState] = [:]
     /// Per-pane state, for tab badges.
@@ -131,7 +134,10 @@ final class AppModel {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     self?.updatePolling()
-                    if name == NSApplication.didBecomeActiveNotification { self?.refreshProjectIconsIfStale() }
+                    if name == NSApplication.didBecomeActiveNotification {
+                        self?.refreshProjectIconsIfStale()
+                        self?.scanOutsideActivityIfStale()
+                    }
                 }
             }
         }
@@ -154,6 +160,7 @@ final class AppModel {
         projects = await store.orderedProjects()
         remoteHosts = await store.state.remoteHosts
         worktrees = await store.state.worktrees
+        projectActivity = await store.state.activity
         quickActions = await store.state.quickActions
         if selectedProjectId == nil { selectedProjectId = projects.first?.id }
         // Branch worktrees too, or their tabs' Changes panels never load.
@@ -166,8 +173,60 @@ final class AppModel {
         }
         changes.sync(watched)
         refreshProjectIcons()
+        scanOutsideActivityIfStale()
         updateChangesFocus()
         companion.setNeedsSnapshot()
+    }
+
+    // MARK: Active and Inactive projects
+
+    /// Settings → General: days without use before a project moves to Inactive.
+    var inactiveAfterDays: Int {
+        let days = UserDefaults.standard.integer(forKey: "inactiveAfterDays")
+        return days > 0 ? days : ProjectActivity.defaultInactiveAfterDays
+    }
+
+    /// The sidebar's Pinned, Active and Inactive groups as of `now`.
+    func projectSections(now: Date = Date()) -> ProjectSections {
+        ProjectSections(projects: projects, activity: projectActivity, now: now, inactiveAfterDays: inactiveAfterDays)
+    }
+
+    /// A prompt, a new tab or a Claude turn in the project.
+    func touchProject(_ id: ProjectID?, at date: Date = Date()) {
+        guard let id, projects.contains(where: { $0.id == id }) else { return }
+        let wasActive = projectActivity[id]?.isActive(now: date, inactiveAfterDays: inactiveAfterDays) ?? false
+        projectActivity[id, default: ProjectActivity()].touch(at: date)
+        Task { try? await store.touchProject(id, at: date) }
+        if !wasActive { companion.setNeedsSnapshot() }
+    }
+
+    func setProjectPinned(_ id: ProjectID, _ pinned: Bool) async {
+        try? await store.setPinned(id, pinned)
+        await reload()
+    }
+
+    func setProjectActive(_ id: ProjectID, _ active: Bool) async {
+        try? await store.setActive(id, active)
+        await reload()
+    }
+
+    /// Claude Code use outside Tether counts too: the newest transcript in
+    /// each project's folders. At most every five minutes.
+    func scanOutsideActivityIfStale() {
+        guard Date().timeIntervalSince(lastActivityScan) > 300 else { return }
+        lastActivityScan = Date()
+        let jobs = projects.map { project in
+            (id: project.id, folders: [project.path] + worktrees.filter { $0.projectId == project.id }.map(\.path))
+        }
+        Task {
+            for job in jobs {
+                let latest = await Task.detached(priority: .utility) {
+                    SessionHistory.latestActivity(folders: job.folders)
+                }.value
+                guard let latest, latest > (projectActivity[job.id]?.lastUsed ?? .distantPast) else { continue }
+                touchProject(job.id, at: latest)
+            }
+        }
     }
 
     func addProject(at url: URL) async {
@@ -675,6 +734,7 @@ final class AppModel {
         guard panes[paneId] != nil else { return .failed }
         promptQueue.enqueue(text, for: paneId)
         guard promptQueue.count(for: paneId) > 0 else { return .failed } // blank text
+        touchProject(panes[paneId]?.descriptor.projectId)
         if flushQueue(paneId) { return .sent }
         syncQueuedCount(paneId)
         return .queued
@@ -1052,6 +1112,8 @@ final class AppModel {
             paneAttention[paneId] = session.attention
             dropTrustCard(paneId)
             updateTurnStart(paneId, previous: previous, state: session.state)
+            // A turn started, from chat, the terminal or the phone.
+            if session.state == .working, previous != .working { touchProject(panes[paneId]?.descriptor.projectId) }
             if let mode = session.permissionMode { paneModes[paneId] = mode }
             if let old = sessionId(forPane: paneId), old != session.id {
                 // /clear or a fork gave this tab a new session.
@@ -1253,6 +1315,7 @@ final class AppModel {
 
     private func open(_ d: PaneDescriptor, persist: Bool = true) async {
         if persist { try? await store.addPane(d) }
+        touchProject(d.projectId)
         await mount(d)
         showOverview = false
         selectedPaneId = d.id
@@ -1382,8 +1445,13 @@ extension SessionState {
 extension AppModel {
     /// Everything the phone shows, in sidebar and tab order.
     func companionSnapshot(macName: String) -> Snapshot {
-        let projectList = projects.map {
-            ProjectSummary(id: $0.id, name: $0.name, branch: branchLabel(for: $0))
+        let sections = projectSections()
+        let projectList = sections.pinned.map {
+            ProjectSummary(id: $0.id, name: $0.name, branch: branchLabel(for: $0), pinned: true, active: true)
+        } + sections.active.map {
+            ProjectSummary(id: $0.id, name: $0.name, branch: branchLabel(for: $0), pinned: false, active: true)
+        } + sections.inactive.map {
+            ProjectSummary(id: $0.id, name: $0.name, branch: branchLabel(for: $0), pinned: false, active: false)
         }
         var sessions: [SessionSummary] = []
         for project in projects {
