@@ -12,11 +12,12 @@ struct InspectorView: View {
         @Bindable var model = model
         let changeCount = model.selectedWorktreePath.flatMap { model.changes.snapshots[$0]?.files.count } ?? 0
         VStack(spacing: 0) {
-            PillPicker(selection: $model.inspectorTab, options: [.changes, .files, .preview]) { tab in
+            PillPicker(selection: $model.inspectorTab, options: [.changes, .files, .preview, .artifacts]) { tab in
                 switch tab {
                 case .changes: changeCount > 0 ? "Changes \(changeCount)" : "Changes"
                 case .files: "Files"
                 case .preview: "Preview"
+                case .artifacts: "Artifacts"
                 }
             }
             .frame(height: ChromeMetrics.headerHeight)
@@ -25,6 +26,8 @@ struct InspectorView: View {
                 case .changes: ChangesView()
                 case .files: FilesView()
                 case .preview: PreviewView()
+                case .artifacts:
+                    ArtifactsView(items: model.selectedPaneId.flatMap { model.mirror.model(for: model.sessionId(forPane: $0))?.items } ?? [])
                 }
             }
             .background(theme.surface.opacity(0.5), in: RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius))

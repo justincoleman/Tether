@@ -104,11 +104,12 @@ struct RemoteInspectorView: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
-            PillPicker(selection: $model.inspectorTab, options: [.changes, .files, .preview]) { tab in
+            PillPicker(selection: $model.inspectorTab, options: [.changes, .files, .preview, .artifacts]) { tab in
                 switch tab {
                 case .changes: "Changes"
                 case .files: "Files"
                 case .preview: "Preview"
+                case .artifacts: "Artifacts"
                 }
             }
             .frame(height: ChromeMetrics.headerHeight)
@@ -117,6 +118,9 @@ struct RemoteInspectorView: View {
                 case .changes: RemoteChangesTab(connection: connection, paneId: paneId)
                 case .files: RemoteFilesTab(connection: connection, paneId: paneId)
                 case .preview: RemotePreviewTab(connection: connection, paneId: paneId)
+                case .artifacts:
+                    ArtifactsView(items: connection.snapshot?.sessions.first { $0.id == paneId }?.sessionId
+                        .flatMap { connection.transcripts[$0]?.items } ?? [])
                 }
             }
             .id(paneId)

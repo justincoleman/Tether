@@ -14,6 +14,7 @@ struct SessionView: View {
     @State private var askingModel = false
     @State private var customModel = ""
     @State private var showingChanges = false
+    @State private var showingArtifacts = false
     @State private var photoItem: PhotosPickerItem?
     @State private var loadingPhoto = false
     @State private var photoTask: Task<Void, Never>?
@@ -128,6 +129,7 @@ struct SessionView: View {
                     Menu {
                         Button("Changes", systemImage: "plusminus") { showingChanges = true }
                             .disabled(connection.status != .online)
+                        Button("Artifacts", systemImage: "doc.richtext") { showingArtifacts = true }
                         if session?.agent != .codex {
                             modelMenu
                         }
@@ -173,6 +175,9 @@ struct SessionView: View {
         }
         .sheet(isPresented: $showingChanges) {
             ChangesSheet(connection: connection, paneId: paneId)
+        }
+        .sheet(isPresented: $showingArtifacts) {
+            ArtifactsSheet(items: session?.sessionId.flatMap { connection.transcripts[$0]?.items } ?? [])
         }
         .onChange(of: photoItem) { loadPhoto() }
         .onChange(of: draft.image, initial: true) { _, image in
@@ -533,6 +538,14 @@ private struct PhoneStepRow: View {
             Text(step.file.map { ($0 as NSString).lastPathComponent } ?? step.summary)
                 .font(.caption.monospaced())
                 .lineLimit(3)
+            if step.name == "Artifact", !step.isError,
+               let url = ArtifactList.url(in: step.result ?? step.summary) {
+                Link(destination: url) {
+                    Label("Open page", systemImage: "arrow.up.right.square").font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
             if !step.removed.isEmpty || !step.added.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(step.removed.enumerated()), id: \.offset) { _, line in
@@ -653,5 +666,44 @@ private struct PermissionSheetBody: View {
         UINotificationFeedbackGenerator().notificationOccurred(allow ? .success : .warning)
         connection.decide(request.id, allow: allow)
         dismiss()
+    }
+}
+
+/// Pages Claude published in this conversation, newest first. Tap one to open
+/// it in the Claude app or Safari.
+private struct ArtifactsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let items: [TranscriptItem]
+
+    var body: some View {
+        let artifacts = ArtifactList.published(in: items)
+        NavigationStack {
+            Group {
+                if artifacts.isEmpty {
+                    ContentUnavailableView("No Artifacts Yet", systemImage: "doc.richtext",
+                                           description: Text("Pages Claude publishes in this conversation show up here."))
+                } else {
+                    List(artifacts) { artifact in
+                        Link(destination: artifact.url) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(artifact.title).font(.body.weight(.medium))
+                                Text((artifact.versions > 1 ? "Version \(artifact.versions) · " : "")
+                                     + artifact.at.formatted(.relative(presentation: .named)))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .contextMenu {
+                            Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = artifact.url }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Artifacts")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

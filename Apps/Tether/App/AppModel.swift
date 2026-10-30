@@ -1572,7 +1572,7 @@ final class AppModel {
 }
 
 enum InspectorTab: String {
-    case changes, files, preview
+    case changes, files, preview, artifacts
 }
 
 /// A file from the Files panel shown over the terminal area.
