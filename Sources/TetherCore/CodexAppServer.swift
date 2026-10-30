@@ -105,14 +105,22 @@ public actor CodexAppServer {
         let handle = output.fileHandleForReading
         reader = Task.detached { [weak self] in
             defer { try? handle.close() }
-            var bytes = [UInt8](repeating: 0, count: 65_536)
             while !Task.isCancelled {
                 // FileHandle.read(upToCount:) can wait for the entire count on pipes.
                 // POSIX read returns the currently available bytes, including short frames.
-                let count = read(handle.fileDescriptor, &bytes, bytes.count)
-                if count < 0, errno == EINTR { continue }
-                guard count > 0, let self else { break }
-                await self.receive(Data(bytes.prefix(count)))
+                // A pipe can wait indefinitely. Keep that wait off Swift's cooperative
+                // executor so multiple sessions cannot starve requests and timers.
+                let data: Data? = await withCheckedContinuation { continuation in
+                    DispatchQueue.global(qos: .utility).async {
+                        var bytes = [UInt8](repeating: 0, count: 65_536)
+                        var count: Int
+                        repeat { count = read(handle.fileDescriptor, &bytes, bytes.count) }
+                        while count < 0 && errno == EINTR
+                        continuation.resume(returning: count > 0 ? Data(bytes.prefix(count)) : nil)
+                    }
+                }
+                guard let data, let self else { break }
+                await self.receive(data)
             }
             await self?.ended()
         }
