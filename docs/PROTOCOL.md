@@ -2,7 +2,7 @@
 
 Canonical for the companion wire format, pairing and transport. Types live in
 `Sources/TetherProtocol/Messages.swift` and `PairingLink.swift`; bump
-`ProtocolVersion.current` with any shape change (currently 23).
+`ProtocolVersion.current` with any shape change (currently 25).
 
 Clients are the iPhone app and, since 0.10.0, another Mac's Remote Macs
 window (`Apps/Shared/MacConnection.swift`, shared by both). A Mac client
