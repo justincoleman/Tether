@@ -233,6 +233,7 @@ private struct MacProjects: View {
     let showMacName: Bool
     let startTask: (ProjectID) -> Void
     let askToClose: (SessionSummary) -> Void
+    @State private var showInactive = false
 
     var body: some View {
         if let limits = connection.snapshot?.limits, limits.fiveHour != nil || limits.sevenDay != nil {
@@ -242,41 +243,86 @@ private struct MacProjects: View {
             }
         }
         if let snapshot = connection.snapshot {
-            ForEach(snapshot.projects) { project in
-                let sessions = snapshot.sessions.filter { $0.projectId == project.id }
+            // The Mac sends pinned, then Active by recent use, then Inactive.
+            ForEach(snapshot.projects.filter(\.active)) { project in
+                projectSection(project, snapshot: snapshot)
+            }
+            let inactive = snapshot.projects.filter { !$0.active }
+            if !inactive.isEmpty {
                 Section {
-                    if sessions.isEmpty {
-                        Button { startTask(project.id) } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "plus")
-                                    .font(.caption.weight(.bold))
-                                    .frame(width: 22, height: 22)
-                                    .background(theme.elevated, in: Circle())
-                                Text("Start a task")
-                                    .font(.subheadline.weight(.medium))
-                            }
-                            .foregroundStyle(theme.secondaryText)
-                        }
-                        .listRowBackground(theme.card)
-                    }
-                    ForEach(sessions) { session in
-                        NavigationLink(value: SessionRoute(macId: connection.id, paneId: session.id)) {
-                            ThreadRow(session: session)
-                        }
-                        .listRowBackground(theme.card)
-                        .listRowSeparatorTint(theme.border)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            // Not role: .destructive, which animates the row away
-                            // before the answer to "are you sure?" is known.
-                            Button("Close", systemImage: "xmark.circle") { askToClose(session) }
-                                .tint(.red)
+                    Button { withAnimation { showInactive.toggle() } } label: {
+                        HStack {
+                            Text("Inactive")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(theme.text)
+                            Text("\(inactive.count)")
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(theme.secondaryText)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(theme.secondaryText)
+                                .rotationEffect(.degrees(showInactive ? 90 : 0))
                         }
                     }
-                } header: {
-                    ProjectHeader(project: project, sessions: sessions,
-                                  icon: connection.projectIcons[project.id]) { startTask(project.id) }
+                    .listRowBackground(theme.card)
+                } footer: {
+                    if !showInactive {
+                        Text("Projects not used for a while. Long-press a project to pin it or move it here.")
+                    }
+                }
+                if showInactive {
+                    ForEach(inactive) { project in
+                        projectSection(project, snapshot: snapshot)
+                    }
                 }
             }
+        }
+    }
+
+    private func projectSection(_ project: ProjectSummary, snapshot: Snapshot) -> some View {
+        let sessions = snapshot.sessions.filter { $0.projectId == project.id }
+        return Section {
+            if sessions.isEmpty {
+                Button { startTask(project.id) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.bold))
+                            .frame(width: 22, height: 22)
+                            .background(theme.elevated, in: Circle())
+                        Text("Start a task")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .foregroundStyle(theme.secondaryText)
+                }
+                .listRowBackground(theme.card)
+            }
+            ForEach(sessions) { session in
+                NavigationLink(value: SessionRoute(macId: connection.id, paneId: session.id)) {
+                    ThreadRow(session: session)
+                }
+                .listRowBackground(theme.card)
+                .listRowSeparatorTint(theme.border)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    // Not role: .destructive, which animates the row away
+                    // before the answer to "are you sure?" is known.
+                    Button("Close", systemImage: "xmark.circle") { askToClose(session) }
+                        .tint(.red)
+                }
+            }
+        } header: {
+            ProjectHeader(project: project, sessions: sessions,
+                          icon: connection.projectIcons[project.id]) { startTask(project.id) }
+                .contextMenu {
+                    Button(project.pinned ? "Unpin" : "Pin to Top",
+                           systemImage: project.pinned ? "pin.slash" : "pin") {
+                        connection.setProjectPinned(project.id, !project.pinned)
+                    }
+                    Button(project.active ? "Move to Inactive" : "Make Active",
+                           systemImage: project.active ? "moon.zzz" : "sun.max") {
+                        connection.setProjectActive(project.id, !project.active)
+                    }
+                }
         }
     }
 }
@@ -314,10 +360,18 @@ private struct ProjectHeader: View {
         HStack(spacing: 10) {
             ProjectTile(name: project.name, icon: icon)
             VStack(alignment: .leading, spacing: 1) {
-                Text(project.name)
-                    .font(.headline)
-                    .foregroundStyle(theme.text)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(project.name)
+                        .font(.headline)
+                        .foregroundStyle(theme.text)
+                        .lineLimit(1)
+                    if project.pinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(theme.secondaryText)
+                            .accessibilityLabel("Pinned")
+                    }
+                }
                 if let branch = project.branch {
                     HStack(spacing: 3) {
                         Image(systemName: "arrow.triangle.branch").font(.caption2.weight(.semibold))

@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.20.12",
+    "date": "2026-10-30",
+    "summary": "Tether 0.20.12 makes the project list sort itself: Active projects by recent use, Pin to Top, and a folding Inactive section, on the Mac and iPhone.",
+    "highlights": [
+      {
+        "title": "Active projects take care of themselves.",
+        "body": "Projects you've worked in lately show under Active, most recent first. Sending Claude a prompt, opening a tab, Claude starting a turn, and Claude Code used outside Tether all count. After 3 days without use (change it in Settings > Appearance) a project folds into Inactive, and it comes back as soon as you use it."
+      },
+      {
+        "title": "Pin to Top.",
+        "body": "Right-click a project and choose Pin to Top to keep it at the top of Active. Drag pinned projects to put them in your order. Move to Inactive and Make Active are in the same menu."
+      },
+      {
+        "title": "The iPhone and your other Macs match.",
+        "body": "The iPhone shows the same Active list with a folding Inactive section; long-press a project to pin it or move it. A paired Mac's sidebar does the same. Update Tether on every Mac and the iPhone together."
+      }
+    ]
+  },
+  {
     "version": "0.20.11",
     "date": "2026-10-30",
     "summary": "Tether 0.20.11 makes the chat's message box do more: change queued messages, send one right away, and keep your draft per tab.",

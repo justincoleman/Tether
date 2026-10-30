@@ -119,6 +119,8 @@ struct SidebarView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @Binding var showSidebar: Bool
+    @AppStorage("inactiveAfterDays") private var inactiveAfterDays = ProjectActivity.defaultInactiveAfterDays
+    @AppStorage("showInactiveProjects") private var showInactive = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -142,7 +144,7 @@ struct SidebarView: View {
                         .padding(.top, 4)
 
                     HStack {
-                        Text("Projects")
+                        Text("Active")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(theme.secondaryText)
                         Spacer()
@@ -159,22 +161,36 @@ struct SidebarView: View {
 
                     // A List rather than a stack for its native drag-to-reorder; rows draw
                     // their own selection, so List selection stays off.
+                    let sections = ProjectSections(projects: model.projects, activity: model.projectActivity,
+                                                   now: Date(), inactiveAfterDays: inactiveAfterDays)
                     List {
-                        ForEach(model.projects) { project in
-                            ProjectRow(project: project,
-                                       selected: !model.showOverview && model.selectedProjectId == project.id)
-                                .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
+                        // Only pinned projects take a drag: the rest sort themselves by use.
+                        ForEach(sections.pinned) { project in
+                            row(project, pinned: true, active: true)
                         }
                         .onMove { from, to in
-                            var ids = model.projects.map(\.id)
+                            var ids = sections.pinned.map(\.id)
                             ids.move(fromOffsets: from, toOffset: to)
                             Task { await model.reorderProjects(ids) }
+                        }
+                        ForEach(sections.active) { project in
+                            row(project, pinned: false, active: true)
+                        }
+                        if !sections.inactive.isEmpty {
+                            InactiveHeader(count: sections.inactive.count, expanded: $showInactive)
+                                .listRowInsets(EdgeInsets(top: 10, leading: 8, bottom: 2, trailing: 8))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                            if showInactive {
+                                ForEach(sections.inactive) { project in
+                                    row(project, pinned: false, active: false)
+                                }
+                            }
                         }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .animation(.snappy, value: sections.all.map(\.id))
                 }
             }
 
@@ -214,6 +230,43 @@ struct SidebarView: View {
             }
         }
         .animation(.snappy, value: model.releases.showToast)
+    }
+}
+
+extension SidebarView {
+    private func row(_ project: Project, pinned: Bool, active: Bool) -> some View {
+        ProjectRow(project: project, pinned: pinned, active: active,
+                   selected: !model.showOverview && model.selectedProjectId == project.id)
+            .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+    }
+}
+
+/// "Inactive  4 ›": folds away projects not used for a while.
+struct InactiveHeader: View {
+    @Environment(\.theme) private var theme
+    let count: Int
+    @Binding var expanded: Bool
+
+    var body: some View {
+        Button { withAnimation(.snappy) { expanded.toggle() } } label: {
+            HStack(spacing: 6) {
+                Text("Inactive")
+                    .font(.caption.weight(.semibold))
+                Text("\(count)")
+                    .font(.caption.monospacedDigit())
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+                Spacer()
+            }
+            .foregroundStyle(theme.secondaryText)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Projects not used in a while. Using one brings it back to Active.")
     }
 }
 
@@ -266,6 +319,8 @@ private struct ProjectRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     let project: Project
+    let pinned: Bool
+    let active: Bool
     let selected: Bool
     @State private var hovering = false
     @AppStorage("useProjectIcons") private var useProjectIcons = true
@@ -302,9 +357,17 @@ private struct ProjectRow: View {
                             if !focused, editing { commitRename() }
                         }
                 } else {
-                    Text(project.name)
-                        .font(.body.weight(.medium))
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(project.name)
+                            .font(.body.weight(.medium))
+                            .lineLimit(1)
+                        if pinned {
+                            Image(systemName: "pin.fill")
+                                .font(.caption2)
+                                .foregroundStyle(theme.secondaryText)
+                                .help("Pinned to the top")
+                        }
+                    }
                 }
                 HStack(spacing: 6) {
                     Text(model.branchLabel(for: project))
@@ -340,6 +403,17 @@ private struct ProjectRow: View {
             Button("Rename…") {
                 newName = project.name
                 renaming = true
+            }
+            Divider()
+            if pinned {
+                Button("Unpin") { Task { await model.setProjectPinned(project.id, false) } }
+            } else {
+                Button("Pin to Top") { Task { await model.setProjectPinned(project.id, true) } }
+            }
+            if active {
+                Button("Move to Inactive") { Task { await model.setProjectActive(project.id, false) } }
+            } else {
+                Button("Make Active") { Task { await model.setProjectActive(project.id, true) } }
             }
             Divider()
             Button("Remove Project", role: .destructive) {

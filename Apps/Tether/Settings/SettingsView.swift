@@ -33,6 +33,7 @@ struct AppearanceSettings: View {
     @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
     @AppStorage("useProjectIcons") private var useProjectIcons = true
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
+    @AppStorage("inactiveAfterDays") private var inactiveAfterDays = ProjectActivity.defaultInactiveAfterDays
 
     var body: some View {
         Form {
@@ -49,6 +50,13 @@ struct AppearanceSettings: View {
             Toggle("Show each project's app icon in the sidebar and on the iPhone", isOn: $useProjectIcons)
                 .onChange(of: useProjectIcons) { model.companion.sendProjectIcons() }
             Text("Looks for .tether/icon.png, then an Xcode AppIcon, then a favicon or logo in the project folder.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Stepper("Move projects to Inactive after \(inactiveAfterDays) day\(inactiveAfterDays == 1 ? "" : "s") without use",
+                    value: $inactiveAfterDays, in: 1...60)
+                .onChange(of: inactiveAfterDays) { model.companion.setNeedsSnapshot() }
+            Text("Sending a prompt, opening a tab, or Claude working in the project counts as use, and so does "
+                 + "Claude Code run outside Tether. Pinned projects stay Active.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Picker("New Claude tabs open as", selection: Binding(

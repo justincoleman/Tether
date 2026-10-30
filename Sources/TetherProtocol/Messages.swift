@@ -50,11 +50,19 @@ public struct ProjectSummary: Codable, Hashable, Sendable, Identifiable {
     public var name: String
     /// Branch label as the Mac sidebar shows it, e.g. "main".
     public var branch: String?
+    /// Pinned to the top of Active, in the user's order.
+    public var pinned: Bool
+    /// False once unused for the Mac's "inactive after" days, or moved to
+    /// Inactive by hand. The snapshot lists pinned, then Active most recent
+    /// first, then Inactive.
+    public var active: Bool
 
-    public init(id: ProjectID, name: String, branch: String?) {
+    public init(id: ProjectID, name: String, branch: String?, pinned: Bool = false, active: Bool = true) {
         self.id = id
         self.name = name
         self.branch = branch
+        self.pinned = pinned
+        self.active = active
     }
 }
 
@@ -320,6 +328,10 @@ public enum PhoneMessage: Codable, Sendable {
     case reorderProjects(ids: [ProjectID])
     /// Display name only; the folder is untouched.
     case renameProject(id: ProjectID, name: String)
+    /// Pin to Top, or unpin.
+    case setProjectPinned(id: ProjectID, pinned: Bool)
+    /// Make Active, or Move to Inactive.
+    case setProjectActive(id: ProjectID, active: Bool)
     /// Closes a Claude tab on the Mac, like its x button. Ends a running turn.
     case closeSession(paneId: PaneID)
     /// Switches a tab's model by typing `/model <model>`, queued like a

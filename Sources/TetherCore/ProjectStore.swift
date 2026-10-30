@@ -10,6 +10,8 @@ public struct ProjectStoreState: Codable, Sendable, Equatable {
     public var quickActions: [QuickAction] = []
     /// Tabs shown side by side. Only splits between persisted panes are kept.
     public var splits: [PaneSplit] = []
+    /// Last use, pin and Inactive state per project.
+    public var activity: [ProjectID: ProjectActivity] = [:]
 
     public init(projects: [Project] = [], worktrees: [Worktree] = [],
                 remoteHosts: [RemoteHost] = [], panes: [PaneDescriptor] = [],
@@ -22,7 +24,7 @@ public struct ProjectStoreState: Codable, Sendable, Equatable {
         self.splits = splits
     }
 
-    enum CodingKeys: String, CodingKey { case projects, worktrees, remoteHosts, panes, quickActions, splits }
+    enum CodingKeys: String, CodingKey { case projects, worktrees, remoteHosts, panes, quickActions, splits, activity }
 
     /// Missing keys decode as empty so older state files keep loading.
     public init(from decoder: any Decoder) throws {
@@ -33,6 +35,7 @@ public struct ProjectStoreState: Codable, Sendable, Equatable {
         panes = try c.decodeIfPresent([PaneDescriptor].self, forKey: .panes) ?? []
         quickActions = try c.decodeIfPresent([QuickAction].self, forKey: .quickActions) ?? []
         splits = try c.decodeIfPresent([PaneSplit].self, forKey: .splits) ?? []
+        activity = try c.decodeIfPresent([ProjectID: ProjectActivity].self, forKey: .activity) ?? [:]
     }
 }
 
@@ -66,6 +69,8 @@ public actor ProjectStore {
                               order: (state.projects.map(\.order).max() ?? -1) + 1)
         state.projects.append(project)
         state.worktrees.append(Worktree(projectId: project.id, path: path, branch: baseBranch, isPrimary: true))
+        // Just added counts as used, so it lands in Active.
+        state.activity[project.id] = ProjectActivity(lastUsed: Date())
         try save()
         return project
     }
@@ -75,6 +80,7 @@ public actor ProjectStore {
         state.worktrees.removeAll { $0.projectId == id }
         state.panes.removeAll { $0.projectId == id }
         state.quickActions.removeAll { $0.projectId == id }
+        state.activity[id] = nil
         try save()
     }
 
@@ -83,6 +89,35 @@ public actor ProjectStore {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, let i = state.projects.firstIndex(where: { $0.id == id }) else { return }
         state.projects[i].name = clean
+        try save()
+    }
+
+    /// Records a use of a project; writes only when `ProjectActivity.touch` says it's worth it.
+    public func touchProject(_ id: ProjectID, at date: Date = Date()) throws {
+        guard state.projects.contains(where: { $0.id == id }) else { return }
+        if state.activity[id, default: ProjectActivity()].touch(at: date) { try save() }
+    }
+
+    public func setPinned(_ id: ProjectID, _ pinned: Bool) throws {
+        guard state.projects.contains(where: { $0.id == id }) else { return }
+        state.activity[id, default: ProjectActivity()].pinned = pinned
+        if pinned {
+            // Newly pinned goes to the bottom of the pinned group.
+            state.activity[id]?.movedInactiveAt = nil
+            if let i = state.projects.firstIndex(where: { $0.id == id }) {
+                state.projects[i].order = (state.projects.map(\.order).max() ?? -1) + 1
+            }
+        }
+        try save()
+    }
+
+    public func setActive(_ id: ProjectID, _ active: Bool, at date: Date = Date()) throws {
+        guard state.projects.contains(where: { $0.id == id }) else { return }
+        if active {
+            state.activity[id, default: ProjectActivity()].makeActive(at: date)
+        } else {
+            state.activity[id, default: ProjectActivity()].moveToInactive(at: date)
+        }
         try save()
     }
 
