@@ -1,4 +1,5 @@
 import SwiftUI
+import TetherCore
 import TetherProtocol
 
 /// The plan's 5-hour and weekly limits as two small rings at the bottom of
