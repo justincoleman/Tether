@@ -34,6 +34,14 @@ struct TetherApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 580, height: 680)
+        Window("Welcome to Tether", id: "welcome") {
+            WelcomeView()
+                .environment(model)
+                .environment(\.theme, theme)
+                .tint(theme.accent)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
         Window("Remote Macs", id: "remote-macs") {
             RemoteMacsView()
                 .environment(model)
@@ -47,6 +55,9 @@ struct TetherApp: App {
             CommandGroup(after: .appInfo) {
                 Button("What's New in Tether") { openWindow(id: "whats-new") }
                 Button("Check for Updates…") { UpdatePrompt.checkFromMenu(model.updater) }
+            }
+            CommandGroup(after: .help) {
+                Button("Welcome to Tether") { openWindow(id: "welcome") }
             }
             CommandGroup(replacing: .newItem) {
                 Button("Add Project…") { model.addProjectRequested = true }
