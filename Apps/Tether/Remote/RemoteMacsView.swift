@@ -148,6 +148,8 @@ struct RemoteSessionView: View {
     /// The Remote Macs window has no tab strip above it, so it draws its own.
     let showsHeader: Bool
     @State private var text = ""
+    /// Where the conversation is scrolled to, so Send and the jump button can go to the end.
+    @State private var position = ScrollPosition(edge: .bottom)
 
     init(connection: MacConnection, paneId: PaneID, showsHeader: Bool = true) {
         self.connection = connection
@@ -174,24 +176,20 @@ struct RemoteSessionView: View {
             }
             Divider()
             if let transcript, !transcript.items.isEmpty {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
-                            ForEach(transcript.items) { item in
-                                TranscriptItemView(item: item).id(item.id)
-                            }
-                            if session?.state == .working {
-                                WorkingRow { connection.interrupt(paneId) }.id("working")
-                            }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(transcript.items) { item in
+                            TranscriptItemView(item: item).id(item.id)
                         }
-                        .padding(16)
-                        .frame(maxWidth: MirrorView.columnWidth)
-                        .frame(maxWidth: .infinity)
+                        if session?.state == .working {
+                            WorkingRow { connection.interrupt(paneId) }.id("working")
+                        }
                     }
-                    .onChange(of: transcript.items.count, initial: true) {
-                        if let last = transcript.items.last { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
+                    .padding(16)
+                    .frame(maxWidth: MirrorView.columnWidth)
+                    .frame(maxWidth: .infinity)
                 }
+                .followsLatest($position)
             } else {
                 ContentUnavailableView(session == nil ? "Tab closed" : "Nothing yet",
                                        systemImage: "bubble.left.and.bubble.right",
@@ -309,6 +307,8 @@ struct RemoteSessionView: View {
         guard canSend else { return }
         connection.send(text, to: paneId)
         text = ""
+        // Sending always brings you back to the end.
+        position.scrollTo(edge: .bottom)
     }
 }
 

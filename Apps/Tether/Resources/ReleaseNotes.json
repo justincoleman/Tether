@@ -27,6 +27,17 @@
     ]
   },
   {
+    "version": "0.20.10",
+    "date": "2026-10-30",
+    "summary": "Tether 0.20.10 lets you read back through a paired Mac's chat without being pulled to the bottom.",
+    "highlights": [
+      {
+        "title": "A paired Mac's chat stays where you scrolled.",
+        "body": "In Remote Macs, the chat follows Claude only while you're at the end. Scroll up and it stays put, with a Jump to latest button to get back. Sending a message also brings you to the end, the same as a chat on this Mac."
+      }
+    ]
+  },
+  {
     "version": "0.20.9",
     "date": "2026-10-29",
     "summary": "Tether 0.20.9 stops running Claude tabs from showing as Ended on your iPhone.",
