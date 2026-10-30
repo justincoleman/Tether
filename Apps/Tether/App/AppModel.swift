@@ -34,6 +34,8 @@ final class AppModel {
     private(set) var queuedCounts: [PaneID: Int] = [:]
     /// What each tab is holding for Claude, oldest first, so the chat can show it.
     private(set) var queuedMessages: [PaneID: [String]] = [:]
+    /// What's typed in each tab's chat box, kept while you look elsewhere.
+    var drafts: [PaneID: ComposeDraft] = [:]
     /// When each tab's current turn started, while Claude works or waits on
     /// you mid-turn. Shown as elapsed time in the Overview.
     private(set) var turnStartedAt: [PaneID: Date] = [:]
@@ -688,13 +690,14 @@ final class AppModel {
 
     @discardableResult
     private func flushQueue(_ paneId: PaneID) -> Bool {
+        let solo = promptQueue.nextIsSolo(for: paneId)
         guard canSendNow(paneId), let text = promptQueue.drain(for: paneId) else {
             syncQueuedCount(paneId)
             return false
         }
         guard panes[paneId]?.send(prompt: text) == true else {
             // The terminal is not ready yet: keep the message and try again.
-            promptQueue.putBack(text, for: paneId)
+            promptQueue.putBack(text, for: paneId, solo: solo)
             syncQueuedCount(paneId)
             scheduleFlushRetry(paneId)
             return false
@@ -704,6 +707,39 @@ final class AppModel {
         // send what is queued behind it.
         if PromptQueue.isCommand(text), promptQueue.count(for: paneId) > 0 { scheduleFlushRetry(paneId) }
         return true
+    }
+
+    /// Sends a message ahead of anything queued, stopping Claude's current
+    /// step first if it is working: Ctrl-Return in the terminal. The message
+    /// goes by itself and the rest stay queued.
+    @discardableResult
+    func sendNow(_ text: String, toPane paneId: PaneID) -> SendOutcome {
+        guard panes[paneId] != nil else { return .failed }
+        promptQueue.enqueue(text, for: paneId)
+        let texts = promptQueue.texts(for: paneId)
+        guard let last = texts.last else { return .failed } // blank text
+        return sendQueuedNow(at: texts.count - 1, expected: last, forPane: paneId)
+    }
+
+    /// Send Now on a queued message: it moves to the front and goes alone as
+    /// soon as Claude stops. Esc stops a working turn; a prompt waiting on
+    /// the user is left for them to answer, and the message follows.
+    @discardableResult
+    func sendQueuedNow(at index: Int, expected: String, forPane paneId: PaneID) -> SendOutcome {
+        guard promptQueue.sendNext(at: index, expected: expected, for: paneId) else { return .failed }
+        if flushQueue(paneId) { return .sent }
+        if paneStates[paneId] == .working { interrupt(pane: paneId) }
+        return .queued
+    }
+
+    func editQueued(at index: Int, expected: String, to text: String, forPane paneId: PaneID) {
+        promptQueue.replace(at: index, expected: expected, with: text, for: paneId)
+        syncQueuedCount(paneId)
+    }
+
+    func removeQueued(at index: Int, expected: String, forPane paneId: PaneID) {
+        promptQueue.remove(at: index, expected: expected, for: paneId)
+        syncQueuedCount(paneId)
     }
 
     /// Switches a tab's model the way the user would, with `/model <name>`,
@@ -1279,6 +1315,7 @@ final class AppModel {
         promptQueue.clear(pane: id)
         queuedCounts[id] = nil
         queuedMessages[id] = nil
+        drafts[id] = nil
         turnStartedAt[id] = nil
         recordedSessions[id] = nil
         launchSessions[id] = nil

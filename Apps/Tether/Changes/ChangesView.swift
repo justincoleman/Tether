@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TetherCore
 import TetherProtocol
@@ -246,7 +247,16 @@ private struct FileRow: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            Button("Open") { model.openFile(file.path) }
+                .disabled(file.kind == .deleted)
+            Button("Show Diff") { model.openDiff(file) }
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                .disabled(file.kind == .deleted)
+            Divider()
+            Button("Copy Path") { copy(url.path) }
+            Button("Copy Relative Path") { copy(file.path) }
             if let staging {
+                Divider()
                 if staging != .staged {
                     Button("Stage") { model.changes.stage([file], in: worktreePath) }
                 }
@@ -255,6 +265,15 @@ private struct FileRow: View {
                 }
             }
         }
+    }
+
+    private var url: URL {
+        URL(fileURLWithPath: worktreePath).appendingPathComponent(file.path)
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     private func toggleStaging() {

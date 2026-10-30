@@ -47,8 +47,8 @@ struct MirrorView: View {
                             TranscriptItemView(item: item).id(item.id)
                         }
                         // Held for Claude, shown now; it becomes a normal message once Claude reads it.
-                        ForEach(Array(queued.enumerated()), id: \.offset) { _, text in
-                            QueuedBubble(text: text)
+                        ForEach(Array(queued.enumerated()), id: \.offset) { index, text in
+                            if let paneId { QueuedBubble(paneId: paneId, index: index, text: text) }
                         }
                     }
                     .padding(16)
@@ -197,36 +197,82 @@ private struct ChatModelMenu: View {
     }
 }
 
-/// A message waiting for Claude, in the same place it will take once sent.
+/// A message waiting for Claude, in the same place it will take once sent,
+/// with Edit, Remove and Send Now under it.
 private struct QueuedBubble: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
+    let paneId: PaneID
+    let index: Int
     let text: String
+    @State private var editing = false
+    @State private var edited = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
         HStack {
             Spacer(minLength: 40)
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(text)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(theme.text)
-                    .background(theme.claude.opacity(0.28), in: RoundedRectangle(cornerRadius: 14))
-                    .overlay(RoundedRectangle(cornerRadius: 14)
-                        .strokeBorder(theme.claude.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-                Label("Queued", systemImage: "clock")
-                    .font(.caption2)
-                    .foregroundStyle(theme.secondaryText)
+            VStack(alignment: .trailing, spacing: 4) {
+                Group {
+                    if editing {
+                        TextField("Message", text: $edited, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .lineLimit(1...10)
+                            .focused($focused)
+                            .onAppear { focused = true }
+                            .onSubmit(save)
+                            .onExitCommand { editing = false }
+                    } else {
+                        Text(text).textSelection(.enabled)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .foregroundStyle(theme.text)
+                .background(theme.claude.opacity(0.28), in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(theme.claude.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                HStack(spacing: 12) {
+                    Label("Queued", systemImage: "clock").foregroundStyle(theme.secondaryText)
+                    if editing {
+                        Button("Cancel") { editing = false }
+                        Button("Save", action: save)
+                    } else {
+                        Button("Edit") {
+                            edited = text
+                            editing = true
+                        }
+                        Button("Remove") { model.removeQueued(at: index, expected: text, forPane: paneId) }
+                        Button("Send Now") { _ = model.sendQueuedNow(at: index, expected: text, forPane: paneId) }
+                            .help("Stop what Claude is doing and send this now (⌃↩ in the message box)")
+                    }
+                }
+                .font(.caption2)
+                .buttonStyle(.link)
             }
         }
     }
+
+    private func save() {
+        editing = false
+        model.editQueued(at: index, expected: text, to: edited, forPane: paneId)
+    }
 }
 
-/// An image pasted into the message box, waiting to be sent with it.
-private struct PastedImage: Identifiable {
+/// An image attached to the message box, waiting to be sent with it.
+struct PastedImage: Identifiable {
     let id = UUID()
     let data: Data
     let thumbnail: NSImage
+}
+
+/// A tab's unsent message. Lives in AppModel so it survives switching tabs,
+/// projects, or to the terminal and back.
+struct ComposeDraft {
+    var text = ""
+    var images: [PastedImage] = []
+
+    var isEmpty: Bool { text.isEmpty && images.isEmpty }
 }
 
 private struct ComposeBar: View {
@@ -236,10 +282,17 @@ private struct ComposeBar: View {
     let state: SessionState
     /// Called after a message is sent or queued.
     var didSend: () -> Void = {}
-    @State private var text = ""
-    @State private var images: [PastedImage] = []
     @State private var pasteNote: String?
+    @State private var choosingImages = false
     @FocusState private var focused: Bool
+
+    /// The tab's draft, kept in the model so it stays with the tab.
+    private var draft: Binding<ComposeDraft> {
+        Binding(get: { model.drafts[paneId] ?? ComposeDraft() },
+                set: { model.drafts[paneId] = $0.isEmpty ? nil : $0 })
+    }
+    private var text: String { draft.wrappedValue.text }
+    private var images: [PastedImage] { draft.wrappedValue.images }
 
     private var canSend: Bool {
         state != .detached
@@ -267,7 +320,7 @@ private struct ComposeBar: View {
                                 .frame(width: 56, height: 56)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                 .overlay(alignment: .topTrailing) {
-                                    Button { images.removeAll { $0.id == image.id } } label: {
+                                    Button { draft.wrappedValue.images.removeAll { $0.id == image.id } } label: {
                                         Image(systemName: "xmark.circle.fill")
                                             .symbolRenderingMode(.palette)
                                             .foregroundStyle(.white, .black.opacity(0.6))
@@ -280,7 +333,15 @@ private struct ComposeBar: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField(answersPermission ? "Return allows, Esc denies" : "Message Claude", text: $text, axis: .vertical)
+                Button { choosingImages = true } label: { Image(systemName: "paperclip") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.secondaryText)
+                    .help("Attach pictures")
+                    .padding(.bottom, 2)
+                SlashMenu(paneId: paneId)
+                    .disabled(state == .detached || !model.claudeHasStarted(paneId))
+                    .padding(.bottom, 1)
+                TextField(answersPermission ? "Return allows, Esc denies" : "Message Claude", text: draft.text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
                     .focused($focused)
@@ -311,6 +372,22 @@ private struct ComposeBar: View {
             .padding(.vertical, 7)
             .background(theme.surface, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.border, lineWidth: 0.5))
+            // Key equivalents run before the text field sees Return. Option-Return
+            // already starts a line natively; Shift-Return adds one at the end.
+            .background {
+                Group {
+                    // Only while the box has focus, so a terminal beside the chat keeps its keys.
+                    Button("New Line") { draft.wrappedValue.text += "\n" }
+                        .keyboardShortcut(.return, modifiers: [.shift])
+                        .disabled(!focused)
+                    Button("Send Now", action: sendNow)
+                        .keyboardShortcut(.return, modifiers: [.control])
+                        .disabled(!focused || !canSend)
+                }
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             if let pasteNote {
                 Text(pasteNote).font(.caption).foregroundStyle(theme.red)
             }
@@ -323,7 +400,7 @@ private struct ComposeBar: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if state == .working {
-                Text("Claude is working. Your message will be sent when it finishes.")
+                Text("Claude is working. Return queues your message; ⌃Return stops Claude and sends it now.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if state == .needsInput, model.paneAttention[paneId] != .question {
@@ -333,6 +410,14 @@ private struct ComposeBar: View {
             }
         }
         .padding(12)
+        .fileImporter(isPresented: $choosingImages, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            for url in urls {
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                if let png = NSImage(contentsOf: url).flatMap(Self.pngData) { add(png) }
+            }
+        }
         // Typing goes here once the chat replaces the terminal.
         .onAppear { focused = true }
         .onChange(of: paneId) { focused = true }
@@ -343,9 +428,20 @@ private struct ComposeBar: View {
         let outcome = images.isEmpty
             ? model.sendOrQueue(text, toPane: paneId)
             : model.sendWithImages(text, images: images.map(\.data), toPane: paneId)
+        sent(outcome)
+    }
+
+    /// Control-Return: stop Claude's current step and send this instead.
+    /// Pictures can't jump the queue, so a message with them sends normally.
+    private func sendNow() {
+        guard canSend else { return }
+        guard images.isEmpty else { return send() }
+        sent(model.sendNow(text, toPane: paneId))
+    }
+
+    private func sent(_ outcome: AppModel.SendOutcome) {
         guard outcome != .failed else { return }
-        text = ""
-        images = []
+        model.drafts[paneId] = nil
         pasteNote = nil
         didSend()
     }
@@ -383,7 +479,78 @@ private struct ComposeBar: View {
         }
         guard let thumbnail = NSImage(data: png) else { return }
         pasteNote = nil
-        images.append(PastedImage(data: png, thumbnail: thumbnail))
+        draft.wrappedValue.images.append(PastedImage(data: png, thumbnail: thumbnail))
+    }
+}
+
+/// The "/" button beside the paperclip: Claude Code commands that need no typing.
+/// They queue like any message, so they never land mid-turn.
+private struct SlashMenu: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.theme) private var theme
+    let paneId: PaneID
+
+    var body: some View {
+        Menu {
+            Button("Compact Conversation") { _ = model.sendOrQueue("/compact", toPane: paneId) }
+            Button("Clear Conversation") { _ = model.sendOrQueue("/clear", toPane: paneId) }
+        } label: {
+            Text("/").font(.body.monospaced().weight(.semibold))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(theme.secondaryText)
+        .help("Compact or clear the conversation")
+    }
+}
+
+/// A copy button that shows while the pointer is over a message: beside a
+/// bubble (it keeps its space, so moving onto it doesn't hide it), or in the
+/// top corner of Claude's full-width text.
+private struct HoverCopy: ViewModifier {
+    @Environment(\.theme) private var theme
+    let text: String
+    let beside: Bool
+    @State private var hovering = false
+    @State private var copied = false
+
+    func body(content: Content) -> some View {
+        Group {
+            if beside {
+                HStack(alignment: .bottom, spacing: 6) {
+                    button.opacity(hovering || copied ? 1 : 0)
+                    content
+                }
+            } else {
+                content.overlay(alignment: .topTrailing) {
+                    if hovering || copied { button.transition(.opacity) }
+                }
+            }
+        }
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+
+    private var button: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            copied = true
+            Task {
+                try? await Task.sleep(for: .seconds(1.2))
+                copied = false
+            }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.caption)
+                .foregroundStyle(copied ? theme.green : theme.secondaryText)
+                .padding(5)
+                .background(theme.elevated, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.border, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help("Copy message")
     }
 }
 
@@ -402,9 +569,11 @@ struct TranscriptItemView: View {
                     .padding(.vertical, 8)
                     .foregroundStyle(.white)
                     .background(theme.claude, in: RoundedRectangle(cornerRadius: 14))
+                    .modifier(HoverCopy(text: text, beside: true))
             }
         case .assistant(_, let text, _):
             MarkdownView(text)
+                .modifier(HoverCopy(text: text, beside: false))
         case .steps(_, let steps):
             StepsView(steps: steps)
         case .notice(_, let text, _):
@@ -687,16 +856,21 @@ struct ContextMeter: View {
         min(1, Double(usage.inputTokens) / Double(max(usage.contextWindow, 1)))
     }
 
+    /// Quiet until it matters: orange from 70%, red from 85%.
+    private var tint: Color? {
+        fraction >= 0.85 ? theme.red : fraction >= 0.7 ? theme.claude : nil
+    }
+
     var body: some View {
         HStack(spacing: 6) {
             Text("\(Self.short(usage.inputTokens)) of \(Self.short(usage.contextWindow))")
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(tint ?? theme.secondaryText)
             ZStack {
                 Circle().stroke(theme.border, lineWidth: 2.5)
                 Circle()
                     .trim(from: 0, to: fraction)
-                    .stroke(fraction > 0.85 ? theme.red : theme.claude,
+                    .stroke(tint ?? theme.secondaryText,
                             style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }

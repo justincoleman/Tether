@@ -1,5 +1,32 @@
 [
   {
+    "version": "0.20.11",
+    "date": "2026-10-30",
+    "summary": "Tether 0.20.11 makes the chat's message box do more: change queued messages, send one right away, and keep your draft per tab.",
+    "highlights": [
+      {
+        "title": "Edit, remove or send queued messages now.",
+        "body": "A message you sent while Claude was busy has Edit, Remove and Send Now under it. Send Now stops the step Claude is on and sends that message by itself; the others stay queued. Control-Return in the message box does the same for what you've typed."
+      },
+      {
+        "title": "Your draft stays with its tab.",
+        "body": "Text and pictures in the message box stay with the tab you typed them in, through switching tabs, projects, or to the terminal and back."
+      },
+      {
+        "title": "Compact, clear and attach without typing.",
+        "body": "The new / button runs Compact Conversation or Clear Conversation, and the paperclip attaches pictures from disk. Shift-Return or Option-Return starts a new line."
+      },
+      {
+        "title": "Copy a message, and right-click changed files.",
+        "body": "Hover over a message for a copy button. Files in the Changes list now open, show in Finder, or copy their full or relative path from the right-click menu."
+      },
+      {
+        "title": "A quieter context meter, and Fable.",
+        "body": "The context meter stays grey until 70%, then turns orange, and red from 85%. The model menu offers Fable."
+      }
+    ]
+  },
+  {
     "version": "0.20.9",
     "date": "2026-10-29",
     "summary": "Tether 0.20.9 stops running Claude tabs from showing as Ended on your iPhone.",
