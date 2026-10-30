@@ -141,6 +141,55 @@ import TetherProtocol
         queue.clear(pane: b)
         #expect(queue.drain(for: b) == nil)
     }
+
+    @Test func editAndRemoveTouchOnlyTheChosenMessage() {
+        var queue = PromptQueue()
+        let pane = PaneID()
+        queue.enqueue("first", for: pane)
+        queue.enqueue("second", for: pane)
+        queue.enqueue("third", for: pane)
+        do { let changed = queue.replace(at: 1, expected: "second", with: " 2nd \n", for: pane); #expect(changed) }
+        #expect(queue.texts(for: pane) == ["first", "2nd", "third"])
+        // The queue moved since the user looked: nothing changes.
+        do { let changed = queue.replace(at: 1, expected: "second", with: "x", for: pane); #expect(!changed) }
+        do { let changed = queue.remove(at: 5, expected: "third", for: pane); #expect(!changed) }
+        do { let changed = queue.remove(at: 0, expected: "first", for: pane); #expect(changed) }
+        #expect(queue.texts(for: pane) == ["2nd", "third"])
+        // Clearing a message's text removes it.
+        do { let changed = queue.replace(at: 0, expected: "2nd", with: "  ", for: pane); #expect(changed) }
+        #expect(queue.texts(for: pane) == ["third"])
+        do { let changed = queue.remove(at: 0, expected: "third", for: pane); #expect(changed) }
+        #expect(queue.count(for: pane) == 0)
+    }
+
+    @Test func sendNowGoesFirstAndAlone() {
+        var queue = PromptQueue()
+        let pane = PaneID()
+        queue.enqueue("first", for: pane)
+        queue.enqueue("second", for: pane)
+        queue.enqueue("urgent", for: pane)
+        do { let changed = queue.sendNext(at: 2, expected: "urgent", for: pane); #expect(changed) }
+        #expect(queue.texts(for: pane) == ["urgent", "first", "second"])
+        #expect(queue.nextIsSolo(for: pane))
+        let next = queue.drain(for: pane)
+        #expect(next == "urgent")
+        // A failed send keeps it alone at the front.
+        queue.putBack(next!, for: pane, solo: true)
+        #expect(queue.drain(for: pane) == "urgent")
+        #expect(!queue.nextIsSolo(for: pane))
+        #expect(queue.drain(for: pane) == "first\n\nsecond")
+    }
+
+    @Test func putBackSoloDrainsAloneBeforeTheRest() {
+        var queue = PromptQueue()
+        let pane = PaneID()
+        queue.enqueue("a", for: pane)
+        queue.enqueue("b", for: pane)
+        queue.putBack("now", for: pane, solo: true)
+        queue.enqueue("c", for: pane)
+        #expect(queue.drain(for: pane) == "now")
+        #expect(queue.drain(for: pane) == "a\n\nb\n\nc")
+    }
 }
 
 @Suite struct PromptGateTests {

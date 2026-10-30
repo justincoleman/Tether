@@ -166,7 +166,14 @@ Claude tab in that worktree.
 
 Otherwise the message waits in `PromptQueue` and goes out as soon as a hook
 event says Claude is ready. Several queued messages are sent together as one
-message. The chat view shows "N messages queued". The queue lives in memory
+message. The chat view shows each queued message as a bubble with Edit,
+Remove and Send Now. Edits and removals name the message's index and text, so
+nothing changes if the queue moved under the user. Send Now (or Control-Return
+in the message box, `AppModel.sendNow`) moves the message to the front marked
+solo: it drains by itself, like a slash command, and the rest stay queued. If
+Claude is working, Tether presses Esc; the interrupt record sets the pane idle
+and the queue flushes. A pane waiting on a permission prompt is not
+interrupted; the message goes once the user answers. The queue lives in memory
 only and is lost if Tether quits.
 
 `Session.attention` (permission, question, dialog) carries the reason a session

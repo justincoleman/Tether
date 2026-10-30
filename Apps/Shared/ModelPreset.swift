@@ -8,6 +8,7 @@ struct ModelPreset: Identifiable {
 
     static let all = [
         ModelPreset(label: "Default", alias: "default"),
+        ModelPreset(label: "Fable", alias: "fable"),
         ModelPreset(label: "Opus", alias: "opus"),
         ModelPreset(label: "Sonnet", alias: "sonnet"),
         ModelPreset(label: "Haiku", alias: "haiku"),
@@ -18,6 +19,6 @@ struct ModelPreset: Identifiable {
     /// opusplan can't be told apart from the id, so they never show checked.
     static func matching(_ modelId: String?) -> String? {
         guard let modelId else { return nil }
-        return ["opus", "sonnet", "haiku"].first { modelId.contains($0) }
+        return ["fable", "opus", "sonnet", "haiku"].first { modelId.contains($0) }
     }
 }
