@@ -120,6 +120,8 @@ phone is deferred (issue #3).
 | Stop, otherwise | done |
 | StopFailure | error |
 | SessionEnd, pty exit | detached |
+| SessionEnd for a session the pane already replaced (/clear, a forking resume) | ignored: the pane keeps its current session |
+| Status line report while detached and the pty is alive | idle (Claude only draws its status line while running) |
 | Tab focused while done | idle |
 | Permission answered in Tether (allow or deny) | working |
 
