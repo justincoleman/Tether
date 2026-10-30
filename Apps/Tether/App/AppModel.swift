@@ -63,12 +63,17 @@ final class AppModel {
         }
     }
     var addProjectRequested = false
+    /// Set once at launch when this is a first run, so the window opens the welcome.
+    var needsWelcome = false
     /// The Overview grid replaces the tabs in the detail column. Picking a
     /// project, or opening or switching a tab, leaves it.
     var showOverview = false
     /// Right-hand panel, showing Changes, Files or Preview.
     var showInspector = false
     var inspectorTab: InspectorTab = .changes
+    /// The project whose + was pressed: its start page covers the current tab
+    /// until something is picked or another tab is clicked.
+    var newTabPage: ProjectID?
     /// Shortcut commands for every project, shown in the top bar.
     private(set) var quickActions: [QuickAction] = []
 
@@ -237,8 +242,8 @@ final class AppModel {
         do {
             let p = try await store.addProject(name: url.lastPathComponent, path: url.path)
             await reload()
+            // Its start page offers Claude, Codex and the rest.
             selectedProjectId = p.id
-            await openClaudePane(project: p)
         } catch {
             print("addProject failed: \(error)")
         }
@@ -286,7 +291,11 @@ final class AppModel {
     /// A Codex tab in the project's folder. Codex reports to the same hook
     /// server as Claude (docs/HOOKS.md, "Codex").
     func openCodexPane(project: Project) async {
-        guard let wt = await store.primaryWorktree(for: project.id) else { return }
+        guard let wt = await store.primaryWorktree(for: project.id) else {
+            print("openCodexPane: \(project.name) has no primary worktree")
+            return
+        }
+        print("openCodexPane: opening in \(wt.path), hook port \(hookPort.map(String.init) ?? "none")")
         let d = PaneDescriptor(projectId: project.id,
                                kind: .codex(worktreeId: wt.id, resumeSessionId: nil),
                                title: "Codex")
@@ -297,12 +306,13 @@ final class AppModel {
         var description: String
     }
 
-    /// A new Claude tab, on a new worktree branch when `branch` is set,
-    /// starting on `prompt` when given. `select` is false for phone requests,
-    /// so the Mac's view doesn't jump.
+    /// A new Claude (or Codex) tab, on a new worktree branch when `branch` is
+    /// set, starting on `prompt` when given. `select` is false for phone
+    /// requests, so the Mac's view doesn't jump.
     @discardableResult
     func startSession(projectId: ProjectID, branch: String?, prompt: String?,
-                      permissionMode: String? = nil, select: Bool) async throws -> PaneID {
+                      permissionMode: String? = nil, agent: AgentKind = .claude,
+                      select: Bool) async throws -> PaneID {
         guard let project = projects.first(where: { $0.id == projectId }) else {
             throw StartError(description: "That project is no longer on the Mac.")
         }
@@ -323,13 +333,17 @@ final class AppModel {
                 throw StartError(description: failure.description)
             }
         }
-        let d = PaneDescriptor(projectId: project.id,
-                               kind: .claude(worktreeId: worktree.id, resumeSessionId: nil),
-                               title: branchName.isEmpty ? "Claude" : branchName)
+        let kind: PaneKind = switch agent {
+        case .claude: .claude(worktreeId: worktree.id, resumeSessionId: nil)
+        case .codex: .codex(worktreeId: worktree.id, resumeSessionId: nil)
+        }
+        let d = PaneDescriptor(projectId: project.id, kind: kind,
+                               title: branchName.isEmpty ? agent.displayName : branchName)
         if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             initialPrompts[d.id] = prompt
         }
-        if let permissionMode { initialModes[d.id] = permissionMode }
+        // Permission modes are Claude's; Codex starts in its own default.
+        if let permissionMode, agent == .claude { initialModes[d.id] = permissionMode }
         try? await store.addPane(d)
         await mount(d)
         if select {
@@ -712,14 +726,32 @@ final class AppModel {
         selectedProjectId = projects[number - 1].id
     }
 
-    func newClaudeTabInSelectedProject() {
-        guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
-        Task { await openClaudePane(project: project) }
-    }
-
-    func newCodexTabInSelectedProject() {
-        guard let project = projects.first(where: { $0.id == selectedProjectId }) else { return }
-        Task { await openCodexPane(project: project) }
+    /// File → New Claude/Codex Tab. With a paired Mac in view, the tab opens
+    /// on that Mac, in its selected project: opening it here would land in a
+    /// project the window isn't showing.
+    func newAgentTabInSelectedProject(_ agent: AgentKind) {
+        if let connection = remote.selectedConnection {
+            guard connection.status == .online,
+                  let projectId = remote.selectedProjectId ?? connection.snapshot?.projects.first?.id else { return }
+            Task {
+                if case .started(let paneId) = await connection.startSession(
+                    projectId: projectId, branch: nil, prompt: "", permissionMode: nil, agent: agent) {
+                    remote.selectedProjectId = projectId
+                    remote.selectedPaneId = paneId
+                }
+            }
+            return
+        }
+        guard let project = projects.first(where: { $0.id == selectedProjectId }) else {
+            print("newAgentTab(\(agent)): no selected project")
+            return
+        }
+        Task {
+            switch agent {
+            case .claude: await openClaudePane(project: project)
+            case .codex: await openCodexPane(project: project)
+            }
+        }
     }
 
     func newShellTabInSelectedProject() {
@@ -1350,14 +1382,14 @@ final class AppModel {
         await reload()
         splits = await store.state.splits
         updater.startAutomaticChecks()
-        var descriptors = await store.state.panes
-        for project in projects where !descriptors.contains(where: { $0.projectId == project.id }) {
-            if let wt = await store.primaryWorktree(for: project.id) {
-                let d = PaneDescriptor(projectId: project.id,
-                                       kind: .claude(worktreeId: wt.id, resumeSessionId: nil),
-                                       title: "Claude")
-                try? await store.addPane(d)
-                descriptors.append(d)
+        // A project with no tabs shows its start page rather than starting Claude.
+        let descriptors = await store.state.panes
+        // Someone who already has projects has been through setup, in an older version.
+        if !UserDefaults.standard.bool(forKey: "welcomeSeen") {
+            if projects.isEmpty {
+                needsWelcome = true
+            } else {
+                UserDefaults.standard.set(true, forKey: "welcomeSeen")
             }
         }
         for (i, d) in descriptors.enumerated() {

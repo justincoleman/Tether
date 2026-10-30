@@ -1,8 +1,8 @@
 [
   {
-    "version": "0.30.3",
+    "version": "0.30.9",
     "date": "2026-10-30",
-    "summary": "Tether 0.30.3 tidies the Changes panel and puts New Agent on a Branch in the sidebar.",
+    "summary": "Tether 0.30.9 tidies the Changes panel and puts New Agent on a Branch in the sidebar.",
     "highlights": [
       {
         "title": "Changes, grouped by folder.",
@@ -11,6 +11,88 @@
       {
         "title": "New Agent on a Branch, in the sidebar.",
         "body": "Under the open project, a dashed New Agent on a Branch button starts a worktree on a new branch with its own Claude tab, without opening the + menu."
+      }
+    ]
+  },
+  {
+    "version": "0.30.7",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.7 shows a paired Mac's own plan limits in the sidebar rings.",
+    "highlights": [
+      {
+        "title": "Limit rings on paired Macs.",
+        "body": "Select a paired Mac and the rings at the bottom of the sidebar now show that Mac's 5-hour and weekly limits, the same rings and hover card as on this Mac. Before, they kept showing this Mac's numbers."
+      }
+    ]
+  },
+  {
+    "version": "0.30.6",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.6 redraws the plan limit rings: small and colored at rest, a detailed card on hover.",
+    "highlights": [
+      {
+        "title": "Rings that open on hover.",
+        "body": "The plan limit rings are now green while you're within pace, orange once you're ahead of it, and red from 90%. Hover and they grow smoothly into a card with the percentage inside each ring, its name and the time until it resets. The click-through popover is gone."
+      }
+    ]
+  },
+  {
+    "version": "0.30.5",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.5 puts your Claude plan's limits in the sidebar, with a pace tick on each ring.",
+    "highlights": [
+      {
+        "title": "Plan limits in the sidebar.",
+        "body": "Two small rings at the bottom of the sidebar show how much of your 5-hour and weekly limits you've used. A tick on each ring marks how far into that window you are: if the ring has passed its tick, you're using the limit faster than it refills. Hover for the percentages and reset times, click for the detail."
+      },
+      {
+        "title": "Turn them off if you like.",
+        "body": "Settings > Appearance has switches for the rings and for the ticks. Your own status line keeps working as before."
+      }
+    ]
+  },
+  {
+    "version": "0.30.4",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.4 adds a welcome that walks a new install through setup, and stops opening Claude in every project at launch.",
+    "highlights": [
+      {
+        "title": "A welcome for first launch.",
+        "body": "A new install walks you through checking your Mac's tools (Claude Code, Git, Codex, Tailscale), choosing whether new Claude tabs open as a terminal or a chat, matching your terminal theme, adding projects (suggested from folders you've already used Claude Code in), and pairing your iPhone. See it any time with Help > Welcome to Tether."
+      },
+      {
+        "title": "Projects start quietly.",
+        "body": "Tether no longer starts a Claude tab in every project at launch. A project with no tabs open shows its start page, so you pick Claude or Codex when you want one."
+      }
+    ]
+  },
+  {
+    "version": "0.30.3",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.3 gives every project a start page, and + opens it.",
+    "highlights": [
+      {
+        "title": "A start page for every project.",
+        "body": "A project with no tabs open shows its icon, big Start Claude and Start Codex buttons, Shell, Agent on a Branch, its dev server preview and shortcuts, and your last few conversations to pick back up in a click. A newly added project opens on it, so you choose Claude or Codex."
+      },
+      {
+        "title": "+ opens the start page.",
+        "body": "Instead of a small menu, + shows the start page in place of the current tab. Pick anything, click another tab or press Esc to close it. ⌘T still opens Claude right away, and ⌥⌘T Codex."
+      }
+    ]
+  },
+  {
+    "version": "0.30.2",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.2 puts Codex next to Claude everywhere you start a tab, including on a paired Mac and the iPhone.",
+    "highlights": [
+      {
+        "title": "Codex, wherever Claude is.",
+        "body": "A Codex button sits next to Claude in the tab bar. Agent on a Branch, the Overview and New Task on the iPhone let you choose Claude or Codex."
+      },
+      {
+        "title": "Codex on your other Mac.",
+        "body": "With a paired Mac in view, the Codex button, the + menu and File > New Codex Tab open the tab on that Mac. File > New Claude Tab does the same now, instead of opening it on this Mac out of sight. Both Macs and the iPhone need this version."
       }
     ]
   },

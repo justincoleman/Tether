@@ -33,6 +33,8 @@ struct AppearanceSettings: View {
     @AppStorage("appearance") private var appearance: AppearanceMode = .terminal
     @AppStorage("useProjectIcons") private var useProjectIcons = true
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
+    @AppStorage("showLimitRings") private var showLimitRings = true
+    @AppStorage("showLimitPace") private var showLimitPace = true
     @AppStorage("inactiveAfterDays") private var inactiveAfterDays = ProjectActivity.defaultInactiveAfterDays
 
     var body: some View {
@@ -69,6 +71,13 @@ struct AppearanceSettings: View {
                  + "Claude keeps running in the terminal either way.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Toggle("Show plan limits at the bottom of the sidebar", isOn: $showLimitRings)
+            Toggle("Mark how far into each window you are", isOn: $showLimitPace)
+                .disabled(!showLimitRings)
+            Text("Rings for the 5-hour and weekly limits. The tick on each ring is the time that has passed; a ring "
+                 + "that's past its tick is using the limit faster than it refills. Claude Code reports them after each reply.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Toggle("Show Tether in the menu bar", isOn: $showMenuBarExtra)
             Text("Lists every Claude tab and what it's doing, with a count of the ones waiting on you.")
                 .font(.caption)
@@ -86,7 +95,7 @@ struct AppearanceSettings: View {
     }
 }
 
-/// SSH targets offered in the + menu, e.g. the always-on Mac mini. Not for
+/// SSH targets offered on the start page (+), e.g. the always-on Mac mini. Not for
 /// pairing another Mac: that is Settings → Macs.
 struct RemoteHostsSettings: View {
     @Environment(AppModel.self) private var model

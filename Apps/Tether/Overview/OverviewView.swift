@@ -290,7 +290,7 @@ private struct OverviewCard: View {
     }
 }
 
-/// A project with no Claude tab: clicking starts one.
+/// A project with no agent tab: clicking starts Claude, the context menu either.
 private struct EmptyProjectCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
@@ -312,10 +312,10 @@ private struct EmptyProjectCard: View {
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
             }
-            Text("No Claude tab")
+            Text("No Claude or Codex tab")
                 .font(.title3.weight(.medium))
                 .foregroundStyle(theme.secondaryText)
-            Text("Click to start one.")
+            Text("Click to start Claude, or right-click for Codex.")
                 .font(.callout)
                 .foregroundStyle(theme.secondaryText)
         }
@@ -325,6 +325,10 @@ private struct EmptyProjectCard: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(theme.border.opacity(0.6), lineWidth: 0.5))
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onTapGesture { Task { await model.openClaudePane(project: project) } }
+        .contextMenu {
+            Button("New Claude Tab") { Task { await model.openClaudePane(project: project) } }
+            Button("New Codex Tab") { Task { await model.openCodexPane(project: project) } }
+        }
         .onHover { hovering = $0 }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)

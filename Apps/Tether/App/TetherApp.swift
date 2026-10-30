@@ -34,6 +34,14 @@ struct TetherApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 580, height: 680)
+        Window("Welcome to Tether", id: "welcome") {
+            WelcomeView()
+                .environment(model)
+                .environment(\.theme, theme)
+                .tint(theme.accent)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
         Window("Remote Macs", id: "remote-macs") {
             RemoteMacsView()
                 .environment(model)
@@ -48,18 +56,23 @@ struct TetherApp: App {
                 Button("What's New in Tether") { openWindow(id: "whats-new") }
                 Button("Check for Updates…") { UpdatePrompt.checkFromMenu(model.updater) }
             }
+            CommandGroup(after: .help) {
+                Button("Welcome to Tether") { openWindow(id: "welcome") }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Add Project…") { model.addProjectRequested = true }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             // Replaces File → Close (⌘W) so it closes the tab, not the window.
             CommandGroup(replacing: .saveItem) {
-                Button("New Claude Tab") { model.newClaudeTabInSelectedProject() }
+                Button("New Claude Tab") { model.newAgentTabInSelectedProject(.claude) }
                     .keyboardShortcut("t", modifiers: .command)
-                Button("New Codex Tab") { model.newCodexTabInSelectedProject() }
+                Button("New Codex Tab") { model.newAgentTabInSelectedProject(.codex) }
                     .keyboardShortcut("t", modifiers: [.command, .option])
+                // A paired Mac's tabs are agents only; there's no remote shell.
                 Button("New Shell Tab") { model.newShellTabInSelectedProject() }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
+                    .disabled(model.remote.selectedMacId != nil)
                 Button("Close Tab") { model.requestCloseSelectedPane() }
                     .keyboardShortcut("w", modifiers: .command)
                 Divider()

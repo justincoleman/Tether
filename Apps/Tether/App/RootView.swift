@@ -17,6 +17,7 @@ enum ChromeMetrics {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
+    @Environment(\.openWindow) private var openWindow
     @AppStorage("showSidebar") private var showSidebar = true
     @AppStorage("sidebarWidth") private var sidebarWidth = 240.0
     @AppStorage("inspectorWidth") private var inspectorWidth = 420.0
@@ -47,6 +48,13 @@ struct RootView: View {
         .ignoresSafeArea(.container, edges: .top)
         .animation(.snappy(duration: 0.2), value: showSidebar)
         .animation(.snappy(duration: 0.2), value: inspectorShown)
+        // First launch: the welcome walkthrough.
+        .onChange(of: model.needsWelcome, initial: true) {
+            if model.needsWelcome {
+                model.needsWelcome = false
+                openWindow(id: "welcome")
+            }
+        }
         // Paired Macs show up as chips in the sidebar, so keep them connected.
         .onAppear { model.remote.retain() }
         .onDisappear { model.remote.release() }
@@ -197,6 +205,8 @@ struct SidebarView: View {
             if let connection = model.remote.selectedConnection {
                 MacNoticeCard(connection: connection)
             }
+
+            LimitRings()
 
             if let message = model.hookStatusMessage {
                 Label(message, systemImage: "exclamationmark.triangle")

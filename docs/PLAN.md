@@ -307,10 +307,16 @@ Session { id (claude session_id), worktreeId, paneId, state, startedAt, lastEven
 - Adding a project = picking a folder. Icon resolution: `.tether/icon.png`,
   then an Xcode `AppIcon` asset, then a web favicon/logo in the repo, then the
   initial letter. "Ask Claude to set icon" is a canned prompt into the session.
-- "Every project has a session ready": on app launch (and on project add),
-  Tether opens a tab per project and runs `claude --resume <last session id>`
-  if one exists for that worktree, else `claude`. Launch is lazy and
-  staggered (one every 300 ms) so twelve projects do not all spawn at once.
+- Launch restores the tabs that were open (staggered, one every 300 ms, so
+  twelve projects do not all spawn at once). A project with no tabs, and a
+  newly added one, shows its start page (Claude, Codex, shell, recent
+  conversations) instead of starting a session. Since 0.30.4 Tether no longer
+  opens a `claude` tab in every project at launch.
+- First launch with no projects opens the welcome walkthrough (`WelcomeView`):
+  tools check (`ToolProbe`, through the login shell), terminal or chat,
+  window colors, projects suggested from `~/.claude/projects`
+  (`SessionHistory.recentFolders`), iPhone pairing. Help > Welcome to Tether
+  reopens it. A user who already has projects when 0.30.4 first runs skips it.
 - "New Agent on a Branch": `git worktree add ../<repo>-<branch> -b <branch>`
   under a Tether-managed directory, new tab, new session. Worktrees nest under
   their project in the sidebar. Finishing: Tether offers "remove worktree"

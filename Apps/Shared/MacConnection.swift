@@ -139,13 +139,14 @@ final class MacConnection: Identifiable {
         channel?.send(PhoneMessage.setModel(paneId: paneId, model: model))
     }
 
-    /// Asks the Mac to open a Claude tab, optionally on a new branch.
+    /// Asks the Mac to open a Claude or Codex tab, optionally on a new branch.
     /// Creating a worktree can take a while on a big repo.
     func startSession(projectId: ProjectID, branch: String?, prompt: String,
-                      permissionMode: String?) async -> StartOutcome {
+                      permissionMode: String?, agent: AgentKind = .claude) async -> StartOutcome {
         await startRequest { requestId in
             PhoneMessage.startSession(requestId: requestId, projectId: projectId,
-                                      branch: branch, prompt: prompt, permissionMode: permissionMode)
+                                      branch: branch, prompt: prompt, permissionMode: permissionMode,
+                                      agent: agent == .claude ? nil : agent)
         }
     }
 
