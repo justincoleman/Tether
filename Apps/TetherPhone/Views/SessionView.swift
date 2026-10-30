@@ -76,7 +76,9 @@ struct SessionView: View {
                 ContentUnavailableView(session == nil ? "Tab closed" : "Nothing yet",
                                        systemImage: "bubble.left.and.bubble.right",
                                        description: Text(session == nil
-                                           ? "This Claude tab is no longer open on the Mac."
+                                           ? "This tab is no longer open on the Mac."
+                                           : session?.agent == .codex
+                                           ? "Codex's replies show in its terminal on the Mac for now. Status, approvals and Stop work here."
                                            : "Messages appear here as Claude works."))
                     .frame(maxHeight: .infinity)
             }
@@ -100,6 +102,9 @@ struct SessionView: View {
                         HStack(spacing: 4) {
                             PhoneStatusBadge(state: session.state, size: 14)
                             Text(session.statusNote ?? session.title)
+                            if session.agent == .codex {
+                                Text("· Codex")
+                            }
                             if let mode = session.permissionMode {
                                 Text("· \(PermissionModeName.label(mode))")
                             }
@@ -118,7 +123,9 @@ struct SessionView: View {
                     Menu {
                         Button("Changes", systemImage: "plusminus") { showingChanges = true }
                             .disabled(connection.status != .online)
-                        modelMenu
+                        if session?.agent != .codex {
+                            modelMenu
+                        }
                         Button("Close Thread", systemImage: "xmark.circle", role: .destructive) { confirmClose = true }
                     } label: {
                         Image(systemName: "ellipsis")

@@ -62,6 +62,13 @@ final class TerminalPane: Identifiable {
         return false
     }
 
+    /// The coding agent in this tab, or nil for shells, ssh and quick actions.
+    var agent: AgentKind? { descriptor.kind.agent }
+
+    /// A Claude or Codex tab: hooks drive its status, approvals and queue.
+    /// Chat, model and mode controls stay Claude-only (`isClaude`).
+    var isAgent: Bool { agent != nil }
+
     func focus() {
         focusTask?.cancel()
         // Ghostty's requestFocus keeps an unconditional deferred request. Own

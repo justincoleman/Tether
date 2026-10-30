@@ -36,11 +36,11 @@ public enum TrustFolder {
 extension PermissionRequested {
     public var isFolderTrust: Bool { toolName == TrustFolder.toolName }
 
-    /// "Claude wants to run a command", or the folder-trust question.
+    /// "Claude wants to run a command" (or Codex), or the folder-trust question.
     public var heading: String {
         if isFolderTrust { return "Do you trust the files in this folder?" }
         if let question { return question.question }
-        return "Claude wants to \(title.lowercased())"
+        return "\((agent ?? .claude).displayName) wants to \(title.lowercased())"
     }
 }
 
@@ -85,10 +85,13 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     public var permissionMode: String?
     /// Model and cost from the status line. Nil until Claude Code draws it.
     public var status: SessionStatus?
+    /// The agent in the tab. Nil from a Mac older than protocol 21, which
+    /// only had Claude tabs.
+    public var agent: AgentKind?
 
     public init(id: PaneID, projectId: ProjectID, sessionId: SessionID?, title: String,
                 state: SessionState, attention: AttentionReason?, queued: Int, preview: String? = nil,
-                permissionMode: String? = nil, status: SessionStatus? = nil) {
+                permissionMode: String? = nil, status: SessionStatus? = nil, agent: AgentKind? = nil) {
         self.id = id
         self.projectId = projectId
         self.sessionId = sessionId
@@ -99,6 +102,7 @@ public struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
         self.preview = preview
         self.permissionMode = permissionMode
         self.status = status
+        self.agent = agent
     }
 }
 
@@ -139,10 +143,13 @@ public struct PermissionRequested: Codable, Hashable, Sendable, Identifiable {
     public var detail: String
     /// Set for a question Claude asks with options, so a card can offer them.
     public var question: QuestionPrompt?
+    /// The agent asking. Nil from a Mac older than protocol 21 (always Claude).
+    public var agent: AgentKind?
 
     public init(id: UUID, paneId: PaneID?, sessionId: SessionID, toolName: String,
-                title: String, detail: String, question: QuestionPrompt? = nil) {
+                title: String, detail: String, question: QuestionPrompt? = nil, agent: AgentKind? = nil) {
         self.question = question
+        self.agent = agent
         self.id = id
         self.paneId = paneId
         self.sessionId = sessionId

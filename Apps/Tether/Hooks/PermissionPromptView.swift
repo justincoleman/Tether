@@ -35,13 +35,18 @@ struct PermissionPromptView: View {
         .padding(12)
     }
 
+    /// Claude or Codex, whichever tab asked.
+    private var agentName: String {
+        model.agent(forPane: request.paneId)?.displayName ?? "Claude"
+    }
+
     @ViewBuilder private var permissionCard: some View {
         let summary = PermissionSummary.describe(toolName: request.toolName, input: request.toolInput)
         let isTrust = request.toolName == TrustFolder.toolName
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Circle().fill(theme.blue).frame(width: 8, height: 8)
-                Text(isTrust ? "Do you trust the files in this folder?" : "Claude wants to \(summary.title.lowercased())")
+                Text(isTrust ? "Do you trust the files in this folder?" : "\(agentName) wants to \(summary.title.lowercased())")
                     .font(.headline)
                 Spacer()
                 if !isTrust {

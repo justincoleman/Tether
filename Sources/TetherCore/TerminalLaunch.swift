@@ -30,11 +30,31 @@ public struct TerminalLaunch: Hashable, Sendable {
         newSessionId: SessionID? = nil,
         initialPrompt: String? = nil,
         permissionMode: String? = nil,
+        hookPort: UInt16? = nil,
         shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
-        claudeExecutable: String = "claude"
+        claudeExecutable: String = "claude",
+        codexExecutable: String = "codex"
     ) -> TerminalLaunch {
         let env = [paneEnvKey: pane.id.uuidString, tokenEnvKey: token]
         switch pane.kind {
+        case .codex(_, let resume):
+            var parts = [codexExecutable]
+            var codexEnv = env
+            if let hookPort {
+                parts += CodexHooks.configArguments()
+                codexEnv[CodexHooks.portEnvKey] = String(hookPort)
+            }
+            if let resume, !resume.isEmpty {
+                parts += ["resume", resume]
+            } else if let prompt = initialPrompt.map(promptText),
+                      !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // `codex "<prompt>"` starts on a task, like `claude "<prompt>"`.
+                parts.append(prompt.hasPrefix("-") ? " " + prompt : prompt)
+            }
+            return TerminalLaunch(
+                command: loginShellCommand(shell: shell, parts),
+                workingDirectory: worktree?.path,
+                environment: codexEnv)
         case .claude(_, let resume):
             var parts = [claudeExecutable]
             if let hookSettingsPath { parts += ["--settings", hookSettingsPath] }

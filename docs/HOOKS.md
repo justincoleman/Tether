@@ -119,6 +119,7 @@ phone is deferred (issue #3).
 | Stop, last message ends in `?` | needsInput (heuristic: Claude asked a question) |
 | Stop, otherwise | done |
 | StopFailure | error |
+| Interrupt (Codex only: the user pressed Esc) | idle, unless detached |
 | SessionEnd, pty exit | detached |
 | SessionEnd for a session the pane already replaced (/clear, a forking resume) | ignored: the pane keeps its current session |
 | Status line report while detached and the pty is alive | idle (Claude only draws its status line while running) |
@@ -243,3 +244,47 @@ goes out only at the 7 s check, so a slow start doesn't buzz the phone.
   Messages sent meanwhile queue (`canSendNow` needs a state).
 - An unreadable or missing `~/.claude.json` counts as trusted: no card is better than a wrong one.
 - Return and Esc in an empty chat box answer ordinary permissions but never this one.
+
+## Codex
+
+Codex tabs (`PaneKind.codex`) report to the same hook server and state machine
+as Claude tabs. Codex 0.164 (captured 2026-10-30 on the Mac mini) sends hook
+bodies with Claude's field names: `session_id` (the thread id, also the uuid in
+the rollout file name), `transcript_path` (the rollout under
+`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`), `cwd`, `hook_event_name`,
+`model`, `permission_mode` (Claude's mode names: `bypassPermissions` when
+approvals are off), `tool_name` (`Bash` for shell commands), `tool_input`,
+`last_assistant_message` on Stop. Captured bodies are fixtures in
+`CodexHooksTests`.
+
+Wiring (`CodexHooks`, `TerminalLaunch`):
+
+- Codex runs only `command` hooks, so each hook is a `curl` that posts stdin to
+  `/tether/hook` (observed events, prints nothing) or `/tether/permission`
+  (prints Tether's answer, same `hookSpecificOutput.decision` shape as Claude).
+  Every command ends in `|| true`: a missing Tether never blocks Codex.
+- They are passed per launch as `-c hooks.<Event>=[{hooks=[{type="command",command="…",timeout=N}]}]`.
+  Tether never writes `~/.codex/config.toml` or a project's `.codex/`.
+- Events: SessionStart, UserPromptSubmit, PostToolUse, Stop, Interrupt,
+  SessionEnd (timeout 3s: Codex clamps SessionEnd to that), PermissionRequest
+  (600s, like Claude).
+- Codex asks the user to review new or changed hooks once ("Hooks need
+  review", then Trust all) and remembers them by hash across launches and
+  upgrades. So the arguments never change between launches: the port comes
+  from `TETHER_HOOK_PORT`, pane and token from `TETHER_PANE_ID` and
+  `TETHER_TOKEN`, all in the pty's environment. Without that review the hooks
+  are skipped silently. Tether does not pass `--dangerously-bypass-hook-trust`,
+  which would also skip review of every other hook on the run.
+- Codex has no `--session-id`, so a new Codex tab learns its thread id from
+  SessionStart. A recorded id is resumed with `codex resume <id>`.
+- `Interrupt` replaces Claude's transcript-polling Esc detection.
+
+Not yet wired: the chat mirror (the rollout is a different format), the model
+menu (Codex's `/model` differs), folder trust cards (Codex's prompt lists
+"Trust and continue" first, so a bare Return trusts), questions
+(`request_user_input`), and "Always allow" (Codex sends no
+`permission_suggestions`, so it allows once). Codex's "Approaching rate
+limits, switch model?" popup takes the next Return, so a queued message sent
+while it shows picks "Switch". Not verified: whether SessionStart fires when
+the TUI starts or only with the first prompt, and the PermissionRequest
+answer shape on a real approval.

@@ -56,6 +56,8 @@ struct TetherApp: App {
             CommandGroup(replacing: .saveItem) {
                 Button("New Claude Tab") { model.newClaudeTabInSelectedProject() }
                     .keyboardShortcut("t", modifiers: .command)
+                Button("New Codex Tab") { model.newCodexTabInSelectedProject() }
+                    .keyboardShortcut("t", modifiers: [.command, .option])
                 Button("New Shell Tab") { model.newShellTabInSelectedProject() }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                 Button("Close Tab") { model.requestCloseSelectedPane() }

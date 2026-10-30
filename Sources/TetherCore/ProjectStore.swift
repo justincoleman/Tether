@@ -140,7 +140,7 @@ public actor ProjectStore {
 
     public func removeWorktree(_ id: WorktreeID) throws {
         state.worktrees.removeAll { $0.id == id && !$0.isPrimary }
-        state.panes.removeAll { if case .claude(let wt, _) = $0.kind { return wt == id } else { return false } }
+        state.panes.removeAll { $0.kind.worktreeId == id }
         try save()
     }
 
@@ -224,11 +224,11 @@ public actor ProjectStore {
         try save()
     }
 
-    /// Remember the Claude session running in a pane so the next launch resumes it.
+    /// Remember the agent session running in a pane so the next launch resumes it.
     public func recordSession(_ sessionId: SessionID, forPane paneId: PaneID) throws {
         guard let i = state.panes.firstIndex(where: { $0.id == paneId }),
-              case .claude(let wt, _) = state.panes[i].kind else { return }
-        state.panes[i].kind = .claude(worktreeId: wt, resumeSessionId: sessionId)
+              state.panes[i].kind.agent != nil else { return }
+        state.panes[i].kind = state.panes[i].kind.resuming(sessionId)
         try save()
     }
 

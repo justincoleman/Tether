@@ -96,6 +96,10 @@ public actor SessionRegistry {
             return (.error, nil)
         case .sessionEnd:
             return (.detached, nil)
+        case .interrupt:
+            // Codex says when the user stops a turn; Claude has no such hook.
+            if current == .detached { return stay() }
+            return (.idle, nil)
         }
     }
 
