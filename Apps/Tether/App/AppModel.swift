@@ -125,6 +125,12 @@ final class AppModel {
     /// across restarts (`SavedLimits`).
     private(set) var usageLimits: UsageLimits? = SavedLimits.decode(
         UserDefaults.standard.data(forKey: "usageLimits"), now: Date())
+    /// When a status line last reported them. Claude Code only does that from
+    /// a tab that has just made a request, so this is the limits' real age.
+    private(set) var usageLimitsAt: Date? = {
+        let seconds = UserDefaults.standard.double(forKey: "usageLimitsAt")
+        return seconds > 0 ? Date(timeIntervalSince1970: seconds) : nil
+    }()
 
     private let store = ProjectStore(fileURL: ProjectStore.defaultFileURL())
     let registry = SessionRegistry()
@@ -1250,9 +1256,14 @@ final class AppModel {
                 paneStatus[paneId] = report.status
                 changed = true
             }
-            if let limits = report.limits, limits != usageLimits {
-                usageLimits = limits
-                UserDefaults.standard.set(SavedLimits.encode(limits), forKey: "usageLimits")
+            if let limits = report.limits {
+                if limits != usageLimits {
+                    usageLimits = limits
+                    UserDefaults.standard.set(SavedLimits.encode(limits), forKey: "usageLimits")
+                }
+                let now = Date()
+                usageLimitsAt = now
+                UserDefaults.standard.set(now.timeIntervalSince1970, forKey: "usageLimitsAt")
                 changed = true
             }
             if changed { companion.setNeedsSnapshot() }
@@ -1561,6 +1572,7 @@ extension AppModel {
         let colors = TerminalHost.palette
         return Snapshot(macName: macName, projects: projectList, sessions: sessions, permissions: permissions,
                         limits: usageLimits.flatMap { SavedLimits.current($0, now: Date()) },
+                        limitsAt: usageLimitsAt,
                         theme: MacTheme(background: colors.surface.hexString, foreground: colors.text.hexString))
     }
 }

@@ -241,23 +241,46 @@ struct NeedsYouCard: View {
 struct UsageCard: View {
     @Environment(\.phoneTheme) private var theme
     let limits: UsageLimits
+    /// When the Mac's status line last reported them, if it says.
+    var updatedAt: Date?
     var macName: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "gauge.with.dots.needle.33percent")
-                Text(macName.map { "Plan usage · \($0)" } ?? "Plan usage")
+        // Re-evaluated each minute: a window can end, and the reading ages,
+        // with no new snapshot from the Mac.
+        TimelineView(.everyMinute) { context in
+            let now = context.date
+            let live = limits.live(at: now)
+            let stale = updatedAt.map { UsageAge.isStale(since: $0, now: now) } ?? false
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "gauge.with.dots.needle.33percent")
+                    Text(macName.map { "Plan usage · \($0)" } ?? "Plan usage")
+                    Spacer(minLength: 4)
+                    if let updatedAt {
+                        Text(stale ? "Last reading \(UsageAge.text(since: updatedAt, now: now))"
+                                   : "Updated \(UsageAge.text(since: updatedAt, now: now))")
+                            .font(.caption2)
+                            .foregroundStyle(stale ? theme.claude : theme.tertiaryText)
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.secondaryText)
+                if let live {
+                    HStack(alignment: .top, spacing: 18) {
+                        if let limit = live.fiveHour { meter("5-hour", limit) }
+                        if let limit = live.sevenDay { meter("Weekly", limit) }
+                    }
+                    .opacity(stale ? 0.6 : 1)
+                } else {
+                    Text("Those windows have reset. New numbers arrive with the next reply in a Claude tab on the Mac.")
+                        .font(.caption)
+                        .foregroundStyle(theme.secondaryText)
+                }
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(theme.secondaryText)
-            HStack(alignment: .top, spacing: 18) {
-                if let limit = limits.fiveHour { meter("5-hour", limit) }
-                if let limit = limits.sevenDay { meter("Weekly", limit) }
-            }
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func meter(_ label: String, _ limit: UsageLimit) -> some View {

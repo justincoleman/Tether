@@ -262,11 +262,15 @@ public struct Snapshot: Codable, Hashable, Sendable {
     public var permissions: [PermissionRequested]
     /// The latest plan limits any session's status line reported.
     public var limits: UsageLimits?
+    /// When a status line last reported `limits`. Nil from a Mac that doesn't say.
+    public var limitsAt: Date?
     /// The Mac's Ghostty colors, when it has them.
     public var theme: MacTheme?
 
     public init(macName: String, projects: [ProjectSummary], sessions: [SessionSummary],
-                permissions: [PermissionRequested], limits: UsageLimits? = nil, theme: MacTheme? = nil) {
+                permissions: [PermissionRequested], limits: UsageLimits? = nil, limitsAt: Date? = nil,
+                theme: MacTheme? = nil) {
+        self.limitsAt = limitsAt
         self.theme = theme
         self.macName = macName
         self.projects = projects

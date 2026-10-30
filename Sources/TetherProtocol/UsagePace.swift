@@ -31,3 +31,40 @@ extension UsageLimit {
         return usedPercent / 100 > pace + 0.02
     }
 }
+
+extension UsageLimits {
+    /// These limits without any window whose reset time has passed (its
+    /// percentage no longer means anything). Nil if nothing is left.
+    public func live(at now: Date) -> UsageLimits? {
+        func keep(_ limit: UsageLimit?) -> UsageLimit? {
+            guard let limit else { return nil }
+            if let reset = limit.resetsAt, reset <= now { return nil }
+            return limit
+        }
+        let fiveHour = keep(self.fiveHour), sevenDay = keep(self.sevenDay)
+        return fiveHour == nil && sevenDay == nil ? nil : UsageLimits(fiveHour: fiveHour, sevenDay: sevenDay)
+    }
+}
+
+/// How old a plan limits reading is. Claude Code only reports `rate_limits`
+/// from a session that has just made a request, so the age is how long since
+/// any tab on the Mac last did.
+public enum UsageAge {
+    /// Past this the numbers may well have moved (another device, claude.ai).
+    public static let staleAfter: TimeInterval = 30 * 60
+
+    public static func isStale(since date: Date, now: Date) -> Bool {
+        now.timeIntervalSince(date) >= staleAfter
+    }
+
+    /// "just now", "12m ago", "3h ago", "2d ago".
+    public static func text(since date: Date, now: Date) -> String {
+        let seconds = max(0, now.timeIntervalSince(date))
+        switch seconds {
+        case ..<60: return "just now"
+        case ..<3600: return "\(Int(seconds / 60))m ago"
+        case ..<86_400: return "\(Int(seconds / 3600))h ago"
+        default: return "\(Int(seconds / 86_400))d ago"
+        }
+    }
+}

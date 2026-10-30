@@ -238,7 +238,7 @@ private struct MacProjects: View {
     var body: some View {
         if let limits = connection.snapshot?.limits, limits.fiveHour != nil || limits.sevenDay != nil {
             Section {
-                UsageCard(limits: limits, macName: showMacName ? connection.mac.name : nil)
+                UsageCard(limits: limits, updatedAt: connection.snapshot?.limitsAt, macName: showMacName ? connection.mac.name : nil)
                     .listRowBackground(theme.card)
             }
         }

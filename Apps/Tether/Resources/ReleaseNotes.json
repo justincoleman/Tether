@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.30.12",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.12 shows how old the plan limits are, and clears windows that have reset.",
+    "highlights": [
+      {
+        "title": "Plan limits say how fresh they are.",
+        "body": "Claude Code only reports your limits from a tab that has just made a request, so they can't move while every tab is idle, or when you use your plan somewhere else. The rings and the iPhone's plan usage card now show \"Updated 12m ago\", and dim with \"Last reading\" once it is over 30 minutes old. Needs both apps rebuilt: protocol 24."
+      },
+      {
+        "title": "Reset windows clear on the phone too.",
+        "body": "A 5-hour or weekly window that has reset no longer lingers on the iPhone until the Mac sends something new."
+      }
+    ]
+  },
+  {
     "version": "0.30.11",
     "date": "2026-10-30",
     "summary": "Tether 0.30.11 protects companion drafts and fixes pairing and transcript reliability. Update Tether on your Mac and iPhone together.",

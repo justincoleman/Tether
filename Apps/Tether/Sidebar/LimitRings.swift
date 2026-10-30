@@ -20,29 +20,42 @@ struct LimitRings: View {
             let now = context.date
             // A paired Mac has its own account and its own limits.
             let reported = model.remote.selectedConnection.map { $0.snapshot?.limits } ?? model.usageLimits
+            let reportedAt = model.remote.selectedConnection.map { $0.snapshot?.limitsAt } ?? model.usageLimitsAt
+            let stale = reportedAt.map { UsageAge.isStale(since: $0, now: now) } ?? false
             if showRings, let limits = reported.flatMap({ SavedLimits.current($0, now: now) }) {
                 let rows = Self.rows(limits)
-                HStack(spacing: hovering ? 28 : 14) {
-                    ForEach(rows, id: \.title) { row in
-                        VStack(spacing: 5) {
-                            Ring(used: row.limit.usedPercent,
-                                 pace: showPace ? row.limit.paceFraction(in: row.window, now: now) : nil,
-                                 ahead: row.limit.isAheadOfPace(in: row.window, now: now),
-                                 expanded: hovering)
-                            if hovering {
-                                VStack(spacing: 1) {
-                                    Text(row.short)
-                                        .font(.callout.weight(.semibold))
-                                        .foregroundStyle(theme.text)
-                                    if let left = Self.timeLeft(row.limit, now: now) {
-                                        Text(left)
-                                            .font(.caption)
-                                            .foregroundStyle(theme.secondaryText)
+                VStack(spacing: 8) {
+                    HStack(spacing: hovering ? 28 : 14) {
+                        ForEach(rows, id: \.title) { row in
+                            VStack(spacing: 5) {
+                                Ring(used: row.limit.usedPercent,
+                                     pace: showPace ? row.limit.paceFraction(in: row.window, now: now) : nil,
+                                     ahead: row.limit.isAheadOfPace(in: row.window, now: now),
+                                     expanded: hovering)
+                                if hovering {
+                                    VStack(spacing: 1) {
+                                        Text(row.short)
+                                            .font(.callout.weight(.semibold))
+                                            .foregroundStyle(theme.text)
+                                        if let left = Self.timeLeft(row.limit, now: now) {
+                                            Text(left)
+                                                .font(.caption)
+                                                .foregroundStyle(theme.secondaryText)
+                                        }
                                     }
+                                    .transition(.opacity)
                                 }
-                                .transition(.opacity)
                             }
                         }
+                    }
+                    // Dimmed once the reading is old: the numbers may have moved.
+                    .opacity(stale && !hovering ? 0.5 : 1)
+                    if hovering, let reportedAt {
+                        Text(stale ? "Last reading \(UsageAge.text(since: reportedAt, now: now))"
+                                   : "Updated \(UsageAge.text(since: reportedAt, now: now))")
+                            .font(.caption2)
+                            .foregroundStyle(stale ? theme.claude : theme.secondaryText)
+                            .transition(.opacity)
                     }
                 }
                 .padding(.horizontal, 14)
