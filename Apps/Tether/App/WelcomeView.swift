@@ -332,7 +332,7 @@ private struct ToolRow: View {
                 if FileManager.default.fileExists(atPath: app) { return app }
                 return await ToolProbe.resolve("tailscale")
             }
-            return await ToolProbe.resolve(rawName)
+            return await ToolProbe.resolve(rawName, overrides: ToolOverrides.all)
         }
 
         private var rawName: String {

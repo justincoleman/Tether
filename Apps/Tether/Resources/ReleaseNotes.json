@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.30.15",
+    "date": "2026-10-30",
+    "summary": "Tether 0.30.15 finds Claude Code and Codex when Tether is opened from Finder or the Dock.",
+    "highlights": [
+      {
+        "title": "Claude tabs start in the released app.",
+        "body": "Opened from Finder or the Dock, Tether didn't get your terminal's PATH, so a new Claude or Codex tab could stop with \"command not found: claude\" when it was installed in ~/.local/bin, nvm or npm's folder. Tether now asks your shell where claude and codex are, checks the usual install folders, and starts them by their full path with your shell's PATH."
+      },
+      {
+        "title": "A clear message when a tool is missing.",
+        "body": "If Tether still can't find Claude Code or Codex, the tab says so, with the install command to copy, a link to the install guide, Locate… to pick the program yourself, and Try Again."
+      }
+    ]
+  },
+  {
     "version": "0.30.14",
     "date": "2026-10-30",
     "summary": "Tether 0.30.14 brings Claude's suggested next message to the iPhone and to paired Macs.",

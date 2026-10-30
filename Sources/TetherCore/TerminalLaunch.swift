@@ -33,13 +33,18 @@ public struct TerminalLaunch: Hashable, Sendable {
         hookPort: UInt16? = nil,
         shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
         claudeExecutable: String = "claude",
-        codexExecutable: String = "codex"
+        codexExecutable: String = "codex",
+        searchPath: String? = nil
     ) -> TerminalLaunch {
         let env = [paneEnvKey: pane.id.uuidString, tokenEnvKey: token]
+        // Claude and Codex tabs get the user's shell PATH (`ToolPaths`), since an
+        // app opened from Finder has launchd's and `-l` skips .zshrc.
+        var agentEnv = env
+        if let searchPath { agentEnv["PATH"] = searchPath }
         switch pane.kind {
         case .codex(_, let resume):
             var parts = [codexExecutable]
-            var codexEnv = env
+            var codexEnv = agentEnv
             if let hookPort {
                 parts += CodexHooks.configArguments()
                 codexEnv[CodexHooks.portEnvKey] = String(hookPort)
@@ -78,7 +83,7 @@ public struct TerminalLaunch: Hashable, Sendable {
             return TerminalLaunch(
                 command: loginShellCommand(shell: shell, parts),
                 workingDirectory: worktree?.path,
-                environment: env)
+                environment: agentEnv)
         case .shell(let cwd):
             return TerminalLaunch(command: nil, workingDirectory: cwd, environment: env)
         case .command(let cwd, let command):
@@ -97,8 +102,8 @@ public struct TerminalLaunch: Hashable, Sendable {
         }
     }
 
-    /// Runs `argv` through the user's login shell so PATH additions from
-    /// .zprofile (where `claude` usually lives) apply. The pty stays open after
+    /// Runs `argv` through the user's login shell so .zprofile applies (a
+    /// Claude tab passes `claude` by absolute path: see `ToolPaths`). The pty stays open after
     /// exit because the surface is created with `waitAfterCommand`.
     static func loginShellCommand(shell: String, _ argv: [String]) -> String {
         let joined = argv.map(shellQuote).joined(separator: " ")

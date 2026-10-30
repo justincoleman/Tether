@@ -63,13 +63,6 @@ import Testing
         #expect(SessionHistory.recentFolders(projectsDirectory: nowhere).isEmpty)
     }
 
-    @Test func probeParsesThePathAndIgnoresBannersAndAliases() {
-        #expect(ToolProbe.parse("/opt/homebrew/bin/claude\n") == "/opt/homebrew/bin/claude")
-        #expect(ToolProbe.parse("Welcome back\n/usr/local/bin/git\n") == "/usr/local/bin/git")
-        #expect(ToolProbe.parse("claude\n") == nil)
-        #expect(ToolProbe.parse("") == nil)
-    }
-
     @Test func probeFindsARealToolAndNotAMissingOne() async {
         // A long timeout: this runs beside a hundred other tests on a busy machine.
         let found = await ToolProbe.resolve("sh", shell: "/bin/sh", timeout: 60)

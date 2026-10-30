@@ -38,6 +38,9 @@ structural. Work proceeds in the numbered phases there.
   another container.
 - Every pty gets `TETHER_PANE_ID` and `TETHER_TOKEN` in its env
   (`TerminalLaunch`). Hooks echo them back as HTTP headers.
+- Claude and Codex tabs launch the tool by absolute path with the shell's PATH
+  (`ToolLocator`, `ToolPaths`). An app opened from Finder has launchd's PATH and
+  `zsh -l -c` skips `.zshrc`, so never launch a bare `claude` or `codex`.
 
 ## Look and feel
 - Chrome colors come from `@Environment(\.theme)` (`Apps/Tether/App/Theme.swift`),

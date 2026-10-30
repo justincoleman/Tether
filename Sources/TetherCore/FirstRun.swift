@@ -1,4 +1,3 @@
-import Dispatch
 import Foundation
 
 /// A folder Claude Code has been used in, found from `~/.claude/projects`.
@@ -69,47 +68,12 @@ extension SessionHistory {
     }
 }
 
-/// Finds the command-line tools Tether runs, the way a new tab does: through
-/// the user's login shell, so PATH set in `.zprofile` applies.
+/// Finds a command-line tool the way a new tab does (`ToolLocator`): through
+/// the user's interactive login shell, then common install folders.
 public enum ToolProbe {
-    /// The path `tool` resolves to, or nil when the shell can't find it.
+    /// The path `tool` resolves to, or nil when nothing finds it.
     public static func resolve(_ tool: String, shell: String = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
-                               timeout: TimeInterval = 5) async -> String? {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                continuation.resume(returning: runBlocking(tool, shell: shell, timeout: timeout))
-            }
-        }
-    }
-
-    static func runBlocking(_ tool: String, shell: String, timeout: TimeInterval) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: shell)
-        process.arguments = ["-l", "-c", "command -v \(TerminalLaunch.shellQuote(tool))"]
-        let out = Pipe()
-        process.standardOutput = out
-        process.standardError = FileHandle.nullDevice
-        process.standardInput = FileHandle.nullDevice
-        // The termination handler, not a second thread parked in waitUntilExit:
-        // with the pool busy (a test run, a busy launch) that thread can start
-        // late and the timeout fires on a shell that had long since exited.
-        let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in finished.signal() }
-        do { try process.run() } catch { return nil }
-        if finished.wait(timeout: .now() + timeout) == .timedOut {
-            process.terminate()
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
-        let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        return parse(text)
-    }
-
-    /// The last non-empty line: a login shell can print a banner first. An
-    /// alias or function comes back as a word, not a path, and counts as missing.
-    static func parse(_ output: String) -> String? {
-        let line = output.split(whereSeparator: \.isNewline).last.map { $0.trimmingCharacters(in: .whitespaces) }
-        guard let line, line.hasPrefix("/") else { return nil }
-        return line
+                               overrides: [String: String] = [:], timeout: TimeInterval = 8) async -> String? {
+        await ToolLocator.locate([tool], shell: shell, overrides: overrides, timeout: timeout).path(of: tool)
     }
 }

@@ -141,6 +141,12 @@ final class AppModel {
     private var hookPort: UInt16?
     /// Per-launch secret handed to every pty and echoed back by hooks.
     let launchToken = UUID().uuidString
+    /// `claude` and `codex` by absolute path, plus the shell's PATH: found once
+    /// per launch, since an app opened from Finder can't rely on PATH.
+    @ObservationIgnored private var toolPathsTask: Task<ToolPaths, Never>?
+    /// Claude and Codex tabs whose tool wasn't found. They show
+    /// `MissingToolView` over the terminal instead of a shell error.
+    private(set) var missingTools: [PaneID: AgentKind] = [:]
 
     init() {
         companion.model = self
@@ -1389,6 +1395,7 @@ final class AppModel {
     /// dozen projects don't spawn a dozen `claude` processes at once. Projects
     /// without any pane get a Claude session: the "ready to go" promise.
     private func restore() async {
+        _ = toolPaths()
         await startHookServer()
         companion.start()
         pullRequests.targets = { [weak self] in self?.pullRequestTargets() ?? [:] }
@@ -1446,12 +1453,25 @@ final class AppModel {
         case .ssh(let hostId): host = await store.remoteHost(hostId)
         case .shell, .command: break
         }
+        var tools = ToolPaths()
+        if let agent = d.kind.agent {
+            tools = await toolPaths().value
+            if tools.path(of: agent.rawValue) == nil {
+                missingTools[d.id] = agent
+            } else {
+                missingTools[d.id] = nil
+            }
+        }
         let launch = TerminalLaunch.make(pane: d, worktree: worktree, remoteHost: host,
                                          token: launchToken, hookSettingsPath: hookSettingsPath,
                                          newSessionId: launchSession,
                                          initialPrompt: initialPrompts.removeValue(forKey: d.id),
                                          permissionMode: initialModes.removeValue(forKey: d.id),
-                                         hookPort: hookPort)
+                                         hookPort: hookPort,
+                                         claudeExecutable: tools.path(of: AgentKind.claude.rawValue) ?? "claude",
+                                         codexExecutable: tools.path(of: AgentKind.codex.rawValue) ?? "codex",
+                                         searchPath: d.kind.agent == nil ? nil
+                                            : tools.launchPath(inherited: ProcessInfo.processInfo.environment["PATH"]))
         let pane = TerminalPane(descriptor: d, launch: launch, controller: TerminalHost.controller)
         pane.onExit = { [weak self] id in
             guard let self else { return }
@@ -1471,6 +1491,41 @@ final class AppModel {
         companion.setNeedsSnapshot()
     }
 
+    /// The cached search, started on first use. `retryMissingTool` drops it.
+    private func toolPaths() -> Task<ToolPaths, Never> {
+        if let toolPathsTask { return toolPathsTask }
+        let overrides = ToolOverrides.all
+        let task = Task.detached { await ToolLocator.locate(["claude", "codex"], overrides: overrides) }
+        toolPathsTask = task
+        return task
+    }
+
+    /// Searches again (after installing, or picking the file in `locateTool`)
+    /// and restarts the tab in place.
+    func retryMissingTool(_ id: PaneID) async {
+        toolPathsTask = nil
+        guard let pane = panes[id] else { return }
+        let descriptor = pane.descriptor
+        let wasSelected = selectedPaneId == id
+        // Same place in the tab bar and the same split as before.
+        let index = paneOrder.firstIndex(of: id)
+        let keptSplits = splits
+        tearDown(id)
+        await mount(descriptor)
+        if let index, paneOrder.last == id {
+            paneOrder.removeLast()
+            paneOrder.insert(id, at: min(index, paneOrder.count))
+        }
+        splits = keptSplits
+        if wasSelected { selectedPaneId = id }
+    }
+
+    /// Remembers the file the user picked for `agent`, then retries the tab.
+    func locateTool(_ agent: AgentKind, at path: String, pane id: PaneID) async {
+        ToolOverrides.set(path, for: agent.rawValue)
+        await retryMissingTool(id)
+    }
+
     private func tearDown(_ id: PaneID) {
         let partner = split(containing: id)?.partner(of: id)
         splits.removeAll { $0.contains(id) }
@@ -1483,6 +1538,7 @@ final class AppModel {
         paneModes[id] = nil
         paneStatus[id] = nil
         paneWorktreePaths[id] = nil
+        missingTools[id] = nil
         promptRetries.cancel(id)
         promptQueue.clear(pane: id)
         queuedCounts[id] = nil
