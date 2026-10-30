@@ -84,6 +84,27 @@ and the latest limits, and sends them to phones in the snapshot. Because a
 relaunched tab reports no `rate_limits` until its first reply, the latest limits
 are saved in UserDefaults (`SavedLimits`) and restored at launch; a window whose
 `resets_at` has passed is dropped, both on restore and when building a snapshot.
+
+### Why the limits go stale
+
+Claude Code runs the status line command once at session start, then on a new
+assistant message, `/compact`, a permission-mode or vim-mode change, a
+`refreshInterval` timer if set, and when a `rate_limits` window reaches its
+`resets_at`; it can go quiet while a session is idle. `rate_limits` only arrives
+after a session's first API response. The docs don't say where the numbers come
+from, but nothing re-fetches them on a timer, so we treat them as changing only
+when some tab on the Mac makes a request (unverified). Use on other devices, claude.ai or a second Mac
+account is invisible until then, and Tether can't ask: it won't read Claude
+Code's OAuth token to poll the usage endpoint.
+
+What Tether does instead: the latest report from any tab wins; `AppModel`
+stamps it (`usageLimitsAt`, saved with the limits) and sends the stamp as
+`Snapshot.limitsAt`; windows past their `resets_at` are dropped on the Mac and,
+by `UsageLimits.live(at:)`, on the phone's clock between snapshots; both show
+"Updated 12m ago", and dim and say "Last reading" past `UsageAge.staleAfter`
+(30 minutes). A `refreshInterval` was not set: it would re-run the script on
+the same numbers and make the stamp lie.
+
 The fixture in `StatusLineTests` matches the shape of a payload captured from
 Claude Code 2.1.308 (all four `rate_limits` values are JSON numbers).
 

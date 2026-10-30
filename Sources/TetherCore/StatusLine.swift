@@ -72,13 +72,7 @@ public enum SavedLimits {
     }
 
     public static func current(_ limits: UsageLimits, now: Date) -> UsageLimits? {
-        func live(_ limit: UsageLimit?) -> UsageLimit? {
-            guard let limit else { return nil }
-            if let reset = limit.resetsAt, reset <= now { return nil }
-            return limit
-        }
-        let fiveHour = live(limits.fiveHour), sevenDay = live(limits.sevenDay)
-        return fiveHour == nil && sevenDay == nil ? nil : UsageLimits(fiveHour: fiveHour, sevenDay: sevenDay)
+        limits.live(at: now)
     }
 }
 
