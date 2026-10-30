@@ -19,18 +19,23 @@ struct TerminalTabsView: View {
             || model.openFileTarget?.projectId == project.id
         let selectedPane = panes.first { $0.id == model.selectedPaneId }
         // Chat replaces the terminal only for Claude tabs; shells have no conversation.
-        let chatShown = selectedPane.map { model.showsChat($0.id) } ?? false
+        // With no tabs, or after +, the start page covers the card.
+        let startShown = panes.isEmpty || model.newTabPage == project.id
+        let chatShown = !startShown && (selectedPane.map { model.showsChat($0.id) } ?? false)
         let card = RoundedRectangle(cornerRadius: ChromeMetrics.cardRadius)
         VStack(spacing: 0) {
             TabStrip(project: project, panes: panes, showSidebar: $showSidebar)
-            TerminalCard(panes: panes, isActive: isActive, overlayOpen: overlayOpen, chatShown: chatShown)
+            TerminalCard(panes: panes, isActive: isActive, overlayOpen: overlayOpen || startShown, chatShown: chatShown)
             // The card is the terminal's own background, so this inset reads
             // as padding and the AppKit surface never needs clipping.
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(theme.surface, in: card)
             .overlay {
-                if let target = model.openDiffTarget, target.projectId == project.id {
+                if startShown {
+                    StartPage(project: project)
+                        .clipShape(card)
+                } else if let target = model.openDiffTarget, target.projectId == project.id {
                     DiffViewer(target: target)
                         .clipShape(card)
                 } else if let target = model.openFileTarget, target.projectId == project.id {
@@ -41,7 +46,7 @@ struct TerminalTabsView: View {
             .overlay(card.strokeBorder(theme.border.opacity(0.6), lineWidth: 0.5))
             .overlay(alignment: .bottom) {
                 // Added after the diff so a permission prompt stays on top of it.
-                if let paneId = model.selectedPaneId, !chatShown,
+                if let paneId = model.selectedPaneId, !chatShown, !startShown,
                    let request = model.pendingPermissions.first(where: { $0.paneId == paneId }) {
                     PermissionPromptView(request: request)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -49,6 +54,14 @@ struct TerminalTabsView: View {
             }
             .animation(.snappy, value: model.pendingPermissions.map(\.id))
             .padding(.bottom, 8)
+        }
+        // A new tab, from the page, ⌘T or anywhere else, closes the page.
+        // So does leaving the project, which also keeps a hidden page's Esc from firing.
+        .onChange(of: model.selectedPaneId) {
+            if model.newTabPage == project.id { model.newTabPage = nil }
+        }
+        .onChange(of: isActive) {
+            if !isActive, model.newTabPage == project.id { model.newTabPage = nil }
         }
     }
 }
@@ -76,12 +89,6 @@ private struct TerminalCard: View {
             let full = CGRect(origin: .zero, size: geo.size)
             let halves = split.map { Self.halves(in: full, axis: $0.axis, fraction: dragFraction ?? $0.fraction) }
             ZStack(alignment: .topLeading) {
-                if panes.isEmpty {
-                    ContentUnavailableView("No terminals",
-                                           systemImage: "terminal",
-                                           description: Text("Open a Claude session with the + button."))
-                        .frame(width: geo.size.width, height: geo.size.height)
-                }
                 ForEach(panes) { pane in
                     let rect = frame(of: pane.id, split: split, halves: halves, full: full)
                     // Hidden while a diff or a file covers the card, and while the
@@ -209,9 +216,7 @@ private struct TabStrip: View {
     let project: Project
     let panes: [TerminalPane]
     @Binding var showSidebar: Bool
-    @State private var showNewAgent = false
     @State private var showHistory = false
-    @State private var editingShortcuts = false
     /// Tab frames in the strip's space, for finding where a dragged tab lands.
     @State private var tabFrames: [PaneID: CGRect] = [:]
     @State private var dragging: PaneID?
@@ -219,7 +224,7 @@ private struct TabStrip: View {
     /// The dragged tab is below the strip, over the terminal.
     @State private var overTerminal = false
 
-    /// Shortcuts with their own button; the rest are in the + menu.
+    /// Shortcuts with their own button; the rest are on the start page (+).
     private static let barShortcutLimit = 3
 
     var body: some View {
@@ -236,6 +241,7 @@ private struct TabStrip: View {
                         TabButton(pane: pane, selected: pane.id == model.selectedPaneId,
                                   besideSelected: pane.id == partner) {
                             model.closeOverlays()
+                            model.newTabPage = nil
                             model.selectedPaneId = pane.id
                         } close: {
                             model.requestClose(pane.id)
@@ -288,47 +294,22 @@ private struct TabStrip: View {
                     Task { await model.runQuickAction(action) }
                 }
             }
-            Menu {
-                Button("Claude") { Task { await model.openClaudePane(project: project) } }
-                Button("Codex") { Task { await model.openCodexPane(project: project) } }
-                Button("Shell") { Task { await model.openShellPane(project: project) } }
-                Button("Agent on a Branch…") { showNewAgent = true }
-                if !model.remoteHosts.isEmpty {
-                    Divider()
-                    ForEach(model.remoteHosts) { host in
-                        Button("ssh \(host.name)") { Task { await model.openSSHPane(project: project, host: host) } }
-                    }
+            // + shows the start page in place of the current tab; ⌘T still opens Claude at once.
+            ChromeButton(systemImage: "plus", active: model.newTabPage == project.id,
+                         help: "New tab, shortcuts and recent conversations") {
+                if model.newTabPage == project.id {
+                    model.newTabPage = nil
+                } else {
+                    model.closeOverlays()
+                    model.newTabPage = project.id
                 }
-                if !shortcuts.isEmpty {
-                    Divider()
-                    ForEach(shortcuts) { action in
-                        Button(action.label) { Task { await model.runQuickAction(action) } }
-                    }
-                }
-                Divider()
-                Button("Edit Shortcuts…") { editingShortcuts = true }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(theme.secondaryText)
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .frame(width: 28, height: 28)
-            .help("New tab or shortcut")
             ChromeButton(systemImage: "sidebar.right", active: model.showInspector,
                          help: "Changes, files and preview (⇧⌘D, ⇧⌘E, ⇧⌘P)") { model.toggleInspector() }
         }
         .padding(.leading, showSidebar ? 0 : ChromeMetrics.trafficLightsWidth)
         .frame(height: ChromeMetrics.headerHeight)
         .coordinateSpace(.named("tabStrip"))
-        .sheet(isPresented: $showNewAgent) {
-            NewAgentSheet(project: project)
-        }
-        .sheet(isPresented: $editingShortcuts) {
-            ShortcutsEditor(project: project)
-        }
     }
 }
 
