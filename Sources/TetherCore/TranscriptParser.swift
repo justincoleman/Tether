@@ -9,8 +9,15 @@ import TetherProtocol
 public enum TranscriptParser {
     public static func events(fromLine line: String) -> [MirrorEvent] {
         guard let record = try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8)),
-              let type = record["type"]?.stringValue,
-              type == "user" || type == "assistant",
+              let type = record["type"]?.stringValue else { return [] }
+        // A background task that finished while Claude was busy arrives as a
+        // queued command instead of a user record.
+        if type == "attachment", record["isSidechain"] != .bool(true),
+           record["attachment"]?["type"]?.stringValue == "queued_command",
+           let prompt = record["attachment"]?["prompt"]?.stringValue {
+            return taskNotification(prompt, at: date(record["timestamp"]?.stringValue)) ?? []
+        }
+        guard type == "user" || type == "assistant",
               record["isSidechain"] != .bool(true), // subagent turns
               record["isMeta"] != .bool(true),      // injected context, not typed by anyone
               let uuid = record["uuid"]?.stringValue,
@@ -71,6 +78,7 @@ public enum TranscriptParser {
     static func userEvents(_ content: JSONValue?, uuid: String, at: Date) -> [MirrorEvent] {
         switch content {
         case .string(let text)?:
+            if let task = taskNotification(text, at: at) { return task }
             return userText(text, id: "\(uuid)#0", at: at).map { [$0] } ?? []
         case .array(let blocks)?:
             var events: [MirrorEvent] = []
@@ -88,6 +96,9 @@ public enum TranscriptParser {
                     images += 1
                 case "tool_result":
                     guard let toolUseId = block["tool_use_id"]?.stringValue else { continue }
+                    // A background agent or command: the step keeps running until
+                    // its task notification (below) brings the real result.
+                    if startedInBackground(resultText(block["content"])) { continue }
                     events.append(.toolResult(id: "\(uuid)#\(i)", toolUseId: toolUseId,
                                               summary: resultTail(block["content"]),
                                               isError: block["is_error"] == .bool(true), at: at))
@@ -122,17 +133,49 @@ public enum TranscriptParser {
         return .userText(id: id, text: text, at: at)
     }
 
+    // MARK: Background tasks
+
+    /// The tool result Claude Code writes when an Agent or Bash call goes to
+    /// the background: internal plumbing, not the call's outcome.
+    static func startedInBackground(_ result: String) -> Bool {
+        result.hasPrefix("Async agent launched successfully") || result.hasPrefix("Command running in background with ID:")
+    }
+
+    /// `<task-notification>` text: a background agent or command finished.
+    /// Becomes a quiet notice with Claude Code's own summary, plus the result
+    /// of the step that started it. Ids come from the task and its status, so
+    /// the same notification seen twice (queued, then delivered) shows once.
+    static func taskNotification(_ raw: String, at: Date) -> [MirrorEvent]? {
+        let text = raw.trimmed
+        guard text.hasPrefix("<task-notification>") else { return nil }
+        let summary = between(text, "<summary>", "</summary>") ?? "A background task finished"
+        let status = between(text, "<status>", "</status>") ?? "completed"
+        let taskId = between(text, "<task-id>", "</task-id>") ?? summary
+        let id = "task-\(taskId)-\(status)"
+        var events: [MirrorEvent] = [.notice(id: id, text: summary, at: at)]
+        if let toolUseId = between(text, "<tool-use-id>", "</tool-use-id>") {
+            let exit = summary.range(of: #"exit code (\d+)"#, options: .regularExpression)
+                .flatMap { Int(summary[$0].dropFirst("exit code ".count)) }
+            let failed = status != "completed" || (exit ?? 0) != 0
+            events.append(.toolResult(id: id, toolUseId: toolUseId, summary: summary, isError: failed, at: at))
+        }
+        return events
+    }
+
+    static func resultText(_ content: JSONValue?) -> String {
+        switch content {
+        case .string(let s)?: s
+        case .array(let items)?:
+            items.compactMap { $0["type"]?.stringValue == "text" ? $0["text"]?.stringValue : nil }
+                .joined(separator: "\n")
+        default: ""
+        }
+    }
+
     /// The last few non-empty lines of a tool result, so a command shows how it
     /// ended. Views that want one line take the first of these.
     static func resultTail(_ content: JSONValue?, lines: Int = 6) -> String {
-        var text = ""
-        switch content {
-        case .string(let s)?: text = s
-        case .array(let items)?:
-            text = items.compactMap { $0["type"]?.stringValue == "text" ? $0["text"]?.stringValue : nil }
-                .joined(separator: "\n")
-        default: break
-        }
+        let text = resultText(content)
         let kept = text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }

@@ -67,6 +67,9 @@ struct MirrorView: View {
 
             if let paneId, sessionId != nil {
                 VStack(spacing: 0) {
+                    if let agents = transcript?.runningAgents, !agents.isEmpty {
+                        RunningAgentsRow(agents: agents)
+                    }
                     ChatFooter(paneId: paneId, state: state, transcript: transcript)
                     // Cards sit right above the message box, where the eye already is.
                     if let request = model.pendingPermission(forPane: paneId) {
@@ -594,7 +597,13 @@ struct TranscriptItemView: View {
             MarkdownView(text)
                 .modifier(HoverCopy(text: text, beside: false))
         case .steps(_, let steps):
-            StepsView(steps: steps)
+            // Subagents get a card each, outside the folded steps, so they don't hide.
+            let agents = steps.filter(\.isAgent)
+            let rest = steps.filter { !$0.isAgent }
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(agents) { AgentCard(step: $0) }
+                if !rest.isEmpty { StepsView(steps: rest) }
+            }
         case .notice(_, let text, _):
             Text(text)
                 .font(.caption)
@@ -653,6 +662,74 @@ private struct StepsView: View {
         case "TodoWrite": "checklist"
         default: "wrench.and.screwdriver"
         }
+    }
+}
+
+/// A subagent Claude sent out: what it's for, and whether it's still going.
+/// Background agents run until their task notification arrives.
+private struct AgentCard: View {
+    @Environment(\.theme) private var theme
+    let step: ToolStep
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "person.2.fill")
+                .font(.callout)
+                .foregroundStyle(theme.claude)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(step.summary.isEmpty ? "Subagent" : step.summary)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(2)
+                if let result = step.result {
+                    Text(result)
+                        .font(.caption)
+                        .foregroundStyle(step.isError && !step.isStopped ? theme.red : theme.secondaryText)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                } else {
+                    Text("Working")
+                        .font(.caption)
+                        .foregroundStyle(theme.secondaryText)
+                }
+            }
+            Spacer(minLength: 0)
+            if step.isRunning {
+                ProgressView().controlSize(.small)
+            } else if step.isStopped {
+                Image(systemName: "stop.circle").foregroundStyle(theme.secondaryText)
+            } else {
+                Image(systemName: step.isError ? "xmark.circle.fill" : "checkmark.circle")
+                    .foregroundStyle(step.isError ? theme.red : theme.green)
+            }
+        }
+        .padding(10)
+        .background(theme.surface, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.border, lineWidth: 0.5))
+    }
+}
+
+/// Subagents still working, pinned above the message box so they don't
+/// scroll away. They can outlive the turn that started them.
+private struct RunningAgentsRow: View {
+    @Environment(\.theme) private var theme
+    let agents: [ToolStep]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "person.2.fill").font(.caption).foregroundStyle(theme.claude)
+            Text(agents.count == 1 ? "1 agent running:" : "\(agents.count) agents running:")
+                .font(.callout.weight(.medium))
+            Text(agents.map(\.summary).joined(separator: ", "))
+                .font(.callout)
+                .foregroundStyle(theme.secondaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            ProgressView().controlSize(.mini)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 }
 

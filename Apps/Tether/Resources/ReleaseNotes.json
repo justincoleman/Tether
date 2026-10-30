@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.20.13",
+    "date": "2026-10-30",
+    "summary": "Tether 0.20.13 shows Claude's subagents and background commands in the chat view.",
+    "highlights": [
+      {
+        "title": "See Claude's subagents.",
+        "body": "When Claude sends out agents, each gets a card in the chat with what it's for, a spinner while it works, and how it ended. While any are running, a line above the message box lists them, so they don't scroll away."
+      },
+      {
+        "title": "Background work says when it's done.",
+        "body": "When a background agent or command finishes, a quiet line in the chat says so, with the command's exit code. The step that started it updates at the same moment, on the Mac and the iPhone."
+      }
+    ]
+  },
+  {
     "version": "0.20.12",
     "date": "2026-10-30",
     "summary": "Tether 0.20.12 makes the project list sort itself: Active projects by recent use, Pin to Top, and a folding Inactive section, on the Mac and iPhone.",
